@@ -1,19 +1,18 @@
-# Native Paper Reader
+# 原生论文阅读器
 
-Working title for an open-source, lightweight, native academic paper reader for Apple platforms.
+这是一个暂定名称，目标是为 Apple 平台开发一款开源、轻量、原生的学术论文阅读器。
 
-The project aims to bring paper collection, PDF reading, translation, annotation, notes, and citation management into one focused application.
+项目希望将论文收集、PDF 阅读、翻译、批注、笔记和引用管理整合进一个专注而完整的应用中。
 
-## Principles
+## 项目原则
 
-- Native macOS experience first, with iPadOS and iOS considered in the architecture.
-- Local-first and usable without an account.
-- Fast startup, smooth PDF interaction, and modest memory usage.
-- User-owned files and portable data.
-- Translation and metadata work must never block reading.
-- Open source, with no agent-development framework embedded in the repository.
+- 优先提供原生的 macOS 使用体验，并在架构中考虑 iPadOS 和 iOS。
+- 本地优先，无需注册账户即可使用。
+- 启动迅速、PDF 操作流畅，并保持较低的内存占用。
+- 文件属于用户，数据可以自由迁移。
+- 翻译和元数据处理绝不能阻塞阅读。
+- 保持开源，不在仓库中引入代理开发流程框架。
 
-## Status
+## 当前状态
 
-Early product and technical design. The product name, license, architecture, and first prototype scope are still to be decided.
-
+项目正处于产品与技术设计初期。正式产品名称、开源许可证、整体架构和第一个原型的范围仍待确定。
