@@ -134,8 +134,7 @@ final class TranslationController: ObservableObject {
     }
 
     func requestTranslation(targetLanguage: Locale.Language) {
-        debounceTask?.cancel()
-        debounceTask = nil
+        cancelWorkForNewGeneration()
         guard let selection else { return }
 
         let cacheKey = CacheKey(
@@ -149,7 +148,6 @@ final class TranslationController: ObservableObject {
             return
         }
 
-        activeTranslationTask?.cancel()
         let request = RequestContext(
             generation: generation,
             selection: selection,

@@ -78,6 +78,35 @@ final class TranslationControllerTests: XCTestCase {
         XCTAssertEqual(controller.state, .success)
     }
 
+    func testManualRetryDuringFlightDoesNotLetStaleResultOverwrite() async {
+        let controller = TranslationController()
+        let target = Locale.Language(identifier: "zh-Hans")
+
+        controller.receiveSelection(
+            PDFSelectionEvent(rawText: "Original", pageIndex: 0),
+            paperID: UUID(),
+            paperName: "Paper",
+            automaticTranslation: false,
+            targetLanguage: target
+        )
+        controller.requestTranslation(targetLanguage: target)
+        let firstAttempt = Task {
+            await controller.perform(
+                using: FakeTranslationPerformer(output: "旧译文", delay: .milliseconds(80))
+            )
+        }
+        try? await Task.sleep(for: .milliseconds(10))
+
+        controller.requestTranslation(targetLanguage: target)
+        await controller.perform(
+            using: FakeTranslationPerformer(output: "新译文", delay: .zero)
+        )
+        await firstAttempt.value
+
+        XCTAssertEqual(controller.translatedText, "新译文")
+        XCTAssertEqual(controller.state, .success)
+    }
+
     func testDownloadableLanguagePreparesBeforeTranslation() async {
         let controller = TranslationController()
         let target = Locale.Language(identifier: "zh-Hans")

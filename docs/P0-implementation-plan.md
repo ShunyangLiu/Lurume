@@ -59,7 +59,7 @@
 
 ### `TranslationController`
 
-持有当前选区、规范化输入、请求代次和检查器状态。新选区先取消 250 毫秒防抖任务，再递增代次；翻译返回时只有当前代次可以更新界面。
+持有当前选区、规范化输入、请求代次和检查器状态。新选区或重新发起翻译都会取消在途任务并递增代次；翻译返回时只有当前代次可以更新界面。
 
 根视图通过 `.translationTask` 获得系统 `TranslationSession`。配置固定使用 `source: nil`，目标语言来自设置。语言包许可和进度由系统 sheet 负责。
 
@@ -94,7 +94,7 @@ xcodebuild -project Lurume.xcodeproj -scheme Lurume -configuration Debug test
 - Debug 与 Release 构建通过，部署目标为 macOS 15；
 - Release 产物同时包含 `arm64` 与 `x86_64`；
 - 本地签名通过深度严格检查，包含 App Sandbox 与用户所选文件只读权限；
-- 14 项单元测试通过，覆盖 JSON 往返、文件身份、文本规范化、手动模式、语言资源准备、自动翻译关闭及不可取消旧结果的代次隔离；
+- 19 项单元测试通过，覆盖 JSON 往返、文件身份、文本规范化（空白折叠、中文断行合并与全角缩进）、手动模式、语言资源准备、自动翻译关闭、在途任务重发与旧结果的代次隔离；
 - 应用已在真实 Mac 上启动，单窗口与空文献库布局正常；
 - 未调用 macOS 26 才提供的 `TranslationSession.cancel()`。
 
