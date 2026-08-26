@@ -24,3 +24,6 @@ Package.resolved
 *.tmp
 *.swp
 *~
+
+# Claude Code local session settings
+.claude/

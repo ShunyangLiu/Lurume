@@ -15,4 +15,10 @@ Lurume 是一款面向 Apple 平台的开源、轻量、原生学术论文阅读
 
 ## 当前状态
 
-项目正处于产品与技术设计初期。开源许可证、整体架构和第一个原型的范围仍待确定。
+第一个 macOS 可运行原型已经实现，正在进行真实 PDF 与系统翻译的手动验收。原型包含
+本地 PDF 引用、文献列表、PDFKit 阅读器、阅读位置恢复和划词翻译，详见
+[P0 原型规格](docs/P0-prototype.md)与[P0 实现计划](docs/P0-implementation-plan.md)。
+
+使用 Xcode 26.3 或更新版本打开 `Lurume.xcodeproj`，选择 `Lurume` scheme 即可构建运行。
+工程最低支持 macOS 15，不包含运行时第三方依赖。修改 `project.yml` 后需使用 XcodeGen
+重新生成工程。开源许可证和长期整体架构仍待确定。

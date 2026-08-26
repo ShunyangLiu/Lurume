@@ -1,0 +1,264 @@
+import Foundation
+import Translation
+
+enum TranslationReadiness: Equatable, Sendable {
+    case installed
+    case downloadable
+    case unsupported
+}
+
+struct TranslationOutput: Equatable, Sendable {
+    let targetText: String
+}
+
+protocol TranslationPerforming: AnyObject, Sendable {
+    func readiness(for text: String, target: Locale.Language) async throws -> TranslationReadiness
+    func prepare() async throws
+    func translate(_ text: String) async throws -> TranslationOutput
+}
+
+final class SystemTranslationPerformer: TranslationPerforming, @unchecked Sendable {
+    private let session: TranslationSession
+    private let availability = LanguageAvailability()
+
+    init(session: TranslationSession) {
+        self.session = session
+    }
+
+    func readiness(for text: String, target: Locale.Language) async throws -> TranslationReadiness {
+        switch try await availability.status(for: text, to: target) {
+        case .installed:
+            .installed
+        case .supported:
+            .downloadable
+        case .unsupported:
+            .unsupported
+        @unknown default:
+            .unsupported
+        }
+    }
+
+    func prepare() async throws {
+        try await session.prepareTranslation()
+    }
+
+    func translate(_ text: String) async throws -> TranslationOutput {
+        let response = try await session.translate(text)
+        return TranslationOutput(targetText: response.targetText)
+    }
+}
+
+struct TranslationSelection: Equatable, Sendable {
+    let rawText: String
+    let normalizedText: String
+    let paperID: UUID
+    let paperName: String
+    let pageIndex: Int
+}
+
+enum TranslationState: Equatable, Sendable {
+    case idle
+    case waiting
+    case translating
+    case resourcesNeeded
+    case success
+    case failed(String)
+    case cancelled
+
+    var label: String {
+        switch self {
+        case .idle: "尚无翻译"
+        case .waiting: "等待翻译"
+        case .translating: "正在翻译"
+        case .resourcesNeeded: "正在准备语言资源"
+        case .success: "翻译完成"
+        case .failed: "翻译失败"
+        case .cancelled: "任务已取消"
+        }
+    }
+}
+
+@MainActor
+final class TranslationController: ObservableObject {
+    @Published private(set) var selection: TranslationSelection?
+    @Published private(set) var translatedText: String?
+    @Published private(set) var state: TranslationState = .idle
+    @Published private(set) var configuration: TranslationSession.Configuration?
+    @Published var isInspectorPresented = false
+
+    private var generation = 0
+    private var debounceTask: Task<Void, Never>?
+    private var activeTranslationTask: Task<TranslationOutput, Error>?
+    private var pendingRequest: RequestContext?
+    private var cache: [CacheKey: String] = [:]
+
+    deinit {
+        debounceTask?.cancel()
+        activeTranslationTask?.cancel()
+    }
+
+    func receiveSelection(
+        _ event: PDFSelectionEvent?,
+        paperID: UUID,
+        paperName: String,
+        automaticTranslation: Bool,
+        targetLanguage: Locale.Language
+    ) {
+        guard let event else {
+            return
+        }
+        let normalizedText = TextNormalizer.translationInput(from: event.rawText)
+        guard !normalizedText.isEmpty else { return }
+
+        let newSelection = TranslationSelection(
+            rawText: event.rawText,
+            normalizedText: normalizedText,
+            paperID: paperID,
+            paperName: paperName,
+            pageIndex: event.pageIndex
+        )
+        guard newSelection != selection else { return }
+
+        cancelWorkForNewGeneration()
+        selection = newSelection
+        translatedText = nil
+        state = .waiting
+        isInspectorPresented = true
+
+        guard automaticTranslation else { return }
+        debounceTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            self?.requestTranslation(targetLanguage: targetLanguage)
+        }
+    }
+
+    func requestTranslation(targetLanguage: Locale.Language) {
+        debounceTask?.cancel()
+        debounceTask = nil
+        guard let selection else { return }
+
+        let cacheKey = CacheKey(
+            text: selection.normalizedText,
+            targetIdentifier: targetLanguage.minimalIdentifier
+        )
+        if let cached = cache[cacheKey] {
+            translatedText = cached
+            state = .success
+            isInspectorPresented = true
+            return
+        }
+
+        activeTranslationTask?.cancel()
+        let request = RequestContext(
+            generation: generation,
+            selection: selection,
+            targetLanguage: targetLanguage,
+            cacheKey: cacheKey
+        )
+        pendingRequest = request
+        state = .waiting
+        isInspectorPresented = true
+
+        if var currentConfiguration = configuration,
+           currentConfiguration.source == nil,
+           currentConfiguration.target == targetLanguage {
+            currentConfiguration.invalidate()
+            configuration = currentConfiguration
+        } else {
+            configuration = TranslationSession.Configuration(
+                source: nil,
+                target: targetLanguage
+            )
+        }
+    }
+
+    func perform(using performer: any TranslationPerforming) async {
+        guard let request = pendingRequest,
+              request.generation == generation else { return }
+        pendingRequest = nil
+
+        let task = Task { @MainActor in
+            let readiness = try await performer.readiness(
+                for: request.selection.normalizedText,
+                target: request.targetLanguage
+            )
+            switch readiness {
+            case .installed:
+                state = .translating
+            case .downloadable:
+                state = .resourcesNeeded
+                try await performer.prepare()
+                state = .translating
+            case .unsupported:
+                throw TranslationControllerError.unsupportedLanguagePair
+            }
+            return try await performer.translate(request.selection.normalizedText)
+        }
+        activeTranslationTask = task
+
+        do {
+            let output = try await task.value
+            guard request.generation == generation else { return }
+            cache[request.cacheKey] = output.targetText
+            translatedText = output.targetText
+            state = .success
+        } catch is CancellationError {
+            guard request.generation == generation else { return }
+            state = .cancelled
+        } catch {
+            guard request.generation == generation else { return }
+            state = .failed(error.localizedDescription)
+        }
+
+        if request.generation == generation {
+            activeTranslationTask = nil
+        }
+    }
+
+    func clear() {
+        cancelWorkForNewGeneration()
+        selection = nil
+        translatedText = nil
+        state = .idle
+    }
+
+    func paperRemoved(_ paperID: UUID) {
+        guard selection?.paperID == paperID else { return }
+        clear()
+    }
+
+    func cancelPendingAutomaticTranslation() {
+        debounceTask?.cancel()
+        debounceTask = nil
+    }
+
+    private func cancelWorkForNewGeneration() {
+        generation += 1
+        debounceTask?.cancel()
+        debounceTask = nil
+        activeTranslationTask?.cancel()
+        activeTranslationTask = nil
+        pendingRequest = nil
+    }
+
+    private struct RequestContext {
+        let generation: Int
+        let selection: TranslationSelection
+        let targetLanguage: Locale.Language
+        let cacheKey: CacheKey
+    }
+
+    private struct CacheKey: Hashable {
+        let text: String
+        let targetIdentifier: String
+    }
+}
+
+private enum TranslationControllerError: LocalizedError {
+    case unsupportedLanguagePair
+
+    var errorDescription: String? {
+        "系统不支持这个原文语言与目标语言组合。"
+    }
+}

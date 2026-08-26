@@ -1,0 +1,62 @@
+name: Lurume
+
+options:
+  bundleIdPrefix: app.lurume
+  deploymentTarget:
+    macOS: "15.0"
+  xcodeVersion: "26.3"
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
+
+targets:
+  Lurume:
+    type: application
+    platform: macOS
+    sources:
+      - path: Lurume
+    entitlements:
+      path: Lurume/Lurume.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-only: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.lurume.Lurume
+        PRODUCT_NAME: Lurume
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Lurume
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 0.0.1
+
+  LurumeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: LurumeTests
+    dependencies:
+      - target: Lurume
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.lurume.LurumeTests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Lurume:
+    build:
+      targets:
+        Lurume: all
+        LurumeTests: [test]
+    test:
+      targets:
+        - LurumeTests
+    run:
+      config: Debug
+    archive:
+      config: Release

@@ -1,0 +1,462 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		106513FBEC771211CB9DE862 /* LibraryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0325E1A53B306B4E070020D /* LibraryModels.swift */; };
+		132643F5DC3DDD1E9EB22813 /* TextNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA1583E513232AC7D0AA7CA0 /* TextNormalizer.swift */; };
+		1D1E1300196BD224FE89A00F /* TextNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969EC9C892796AB815567020 /* TextNormalizerTests.swift */; };
+		24F9D19682C67BFEFB015DAC /* TranslationInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */; };
+		32C8FFB0CE9301BED1D8F96D /* LibrarySchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AABCAEA8379FB217EF98010 /* LibrarySchema.swift */; };
+		33F14A5B4F2FF059040D2EBC /* LurumeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDCEED45D44F9A78BABF93BC /* LurumeApp.swift */; };
+		3BA0251DCE1AE33611F16C6E /* LibraryPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50CE51B033570DB20B180628 /* LibraryPersistenceTests.swift */; };
+		3C4E8C4AE39330A50E8DB278 /* PDFReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A66F42ECD28F65520797F64 /* PDFReaderView.swift */; };
+		61A1E8FC19A5F997C16108CE /* FileIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B332936519E7741B917213C1 /* FileIdentityTests.swift */; };
+		68D5F0FC04789CBE194A49A1 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 813B2765B8739B290712AAD7 /* ContentView.swift */; };
+		6E4325F180DCCE01B54F12F0 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7357965D8D0C423680ACCF0B /* LibraryStore.swift */; };
+		7E10AC773AD3045C05059C26 /* TranslationControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AC352337307455A20A17D1A /* TranslationControllerTests.swift */; };
+		8A612497C2D39BFFBC3CD179 /* LurumeSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */; };
+		9048D80279177B1F81AE0790 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B52C1CACB063DB3505EEF6C /* AppSettings.swift */; };
+		A73E9083CB324645CFF43590 /* SecurityScopedFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 451E4AC55AABA630D088790D /* SecurityScopedFile.swift */; };
+		D34865219EA3EB4BF932BA66 /* LibraryPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70EE537C1DA409FE0C8BFD5B /* LibraryPersistence.swift */; };
+		FE891CFC7127EEB8A4BD6FC7 /* TranslationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACA72A5E79BC8728F19084D /* TranslationController.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		BD8B2D506B52C9A7F80D33FF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8ACF5AB7F475D09A84C9659A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 779F1ED0E93272ED9E741B01;
+			remoteInfo = Lurume;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0A66F42ECD28F65520797F64 /* PDFReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReaderView.swift; sourceTree = "<group>"; };
+		0B52C1CACB063DB3505EEF6C /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		1AC352337307455A20A17D1A /* TranslationControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationControllerTests.swift; sourceTree = "<group>"; };
+		1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LurumeSmokeTests.swift; sourceTree = "<group>"; };
+		451E4AC55AABA630D088790D /* SecurityScopedFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedFile.swift; sourceTree = "<group>"; };
+		4ACA72A5E79BC8728F19084D /* TranslationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationController.swift; sourceTree = "<group>"; };
+		50CE51B033570DB20B180628 /* LibraryPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPersistenceTests.swift; sourceTree = "<group>"; };
+		53CF2BD0282B0452978CC108 /* Lurume.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lurume.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		67ED0DE1FEE1DFEEA102642F /* Lurume.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Lurume.entitlements; sourceTree = "<group>"; };
+		70EE537C1DA409FE0C8BFD5B /* LibraryPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPersistence.swift; sourceTree = "<group>"; };
+		7357965D8D0C423680ACCF0B /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
+		813B2765B8739B290712AAD7 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationInspector.swift; sourceTree = "<group>"; };
+		969EC9C892796AB815567020 /* TextNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextNormalizerTests.swift; sourceTree = "<group>"; };
+		9AABCAEA8379FB217EF98010 /* LibrarySchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySchema.swift; sourceTree = "<group>"; };
+		B332936519E7741B917213C1 /* FileIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIdentityTests.swift; sourceTree = "<group>"; };
+		BA1583E513232AC7D0AA7CA0 /* TextNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextNormalizer.swift; sourceTree = "<group>"; };
+		CF9734898B3282BC4665E433 /* LurumeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LurumeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E0325E1A53B306B4E070020D /* LibraryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryModels.swift; sourceTree = "<group>"; };
+		EDCEED45D44F9A78BABF93BC /* LurumeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LurumeApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0E20D9A5001B99B680F3CF4A = {
+			isa = PBXGroup;
+			children = (
+				ACCE83C796860BE9C6970E8D /* Lurume */,
+				F3DCD83738E5075D4829D5A4 /* LurumeTests */,
+				757959D7A08DD5BDF6993CB1 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		757959D7A08DD5BDF6993CB1 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				53CF2BD0282B0452978CC108 /* Lurume.app */,
+				CF9734898B3282BC4665E433 /* LurumeTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		ACCE83C796860BE9C6970E8D /* Lurume */ = {
+			isa = PBXGroup;
+			children = (
+				0B52C1CACB063DB3505EEF6C /* AppSettings.swift */,
+				813B2765B8739B290712AAD7 /* ContentView.swift */,
+				E0325E1A53B306B4E070020D /* LibraryModels.swift */,
+				70EE537C1DA409FE0C8BFD5B /* LibraryPersistence.swift */,
+				9AABCAEA8379FB217EF98010 /* LibrarySchema.swift */,
+				7357965D8D0C423680ACCF0B /* LibraryStore.swift */,
+				67ED0DE1FEE1DFEEA102642F /* Lurume.entitlements */,
+				EDCEED45D44F9A78BABF93BC /* LurumeApp.swift */,
+				0A66F42ECD28F65520797F64 /* PDFReaderView.swift */,
+				451E4AC55AABA630D088790D /* SecurityScopedFile.swift */,
+				BA1583E513232AC7D0AA7CA0 /* TextNormalizer.swift */,
+				4ACA72A5E79BC8728F19084D /* TranslationController.swift */,
+				87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */,
+			);
+			path = Lurume;
+			sourceTree = "<group>";
+		};
+		F3DCD83738E5075D4829D5A4 /* LurumeTests */ = {
+			isa = PBXGroup;
+			children = (
+				B332936519E7741B917213C1 /* FileIdentityTests.swift */,
+				50CE51B033570DB20B180628 /* LibraryPersistenceTests.swift */,
+				1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */,
+				969EC9C892796AB815567020 /* TextNormalizerTests.swift */,
+				1AC352337307455A20A17D1A /* TranslationControllerTests.swift */,
+			);
+			path = LurumeTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4816BA9FF9B1BA0FFE06808D /* LurumeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FD59C48A7B07799C8297AFB2 /* Build configuration list for PBXNativeTarget "LurumeTests" */;
+			buildPhases = (
+				3CC81F4DCEE3D427D78702B8 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				447CDE3A396F87CE49290A91 /* PBXTargetDependency */,
+			);
+			name = LurumeTests;
+			packageProductDependencies = (
+			);
+			productName = LurumeTests;
+			productReference = CF9734898B3282BC4665E433 /* LurumeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		779F1ED0E93272ED9E741B01 /* Lurume */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 21BEAD6E81475DA701E6D089 /* Build configuration list for PBXNativeTarget "Lurume" */;
+			buildPhases = (
+				BA2ECAB65BA84E48A196DA2B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Lurume;
+			packageProductDependencies = (
+			);
+			productName = Lurume;
+			productReference = 53CF2BD0282B0452978CC108 /* Lurume.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		8ACF5AB7F475D09A84C9659A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					779F1ED0E93272ED9E741B01 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 697174455B0BCA80CD5DFA4C /* Build configuration list for PBXProject "Lurume" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 0E20D9A5001B99B680F3CF4A;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 757959D7A08DD5BDF6993CB1 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				779F1ED0E93272ED9E741B01 /* Lurume */,
+				4816BA9FF9B1BA0FFE06808D /* LurumeTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3CC81F4DCEE3D427D78702B8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				61A1E8FC19A5F997C16108CE /* FileIdentityTests.swift in Sources */,
+				3BA0251DCE1AE33611F16C6E /* LibraryPersistenceTests.swift in Sources */,
+				8A612497C2D39BFFBC3CD179 /* LurumeSmokeTests.swift in Sources */,
+				1D1E1300196BD224FE89A00F /* TextNormalizerTests.swift in Sources */,
+				7E10AC773AD3045C05059C26 /* TranslationControllerTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BA2ECAB65BA84E48A196DA2B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9048D80279177B1F81AE0790 /* AppSettings.swift in Sources */,
+				68D5F0FC04789CBE194A49A1 /* ContentView.swift in Sources */,
+				106513FBEC771211CB9DE862 /* LibraryModels.swift in Sources */,
+				D34865219EA3EB4BF932BA66 /* LibraryPersistence.swift in Sources */,
+				32C8FFB0CE9301BED1D8F96D /* LibrarySchema.swift in Sources */,
+				6E4325F180DCCE01B54F12F0 /* LibraryStore.swift in Sources */,
+				33F14A5B4F2FF059040D2EBC /* LurumeApp.swift in Sources */,
+				3C4E8C4AE39330A50E8DB278 /* PDFReaderView.swift in Sources */,
+				A73E9083CB324645CFF43590 /* SecurityScopedFile.swift in Sources */,
+				132643F5DC3DDD1E9EB22813 /* TextNormalizer.swift in Sources */,
+				FE891CFC7127EEB8A4BD6FC7 /* TranslationController.swift in Sources */,
+				24F9D19682C67BFEFB015DAC /* TranslationInspector.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		447CDE3A396F87CE49290A91 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 779F1ED0E93272ED9E741B01 /* Lurume */;
+			targetProxy = BD8B2D506B52C9A7F80D33FF /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		12F7E21E2FEB3AEC3B4B63D6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.lurume.LurumeTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lurume.app/Contents/MacOS/Lurume";
+			};
+			name = Release;
+		};
+		39207F0EB863E51E3E7CECA7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Lurume/Lurume.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Lurume;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = app.lurume.Lurume;
+				PRODUCT_NAME = Lurume;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		41242A88658878F0063E514C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		63413E1D279F1048F4F624B3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Lurume/Lurume.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Lurume;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = app.lurume.Lurume;
+				PRODUCT_NAME = Lurume;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		6FA0F107DDA6121761359A45 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		7F42859201B3C8DA2EF4A223 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.lurume.LurumeTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lurume.app/Contents/MacOS/Lurume";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		21BEAD6E81475DA701E6D089 /* Build configuration list for PBXNativeTarget "Lurume" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				39207F0EB863E51E3E7CECA7 /* Debug */,
+				63413E1D279F1048F4F624B3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		697174455B0BCA80CD5DFA4C /* Build configuration list for PBXProject "Lurume" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6FA0F107DDA6121761359A45 /* Debug */,
+				41242A88658878F0063E514C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		FD59C48A7B07799C8297AFB2 /* Build configuration list for PBXNativeTarget "LurumeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7F42859201B3C8DA2EF4A223 /* Debug */,
+				12F7E21E2FEB3AEC3B4B63D6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 8ACF5AB7F475D09A84C9659A /* Project object */;
+}
