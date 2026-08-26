@@ -61,7 +61,6 @@ final class LibraryStore: ObservableObject {
         )
         papers.append(record)
         selectedPaperID = record.id
-        unavailablePaperIDs.remove(record.id)
         try saveNow()
         return record.id
     }
@@ -77,6 +76,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func selectPaper(id: UUID?) {
+        guard selectedPaperID != id else { return }
         flushPendingSave()
         selectedPaperID = id
         if let id, let index = papers.firstIndex(where: { $0.id == id }) {
@@ -115,7 +115,7 @@ final class LibraryStore: ObservableObject {
                 papers[index].bookmarkData = refreshedBookmarkData
             }
             guard FileManager.default.fileExists(atPath: resolved.url.path) else {
-                unavailablePaperIDs.insert(paperID)
+                setUnavailable(true, for: paperID)
                 return nil
             }
             var didUpdateReference = false
@@ -132,10 +132,10 @@ final class LibraryStore: ObservableObject {
             if resolved.refreshedBookmarkData != nil || didUpdateReference {
                 persistReportingErrors()
             }
-            unavailablePaperIDs.remove(paperID)
+            setUnavailable(false, for: paperID)
             return access
         } catch {
-            unavailablePaperIDs.insert(paperID)
+            setUnavailable(true, for: paperID)
             return nil
         }
     }
@@ -156,7 +156,7 @@ final class LibraryStore: ObservableObject {
             bookmarkData: bookmarkData,
             displayName: url.deletingPathExtension().lastPathComponent
         )
-        unavailablePaperIDs.remove(id)
+        setUnavailable(false, for: id)
         try saveNow()
     }
 
@@ -190,6 +190,16 @@ final class LibraryStore: ObservableObject {
 
     private func saveNow() throws {
         try persistence.save(snapshot)
+    }
+
+    private func setUnavailable(_ unavailable: Bool, for paperID: UUID) {
+        if unavailable {
+            guard !unavailablePaperIDs.contains(paperID) else { return }
+            unavailablePaperIDs.insert(paperID)
+        } else {
+            guard unavailablePaperIDs.contains(paperID) else { return }
+            unavailablePaperIDs.remove(paperID)
+        }
     }
 
     private var snapshot: LibrarySnapshot {

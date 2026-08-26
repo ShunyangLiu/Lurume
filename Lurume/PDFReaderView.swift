@@ -4,6 +4,13 @@ import SwiftUI
 struct PDFSelectionEvent: Equatable, Sendable {
     let rawText: String
     let pageIndex: Int
+    let languageSample: String
+
+    init(rawText: String, pageIndex: Int, languageSample: String? = nil) {
+        self.rawText = rawText
+        self.pageIndex = pageIndex
+        self.languageSample = languageSample ?? rawText
+    }
 }
 
 @MainActor
@@ -21,8 +28,8 @@ final class PDFReaderController: ObservableObject {
     }
 
     func attach(_ pdfView: PDFView) {
+        guard self.pdfView !== pdfView else { return }
         self.pdfView = pdfView
-        updatePageState()
     }
 
     func zoomIn() { pdfView?.zoomIn(nil) }
@@ -57,13 +64,23 @@ final class PDFReaderController: ObservableObject {
 
     func updatePageState() {
         guard let pdfView, let document = pdfView.document else {
-            currentPageIndex = 0
-            pageCount = 0
+            if currentPageIndex != 0 {
+                currentPageIndex = 0
+            }
+            if pageCount != 0 {
+                pageCount = 0
+            }
             return
         }
-        pageCount = document.pageCount
+
+        if pageCount != document.pageCount {
+            pageCount = document.pageCount
+        }
         if let page = pdfView.currentPage {
-            currentPageIndex = max(0, document.index(for: page))
+            let newPageIndex = max(0, document.index(for: page))
+            if currentPageIndex != newPageIndex {
+                currentPageIndex = newPageIndex
+            }
         }
     }
 }
@@ -105,21 +122,21 @@ struct PDFReaderView: NSViewRepresentable {
         coordinator.loadedURL = documentURL
         guard let document = PDFDocument(url: documentURL) else {
             pdfView.document = nil
-            onError("文件已损坏，或不是有效的 PDF。")
+            coordinator.scheduleStateUpdate(error: "文件已损坏，或不是有效的 PDF。")
             return
         }
         guard !document.isLocked else {
             pdfView.document = nil
-            onError("这份 PDF 受密码保护，P0 暂不支持解锁。")
+            coordinator.scheduleStateUpdate(error: "这份 PDF 受密码保护，P0 暂不支持解锁。")
             return
         }
 
         pdfView.document = document
-        controller.updatePageState()
         let index = min(max(initialPageIndex, 0), max(document.pageCount - 1, 0))
         if let page = document.page(at: index) {
             pdfView.go(to: page)
         }
+        coordinator.scheduleStateUpdate()
     }
 
     final class Coordinator: NSObject, @unchecked Sendable {
@@ -143,7 +160,7 @@ struct PDFReaderView: NSViewRepresentable {
                     object: pdfView,
                     queue: .main
                 ) { [weak self] _ in
-                    MainActor.assumeIsolated {
+                    Task { @MainActor [weak self] in
                         guard let self else { return }
                         self.parent.controller.updatePageState()
                         self.parent.onPageChanged(self.parent.controller.currentPageIndex)
@@ -156,12 +173,24 @@ struct PDFReaderView: NSViewRepresentable {
                     object: pdfView,
                     queue: .main
                 ) { [weak self, weak pdfView] _ in
-                    MainActor.assumeIsolated {
+                    Task { @MainActor [weak self, weak pdfView] in
                         guard let self, let pdfView else { return }
                         self.parent.onSelectionChanged(self.selectionEvent(from: pdfView))
                     }
                 }
             )
+        }
+
+        func scheduleStateUpdate(error: String? = nil) {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.parent.controller.updatePageState()
+                if let error {
+                    self.parent.onError(error)
+                } else {
+                    self.parent.onPageChanged(self.parent.controller.currentPageIndex)
+                }
+            }
         }
 
         @MainActor
@@ -175,7 +204,8 @@ struct PDFReaderView: NSViewRepresentable {
             }
             return PDFSelectionEvent(
                 rawText: rawText,
-                pageIndex: max(0, document.index(for: page))
+                pageIndex: max(0, document.index(for: page)),
+                languageSample: String((page.string ?? rawText).prefix(2_000))
             )
         }
     }

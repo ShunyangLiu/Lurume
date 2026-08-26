@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 import Translation
 
 enum TranslationReadiness: Equatable, Sendable {
@@ -12,9 +13,21 @@ struct TranslationOutput: Equatable, Sendable {
 }
 
 protocol TranslationPerforming: AnyObject, Sendable {
-    func readiness(for text: String, target: Locale.Language) async throws -> TranslationReadiness
-    func prepare() async throws
+    func readiness(from source: Locale.Language, to target: Locale.Language) async -> TranslationReadiness
     func translate(_ text: String) async throws -> TranslationOutput
+}
+
+protocol SourceLanguageRecognizing: Sendable {
+    func language(for text: String) -> Locale.Language?
+}
+
+struct NaturalLanguageSourceRecognizer: SourceLanguageRecognizing {
+    func language(for text: String) -> Locale.Language? {
+        guard let language = NLLanguageRecognizer.dominantLanguage(for: text) else {
+            return nil
+        }
+        return Locale.Language(identifier: language.rawValue)
+    }
 }
 
 final class SystemTranslationPerformer: TranslationPerforming, @unchecked Sendable {
@@ -25,8 +38,8 @@ final class SystemTranslationPerformer: TranslationPerforming, @unchecked Sendab
         self.session = session
     }
 
-    func readiness(for text: String, target: Locale.Language) async throws -> TranslationReadiness {
-        switch try await availability.status(for: text, to: target) {
+    func readiness(from source: Locale.Language, to target: Locale.Language) async -> TranslationReadiness {
+        switch await availability.status(from: source, to: target) {
         case .installed:
             .installed
         case .supported:
@@ -38,10 +51,6 @@ final class SystemTranslationPerformer: TranslationPerforming, @unchecked Sendab
         }
     }
 
-    func prepare() async throws {
-        try await session.prepareTranslation()
-    }
-
     func translate(_ text: String) async throws -> TranslationOutput {
         let response = try await session.translate(text)
         return TranslationOutput(targetText: response.targetText)
@@ -51,6 +60,7 @@ final class SystemTranslationPerformer: TranslationPerforming, @unchecked Sendab
 struct TranslationSelection: Equatable, Sendable {
     let rawText: String
     let normalizedText: String
+    let languageSample: String
     let paperID: UUID
     let paperName: String
     let pageIndex: Int
@@ -91,6 +101,13 @@ final class TranslationController: ObservableObject {
     private var activeTranslationTask: Task<TranslationOutput, Error>?
     private var pendingRequest: RequestContext?
     private var cache: [CacheKey: String] = [:]
+    private let sourceLanguageRecognizer: any SourceLanguageRecognizing
+
+    init(
+        sourceLanguageRecognizer: any SourceLanguageRecognizing = NaturalLanguageSourceRecognizer()
+    ) {
+        self.sourceLanguageRecognizer = sourceLanguageRecognizer
+    }
 
     deinit {
         debounceTask?.cancel()
@@ -113,6 +130,7 @@ final class TranslationController: ObservableObject {
         let newSelection = TranslationSelection(
             rawText: event.rawText,
             normalizedText: normalizedText,
+            languageSample: event.languageSample,
             paperID: paperID,
             paperName: paperName,
             pageIndex: event.pageIndex
@@ -136,9 +154,17 @@ final class TranslationController: ObservableObject {
     func requestTranslation(targetLanguage: Locale.Language) {
         cancelWorkForNewGeneration()
         guard let selection else { return }
+        guard let sourceLanguage = sourceLanguageRecognizer.language(
+            for: selection.languageSample
+        ) else {
+            state = .failed("无法识别原文语言。请尝试选择更长的文本。")
+            isInspectorPresented = true
+            return
+        }
 
         let cacheKey = CacheKey(
             text: selection.normalizedText,
+            sourceIdentifier: sourceLanguage.minimalIdentifier,
             targetIdentifier: targetLanguage.minimalIdentifier
         )
         if let cached = cache[cacheKey] {
@@ -151,6 +177,7 @@ final class TranslationController: ObservableObject {
         let request = RequestContext(
             generation: generation,
             selection: selection,
+            sourceLanguage: sourceLanguage,
             targetLanguage: targetLanguage,
             cacheKey: cacheKey
         )
@@ -159,13 +186,13 @@ final class TranslationController: ObservableObject {
         isInspectorPresented = true
 
         if var currentConfiguration = configuration,
-           currentConfiguration.source == nil,
+           currentConfiguration.source == sourceLanguage,
            currentConfiguration.target == targetLanguage {
             currentConfiguration.invalidate()
             configuration = currentConfiguration
         } else {
             configuration = TranslationSession.Configuration(
-                source: nil,
+                source: sourceLanguage,
                 target: targetLanguage
             )
         }
@@ -177,17 +204,18 @@ final class TranslationController: ObservableObject {
         pendingRequest = nil
 
         let task = Task { @MainActor in
-            let readiness = try await performer.readiness(
-                for: request.selection.normalizedText,
-                target: request.targetLanguage
+            let readiness = await performer.readiness(
+                from: request.sourceLanguage,
+                to: request.targetLanguage
             )
             switch readiness {
             case .installed:
                 state = .translating
             case .downloadable:
+                // translate(_:) supplies sample text for source-language detection and
+                // lets the system present its language-download confirmation UI.
+                // prepareTranslation() cannot do that when the session source is nil.
                 state = .resourcesNeeded
-                try await performer.prepare()
-                state = .translating
             case .unsupported:
                 throw TranslationControllerError.unsupportedLanguagePair
             }
@@ -243,12 +271,14 @@ final class TranslationController: ObservableObject {
     private struct RequestContext {
         let generation: Int
         let selection: TranslationSelection
+        let sourceLanguage: Locale.Language
         let targetLanguage: Locale.Language
         let cacheKey: CacheKey
     }
 
     private struct CacheKey: Hashable {
         let text: String
+        let sourceIdentifier: String
         let targetIdentifier: String
     }
 }

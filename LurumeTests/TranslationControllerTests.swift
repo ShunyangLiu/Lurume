@@ -5,7 +5,7 @@ import XCTest
 @MainActor
 final class TranslationControllerTests: XCTestCase {
     func testClearingPDFSelectionRetainsLastInspectorSelection() {
-        let controller = TranslationController()
+        let controller = makeController()
         let paperID = UUID()
         controller.receiveSelection(
             PDFSelectionEvent(rawText: "Original", pageIndex: 2),
@@ -28,7 +28,7 @@ final class TranslationControllerTests: XCTestCase {
     }
 
     func testManualModeWaitsWithoutCreatingTranslationConfiguration() {
-        let controller = TranslationController()
+        let controller = makeController()
         controller.receiveSelection(
             PDFSelectionEvent(rawText: "Original", pageIndex: 0),
             paperID: UUID(),
@@ -42,7 +42,7 @@ final class TranslationControllerTests: XCTestCase {
     }
 
     func testLateOldResultCannotReplaceNewSelection() async {
-        let controller = TranslationController()
+        let controller = makeController()
         let target = Locale.Language(identifier: "zh-Hans")
 
         controller.receiveSelection(
@@ -79,7 +79,7 @@ final class TranslationControllerTests: XCTestCase {
     }
 
     func testManualRetryDuringFlightDoesNotLetStaleResultOverwrite() async {
-        let controller = TranslationController()
+        let controller = makeController()
         let target = Locale.Language(identifier: "zh-Hans")
 
         controller.receiveSelection(
@@ -107,8 +107,8 @@ final class TranslationControllerTests: XCTestCase {
         XCTAssertEqual(controller.state, .success)
     }
 
-    func testDownloadableLanguagePreparesBeforeTranslation() async {
-        let controller = TranslationController()
+    func testDownloadableLanguageTranslatesWithSampleText() async {
+        let controller = makeController()
         let target = Locale.Language(identifier: "zh-Hans")
         let performer = RecordingTranslationPerformer()
         controller.receiveSelection(
@@ -123,12 +123,12 @@ final class TranslationControllerTests: XCTestCase {
         await controller.perform(using: performer)
 
         let recordedCalls = await performer.calls
-        XCTAssertEqual(recordedCalls, ["readiness", "prepare", "translate"])
+        XCTAssertEqual(recordedCalls, ["readiness", "translate"])
         XCTAssertEqual(controller.translatedText, "译文")
     }
 
     func testTurningOffAutomaticTranslationCancelsPendingDebounce() async {
-        let controller = TranslationController()
+        let controller = makeController()
         controller.receiveSelection(
             PDFSelectionEvent(rawText: "Original", pageIndex: 0),
             paperID: UUID(),
@@ -143,6 +143,46 @@ final class TranslationControllerTests: XCTestCase {
         XCTAssertNil(controller.configuration)
         XCTAssertEqual(controller.state, .waiting)
     }
+
+    func testShortTermUsesPageContextForSourceLanguage() {
+        let controller = TranslationController(
+            sourceLanguageRecognizer: ContextAwareSourceLanguageRecognizer()
+        )
+        let target = Locale.Language(identifier: "zh-Hans")
+        controller.receiveSelection(
+            PDFSelectionEvent(
+                rawText: "interaction",
+                pageIndex: 0,
+                languageSample: "This paper studies interaction prototypes across multiple regions."
+            ),
+            paperID: UUID(),
+            paperName: "Paper",
+            automaticTranslation: false,
+            targetLanguage: target
+        )
+
+        controller.requestTranslation(targetLanguage: target)
+
+        XCTAssertEqual(controller.configuration?.source?.minimalIdentifier, "en")
+        XCTAssertEqual(controller.configuration?.target?.minimalIdentifier, "zh")
+    }
+
+    private func makeController() -> TranslationController {
+        TranslationController(sourceLanguageRecognizer: FixedSourceLanguageRecognizer())
+    }
+}
+
+private struct FixedSourceLanguageRecognizer: SourceLanguageRecognizing {
+    func language(for text: String) -> Locale.Language? {
+        Locale.Language(identifier: "en")
+    }
+}
+
+private struct ContextAwareSourceLanguageRecognizer: SourceLanguageRecognizing {
+    func language(for text: String) -> Locale.Language? {
+        guard text.count >= 20 else { return nil }
+        return Locale.Language(identifier: "en")
+    }
 }
 
 private final class FakeTranslationPerformer: TranslationPerforming, @unchecked Sendable {
@@ -154,11 +194,9 @@ private final class FakeTranslationPerformer: TranslationPerforming, @unchecked 
         self.delay = delay
     }
 
-    func readiness(for text: String, target: Locale.Language) async throws -> TranslationReadiness {
+    func readiness(from source: Locale.Language, to target: Locale.Language) async -> TranslationReadiness {
         .installed
     }
-
-    func prepare() async throws {}
 
     func translate(_ text: String) async throws -> TranslationOutput {
         await Task.detached { [delay] in
@@ -171,13 +209,9 @@ private final class FakeTranslationPerformer: TranslationPerforming, @unchecked 
 private actor RecordingTranslationPerformer: TranslationPerforming {
     private(set) var calls: [String] = []
 
-    func readiness(for text: String, target: Locale.Language) async throws -> TranslationReadiness {
+    func readiness(from source: Locale.Language, to target: Locale.Language) async -> TranslationReadiness {
         calls.append("readiness")
         return .downloadable
-    }
-
-    func prepare() async throws {
-        calls.append("prepare")
     }
 
     func translate(_ text: String) async throws -> TranslationOutput {
