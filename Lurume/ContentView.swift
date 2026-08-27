@@ -21,6 +21,13 @@ struct ContentView: View {
     @State private var documentError: String?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
+    @State private var searchText = ""
+    @FocusState private var searchFieldFocused: Bool
+    @State private var metadataEditorTarget: UUID?
+    @State private var inlineTitleEditID: UUID?
+    @State private var inlineTitleDraft = ""
+    @FocusState private var inlineTitleFieldFocused: Bool
+
     private var selection: Binding<UUID?> {
         Binding(
             get: { libraryStore.selectedPaperID },
@@ -28,115 +35,211 @@ struct ContentView: View {
         )
     }
 
-    var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            librarySidebar
-                .navigationSplitViewColumnWidth(min: 210, ideal: 250, max: 340)
-        } detail: {
-            detail
-        }
-        .frame(minWidth: 900, minHeight: 600)
-        .toolbar {
-            ToolbarItemGroup {
-                Button {
-                    presentImporter()
-                } label: {
-                    Label("导入 PDF", systemImage: "plus")
-                }
-                .help("导入 PDF")
+    private var filteredPapers: [PaperRecord] {
+        libraryStore.papers(matching: searchText)
+    }
 
-                if libraryStore.selectedPaper != nil {
-                    PDFToolbar(controller: pdfController)
+    /// Return 改名快捷键只在没有文本输入进行时生效。
+    private var returnShortcutDisabled: Bool {
+        inlineTitleEditID != nil
+            || metadataEditorTarget != nil
+            || searchFieldFocused
+            || libraryStore.selectedPaperID == nil
+    }
+
+    var body: some View {
+        ZStack {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                librarySidebar
+                    .navigationSplitViewColumnWidth(min: 210, ideal: 250, max: 340)
+            } detail: {
+                detail
+            }
+            .frame(minWidth: 900, minHeight: 600)
+            .toolbar {
+                ToolbarItemGroup {
+                    Button {
+                        presentImporter()
+                    } label: {
+                        Label("导入 PDF", systemImage: "plus")
+                    }
+                    .help("导入 PDF")
+
+                    if libraryStore.selectedPaper != nil {
+                        PDFToolbar(controller: pdfController)
+                    }
                 }
             }
-        }
-        .fileImporter(
-            isPresented: $isImporterPresented,
-            allowedContentTypes: [.pdf],
-            // Keep the panel configuration stable while its dismissal animation runs.
-            // Relinking still consumes only the first selected URL.
-            allowsMultipleSelection: true,
-            onCompletion: handleFileImporter
-        )
-        .overlay {
-            FileDropReceiver { urls in
-                let pdfURLs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
-                guard !pdfURLs.isEmpty else { return }
-                libraryStore.importPDFs(at: pdfURLs)
-            }
-            .allowsHitTesting(false)
-        }
-        .alert(
-            "Lurume",
-            isPresented: Binding(
-                get: { libraryStore.presentedError != nil },
-                set: { if !$0 { libraryStore.presentedError = nil } }
+            .fileImporter(
+                isPresented: $isImporterPresented,
+                allowedContentTypes: [.pdf],
+                // Keep the panel configuration stable while its dismissal animation runs.
+                // Relinking still consumes only the first selected URL.
+                allowsMultipleSelection: true,
+                onCompletion: handleFileImporter
             )
-        ) {
-            Button("好", role: .cancel) {
-                libraryStore.presentedError = nil
+            .overlay {
+                FileDropReceiver { urls in
+                    let pdfURLs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
+                    guard !pdfURLs.isEmpty else { return }
+                    libraryStore.importPDFs(at: pdfURLs)
+                }
+                .allowsHitTesting(false)
             }
-        } message: {
-            Text(libraryStore.presentedError ?? "发生未知错误。")
-        }
-        .task(id: libraryStore.selectedPaperID) {
-            await Task.yield()
-            openSelectedPaper()
-        }
-        .onChange(of: appSettings.automaticTranslation) {
-            if !appSettings.automaticTranslation {
-                translationController.cancelPendingAutomaticTranslation()
+            .sheet(isPresented: Binding(
+                get: { metadataEditorTarget != nil },
+                set: { if !$0 { metadataEditorTarget = nil } }
+            )) {
+                if let target = metadataEditorTarget,
+                   let paper = libraryStore.papers.first(where: { $0.id == target }) {
+                    MetadataFormView(paper: paper) {
+                        metadataEditorTarget = nil
+                    }
+                }
             }
-        }
-        .onChange(of: scenePhase) {
-            if scenePhase != .active {
-                libraryStore.flushPendingSave()
+            .alert(
+                "Lurume",
+                isPresented: Binding(
+                    get: { libraryStore.presentedError != nil },
+                    set: { if !$0 { libraryStore.presentedError = nil } }
+                )
+            ) {
+                Button("好", role: .cancel) {
+                    libraryStore.presentedError = nil
+                }
+            } message: {
+                Text(libraryStore.presentedError ?? "发生未知错误。")
             }
-        }
-        .inspector(isPresented: $translationController.isInspectorPresented) {
-            TranslationInspector(
-                controller: translationController,
-                settings: appSettings
-            )
-        }
-        .translationTask(translationController.configuration) { session in
-            await translationController.perform(
-                using: SystemTranslationPerformer(session: session)
-            )
+            .task(id: libraryStore.selectedPaperID) {
+                await Task.yield()
+                openSelectedPaper()
+            }
+            .onChange(of: appSettings.automaticTranslation) {
+                if !appSettings.automaticTranslation {
+                    translationController.cancelPendingAutomaticTranslation()
+                }
+            }
+            .onChange(of: inlineTitleFieldFocused) {
+                guard !inlineTitleFieldFocused,
+                      let editingID = inlineTitleEditID else { return }
+                commitInlineTitleEdit(for: editingID)
+            }
+            .onChange(of: scenePhase) {
+                if scenePhase != .active {
+                    libraryStore.flushPendingSave()
+                }
+            }
+            .inspector(isPresented: $translationController.isInspectorPresented) {
+                TranslationInspector(
+                    controller: translationController,
+                    settings: appSettings
+                )
+            }
+            .translationTask(translationController.configuration) { session in
+                await translationController.perform(
+                    using: SystemTranslationPerformer(session: session)
+                )
+            }
+
+            // 隐藏的全局快捷键：⌘F 聚焦文献库搜索，Return 进入标题改名（Finder 习惯）。
+            Button(action: { searchFieldFocused = true }) {
+                Color.clear.frame(width: 0, height: 0)
+            }
+            .keyboardShortcut("f", modifiers: .command)
+
+            Button(action: beginInlineTitleEdit) {
+                Color.clear.frame(width: 0, height: 0)
+            }
+            .keyboardShortcut(.return, modifiers: [])
+            .disabled(returnShortcutDisabled)
         }
     }
 
+    // MARK: - 文献列表
+
     private var librarySidebar: some View {
-        List(selection: selection) {
-            ForEach(libraryStore.papers) { paper in
-                PaperRow(
-                    paper: paper,
-                    isUnavailable: libraryStore.unavailablePaperIDs.contains(paper.id)
-                )
-                .tag(paper.id)
-                .contextMenu {
-                    if libraryStore.unavailablePaperIDs.contains(paper.id) {
-                        Button("重新定位…") {
-                            presentRelinker(for: paper.id)
+        VStack(spacing: 0) {
+            librarySearchField
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+
+            List(selection: selection) {
+                ForEach(filteredPapers) { paper in
+                    PaperRow(
+                        paper: paper,
+                        isUnavailable: libraryStore.unavailablePaperIDs.contains(paper.id),
+                        isEditingTitle: inlineTitleEditID == paper.id,
+                        titleDraft: $inlineTitleDraft,
+                        titleFieldFocused: $inlineTitleFieldFocused,
+                        commitTitle: commitActiveInlineTitleEdit,
+                        cancelTitle: cancelInlineTitleEdit
+                    )
+                    .tag(paper.id)
+                    .help(paper.originalFileName)
+                    .contextMenu {
+                        if paper.id == libraryStore.selectedPaperID {
+                            Button("编辑文献信息…") {
+                                metadataEditorTarget = paper.id
+                            }
                         }
-                    }
-                    Button("移除引用", role: .destructive) {
-                        removePaper(paper.id)
+                        if libraryStore.unavailablePaperIDs.contains(paper.id) {
+                            Button("重新定位…") {
+                                presentRelinker(for: paper.id)
+                            }
+                        }
+                        Button("移除引用", role: .destructive) {
+                            removePaper(paper.id)
+                        }
                     }
                 }
             }
-        }
-        .overlay {
-            if libraryStore.papers.isEmpty {
-                ContentUnavailableView(
-                    "尚未导入论文",
-                    systemImage: "doc.text.magnifyingglass",
-                    description: Text("点击工具栏的加号，或把 PDF 拖入窗口。")
-                )
+            .overlay {
+                if libraryStore.papers.isEmpty {
+                    ContentUnavailableView(
+                        "尚未导入论文",
+                        systemImage: "doc.text.magnifyingglass",
+                        description: Text("点击工具栏的加号，或把 PDF 拖入窗口。")
+                    )
+                } else if filteredPapers.isEmpty {
+                    ContentUnavailableView(
+                        "无匹配文献",
+                        systemImage: "magnifyingglass",
+                        description: Text("试试其他标题、作者或文件名关键词。")
+                    )
+                }
             }
         }
         .navigationTitle("文献")
     }
+
+    private var librarySearchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("搜索标题、作者或文件名", text: $searchText)
+                .textFieldStyle(.plain)
+                .focused($searchFieldFocused)
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("清空搜索")
+            }
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(.quaternary.opacity(0.45))
+        )
+    }
+
+    // MARK: - 阅读区
 
     @ViewBuilder
     private var detail: some View {
@@ -153,7 +256,7 @@ struct ContentView: View {
                         translationController.receiveSelection(
                             event,
                             paperID: paper.id,
-                            paperName: paper.displayName,
+                            paperName: paper.title,
                             automaticTranslation: appSettings.automaticTranslation,
                             targetLanguage: appSettings.targetLanguage
                         )
@@ -169,7 +272,7 @@ struct ContentView: View {
                     }
                 }
             } else {
-                UnavailablePaperView(paperName: paper.displayName) {
+                UnavailablePaperView(paperName: paper.title) {
                     presentRelinker(for: paper.id)
                 }
             }
@@ -181,6 +284,43 @@ struct ContentView: View {
             )
         }
     }
+
+    // MARK: - 行内改标题
+
+    private func beginInlineTitleEdit() {
+        guard !returnShortcutDisabled,
+              !(NSApp.keyWindow?.firstResponder is NSTextView),
+              let paper = libraryStore.selectedPaper else {
+            return
+        }
+        inlineTitleDraft = paper.title
+        inlineTitleEditID = paper.id
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(60))
+            inlineTitleFieldFocused = true
+        }
+    }
+
+    private func commitActiveInlineTitleEdit() {
+        guard let id = inlineTitleEditID else { return }
+        commitInlineTitleEdit(for: id)
+    }
+
+    private func commitInlineTitleEdit(for id: UUID) {
+        libraryStore.setManualTitle(inlineTitleDraft, for: id)
+        inlineTitleEditID = nil
+        inlineTitleFieldFocused = false
+        inlineTitleDraft = ""
+    }
+
+    private func cancelInlineTitleEdit() {
+        // 先清 ID，触发 focus 的 onChange 时不会再误提交。
+        inlineTitleEditID = nil
+        inlineTitleFieldFocused = false
+        inlineTitleDraft = ""
+    }
+
+    // MARK: - 导入与文件处理
 
     private func handleImport(_ result: Result<[URL], Error>) {
         switch result {
@@ -264,27 +404,148 @@ struct ContentView: View {
 private struct PaperRow: View {
     let paper: PaperRecord
     let isUnavailable: Bool
+    let isEditingTitle: Bool
+    @Binding var titleDraft: String
+    var titleFieldFocused: FocusState<Bool>.Binding
+    let commitTitle: () -> Void
+    let cancelTitle: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .top, spacing: 5) {
                 Image(systemName: isUnavailable ? "exclamationmark.triangle" : "doc.richtext")
                     .foregroundStyle(isUnavailable ? .orange : .secondary)
-                Text(paper.displayName)
-                    .lineLimit(2)
+
+                if isEditingTitle {
+                    TextField("标题", text: $titleDraft)
+                        .textFieldStyle(.roundedBorder)
+                        .focused(titleFieldFocused)
+                        .onSubmit(commitTitle)
+                        .onExitCommand(perform: cancelTitle)
+                } else {
+                    Text(paper.title)
+                        .lineLimit(2, reservesSpace: false)
+                }
             }
-            Text(isUnavailable ? "文件不可用" : readingStatus)
-                .font(.caption)
-                .foregroundStyle(isUnavailable ? .orange : .secondary)
+            secondaryLine
         }
         .padding(.vertical, 3)
     }
 
-    private var readingStatus: String {
-        if let lastOpenedAt = paper.lastOpenedAt {
-            return "第 \(paper.lastPageIndex + 1) 页 · \(lastOpenedAt.formatted(.relative(presentation: .named)))"
+    @ViewBuilder
+    private var secondaryLine: some View {
+        if isUnavailable {
+            Text("文件不可用")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        } else {
+            Text(detailSegments.joined(separator: " · "))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .help(paper.originalFileName)
         }
-        return "尚未阅读"
+    }
+
+    /// 作者 · 年份 · 阅读进度，缺省片段自动跳过。
+    private var detailSegments: [String] {
+        var segments: [String] = []
+        if let authors = paper.authors?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !authors.isEmpty {
+            segments.append(authors)
+        }
+        if let year = paper.year {
+            segments.append(String(year))
+        }
+        if paper.lastOpenedAt != nil {
+            segments.append("第 \(paper.lastPageIndex + 1) 页")
+        }
+        return segments
+    }
+}
+
+private struct MetadataFormView: View {
+    let paper: PaperRecord
+    let onClose: () -> Void
+
+    @EnvironmentObject private var libraryStore: LibraryStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var titleText = ""
+    @State private var authorsText = ""
+    @State private var yearText = ""
+    @State private var didLoadInitialValues = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("编辑文献信息")
+                .font(.headline)
+
+            Form {
+                TextField("标题", text: $titleText)
+                TextField("作者", text: $authorsText)
+                TextField("年份（如 2023）", text: $yearText)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                infoRow(label: "原始文件名", value: paper.originalFileName)
+                infoRow(
+                    label: "文件位置",
+                    value: (paper.fallbackPath as NSString).abbreviatingWithTildeInPath
+                )
+                infoRow(label: "导入时间", value: paper.dateAdded.formatted(date: .long, time: .shortened))
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            HStack {
+                Spacer()
+                Button("取消", action: closeWithoutSaving)
+                    .keyboardShortcut(.cancelAction)
+                Button("保存", action: save)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
+        .onAppear(perform: loadInitialValues)
+    }
+
+    private func loadInitialValues() {
+        guard !didLoadInitialValues else { return }
+        didLoadInitialValues = true
+        titleText = paper.title
+        authorsText = paper.authors ?? ""
+        yearText = paper.year.map(String.init) ?? ""
+    }
+
+    private func save() {
+        // 只提交发生变化的字段，避免未触碰的字段被误标记为手动维护。
+        if titleText.trimmingCharacters(in: .whitespacesAndNewlines) != paper.title {
+            libraryStore.setManualTitle(titleText, for: paper.id)
+        }
+        if authorsText.trimmingCharacters(in: .whitespacesAndNewlines) != (paper.authors ?? "") {
+            libraryStore.setManualAuthors(authorsText, for: paper.id)
+        }
+        let parsedYear = Int(yearText.trimmingCharacters(in: .whitespaces))
+        if parsedYear != paper.year {
+            libraryStore.setManualYear(parsedYear, for: paper.id)
+        }
+        dismiss()
+        onClose()
+    }
+
+    private func closeWithoutSaving() {
+        dismiss()
+        onClose()
+    }
+
+    private func infoRow(label: String, value: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text(label + "：")
+            Text(value)
+                .textSelection(.enabled)
+        }
     }
 }
 

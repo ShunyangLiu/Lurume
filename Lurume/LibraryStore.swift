@@ -7,11 +7,19 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var unavailablePaperIDs: Set<UUID> = []
     @Published var presentedError: String?
 
+    /// 载入失败或版本无法迁移时为真：所有写盘被禁止，避免静默清空重建用户文献库。
+    private(set) var persistenceDisabled = false
+
     private let persistence: LibraryPersistence
+    private let metadataReader: any PaperMetadataReading
     private var pageSaveTask: Task<Void, Never>?
 
-    init(persistence: LibraryPersistence) {
+    init(
+        persistence: LibraryPersistence,
+        metadataReader: any PaperMetadataReading = SystemPaperMetadataReader()
+    ) {
         self.persistence = persistence
+        self.metadataReader = metadataReader
         load()
     }
 
@@ -34,6 +42,21 @@ final class LibraryStore: ObservableObject {
         guard let selectedPaperID else { return nil }
         return papers.first { $0.id == selectedPaperID }
     }
+
+    // MARK: - 检索
+
+    func papers(matching rawQuery: String) -> [PaperRecord] {
+        let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return papers }
+        let needle = query.lowercased()
+        return papers.filter { paper in
+            paper.title.lowercased().contains(needle)
+                || (paper.authors?.lowercased().contains(needle) ?? false)
+                || paper.originalFileName.lowercased().contains(needle)
+        }
+    }
+
+    // MARK: - 导入与选择
 
     @discardableResult
     func importPDF(at url: URL) throws -> UUID {
@@ -62,6 +85,7 @@ final class LibraryStore: ObservableObject {
         papers.append(record)
         selectedPaperID = record.id
         try saveNow()
+        scheduleMetadataRead(for: record.id, resolvedURL: nil)
         return record.id
     }
 
@@ -103,6 +127,31 @@ final class LibraryStore: ObservableObject {
         schedulePageSave()
     }
 
+    // MARK: - 手动编辑
+
+    func setManualTitle(_ value: String, for id: UUID) {
+        guard let index = papers.firstIndex(where: { $0.id == id }) else { return }
+        papers[index].setManualTitle(value)
+        flushPendingSave()
+        persistReportingErrors()
+    }
+
+    func setManualAuthors(_ value: String?, for id: UUID) {
+        guard let index = papers.firstIndex(where: { $0.id == id }) else { return }
+        papers[index].setManualAuthors(value)
+        flushPendingSave()
+        persistReportingErrors()
+    }
+
+    func setManualYear(_ value: Int?, for id: UUID) {
+        guard let index = papers.firstIndex(where: { $0.id == id }) else { return }
+        papers[index].setManualYear(value)
+        flushPendingSave()
+        persistReportingErrors()
+    }
+
+    // MARK: - 文件访问与元数据补全
+
     func resolveFile(for paperID: UUID) -> SecurityScopedAccess? {
         guard let index = papers.firstIndex(where: { $0.id == paperID }) else { return nil }
 
@@ -124,15 +173,13 @@ final class LibraryStore: ObservableObject {
                 papers[index].volumeUUID = resolvedIdentity.volumeUUID
                 papers[index].documentIdentifier = resolvedIdentity.documentIdentifier
                 papers[index].fallbackPath = resolvedIdentity.fallbackPath
-                papers[index].displayName = resolved.url
-                    .deletingPathExtension()
-                    .lastPathComponent
                 didUpdateReference = true
             }
             if resolved.refreshedBookmarkData != nil || didUpdateReference {
                 persistReportingErrors()
             }
             setUnavailable(false, for: paperID)
+            scheduleMetadataRead(for: paperID, resolvedURL: resolved.url)
             return access
         } catch {
             setUnavailable(true, for: paperID)
@@ -153,12 +200,13 @@ final class LibraryStore: ObservableObject {
         let bookmarkData = try SecurityScopedFile.makeBookmark(for: url)
         papers[index].replaceFileReference(
             identity: identity,
-            bookmarkData: bookmarkData,
-            displayName: url.deletingPathExtension().lastPathComponent
+            bookmarkData: bookmarkData
         )
-        setUnavailable(false, for: id)
+        unavailablePaperIDs.remove(id)
         try saveNow()
     }
+
+    // MARK: - 持久化
 
     func flushPendingSave() {
         pageSaveTask?.cancel()
@@ -168,12 +216,16 @@ final class LibraryStore: ObservableObject {
 
     private func load() {
         do {
-            let snapshot = try persistence.load()
-            papers = snapshot.papers
-            selectedPaperID = snapshot.selectedPaperID.flatMap { selectedID in
+            let loaded = try persistence.load()
+            papers = loaded.snapshot.papers
+            selectedPaperID = loaded.snapshot.selectedPaperID.flatMap { selectedID in
                 papers.contains(where: { $0.id == selectedID }) ? selectedID : nil
             }
+            if loaded.migratedFromLegacy {
+                persistReportingErrors()
+            }
         } catch {
+            persistenceDisabled = true
             presentedError = error.localizedDescription
         }
     }
@@ -189,7 +241,25 @@ final class LibraryStore: ObservableObject {
     }
 
     private func saveNow() throws {
+        guard !persistenceDisabled else { return }
         try persistence.save(snapshot)
+    }
+
+    private var snapshot: LibrarySnapshot {
+        LibrarySnapshot(
+            schemaVersion: LibrarySchema.currentVersion,
+            papers: papers,
+            selectedPaperID: selectedPaperID
+        )
+    }
+
+    private func persistReportingErrors() {
+        guard !persistenceDisabled else { return }
+        do {
+            try saveNow()
+        } catch {
+            presentedError = error.localizedDescription
+        }
     }
 
     private func setUnavailable(_ unavailable: Bool, for paperID: UUID) {
@@ -202,19 +272,59 @@ final class LibraryStore: ObservableObject {
         }
     }
 
-    private var snapshot: LibrarySnapshot {
-        LibrarySnapshot(
-            schemaVersion: LibrarySchema.currentVersion,
-            papers: papers,
-            selectedPaperID: selectedPaperID
-        )
+    // MARK: - 自动元数据读取（导入时一次；存量记录在首次成功打开时补偿）
+
+    private enum MetadataReadOutcome: Sendable {
+        /// 文件无法访问：不消耗唯一一次自动读取机会，等待下次成功打开。
+        case inaccessible
+        case value(PaperMetadata?)
     }
 
-    private func persistReportingErrors() {
-        do {
-            try saveNow()
-        } catch {
-            presentedError = error.localizedDescription
+    private func scheduleMetadataRead(for paperID: UUID, resolvedURL: URL?) {
+        guard let record = paper(withID: paperID),
+              !record.didReadAutoMetadata else {
+            return
         }
+
+        let bookmarkData = record.bookmarkData
+        let reader = metadataReader
+        Task {
+            var targetURL = resolvedURL
+            if targetURL == nil {
+                targetURL = (try? SecurityScopedFile.resolve(bookmarkData: bookmarkData))?.url
+            }
+            guard let url = targetURL else {
+                self.apply(.inaccessible, paperID: paperID)
+                return
+            }
+
+            let didStartAccessing = url.startAccessingSecurityScopedResource()
+            defer {
+                if didStartAccessing {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let metadata = await reader.metadata(at: url)
+            self.apply(.value(metadata), paperID: paperID)
+        }
+    }
+
+    private func apply(_ outcome: MetadataReadOutcome, paperID: UUID) {
+        guard let index = papers.firstIndex(where: { $0.id == paperID }),
+              !papers[index].didReadAutoMetadata else {
+            return
+        }
+        switch outcome {
+        case .inaccessible:
+            return
+        case let .value(metadata):
+            papers[index].applyAutoMetadata(metadata)
+            persistReportingErrors()
+        }
+    }
+
+    private func paper(withID id: UUID) -> PaperRecord? {
+        papers.first { $0.id == id }
     }
 }

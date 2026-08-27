@@ -94,7 +94,8 @@ final class TranslationController: ObservableObject {
     @Published private(set) var translatedText: String?
     @Published private(set) var state: TranslationState = .idle
     @Published private(set) var configuration: TranslationSession.Configuration?
-    @Published var isInspectorPresented = false
+    /// P1：主窗口打开时检查器默认可见，首次选区只更新内容、不再改变布局。
+    @Published var isInspectorPresented = true
 
     private var generation = 0
     private var debounceTask: Task<Void, Never>?

@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 
+/// 译文优先的翻译检查器：原文默认完全隐藏，文献与页码在顶部标识来源。
 struct TranslationInspector: View {
     @ObservedObject var controller: TranslationController
     @ObservedObject var settings: AppSettings
@@ -26,74 +27,60 @@ struct TranslationInspector: View {
 
             if let selection = controller.selection {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        metadata(for: selection)
-                        textSection(
-                            title: "原文",
-                            text: selection.rawText,
-                            copyLabel: "复制原文"
-                        )
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                statusLabel
-                                Spacer()
-                                if controller.state != .translating
-                                    && controller.state != .resourcesNeeded {
-                                    Button("翻译") {
-                                        controller.requestTranslation(
-                                            targetLanguage: settings.targetLanguage
-                                        )
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                }
-                            }
-
-                            if let translatedText = controller.translatedText {
-                                Text(translatedText)
-                                    .textSelection(.enabled)
-                                Button("复制译文") {
-                                    copy(translatedText)
-                                }
-                            } else if case let .failed(message) = controller.state {
-                                Text(message)
-                                    .foregroundStyle(.red)
-                                    .textSelection(.enabled)
-                            }
+                    VStack(alignment: .leading, spacing: 14) {
+                        sourceMetadata(for: selection)
+                        HStack {
+                            statusLabel
+                            Spacer()
+                            translateAgainButton
                         }
+                        translationBody
                     }
                     .padding()
                 }
+
+                Divider()
+                actionBar(for: selection)
             } else {
-                ContentUnavailableView(
-                    "尚无翻译",
-                    systemImage: "translate",
-                    description: Text("在 PDF 中选择文字后，译文会显示在这里。")
-                )
+                emptyState
             }
         }
         .frame(minWidth: 280, idealWidth: 340)
     }
 
-    private func metadata(for selection: TranslationSelection) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+    private func sourceMetadata(for selection: TranslationSelection) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
             Text(selection.paperName)
-                .font(.subheadline.weight(.medium))
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(2)
             Text("第 \(selection.pageIndex + 1) 页")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }
 
-    private func textSection(title: String, text: String, copyLabel: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(text)
+    @ViewBuilder
+    private var translationBody: some View {
+        if let translatedText = controller.translatedText {
+            Text(translatedText)
                 .textSelection(.enabled)
-            Button(copyLabel) {
-                copy(text)
+        } else if case let .failed(message) = controller.state {
+            Text(message)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
+        }
+    }
+
+    private var translateAgainButton: some View {
+        Group {
+            if controller.state != .translating && controller.state != .resourcesNeeded {
+                Button("翻译") {
+                    controller.requestTranslation(
+                        targetLanguage: settings.targetLanguage
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
             }
         }
     }
@@ -107,6 +94,39 @@ struct TranslationInspector: View {
             Text(controller.state.label)
                 .font(.subheadline.weight(.medium))
         }
+    }
+
+    /// 原文不再展示，但复制能力常驻。
+    private func actionBar(for selection: TranslationSelection) -> some View {
+        HStack {
+            Button("复制译文") {
+                if let translatedText = controller.translatedText {
+                    copy(translatedText)
+                }
+            }
+            .disabled(controller.translatedText == nil)
+
+            Button("复制原文") {
+                copy(selection.rawText)
+            }
+
+            Spacer()
+        }
+        .controlSize(.small)
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "translate")
+                .font(.system(size: 28))
+                .foregroundStyle(.tertiary)
+            Text("划词后，译文会显示在这里。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func copy(_ text: String) {

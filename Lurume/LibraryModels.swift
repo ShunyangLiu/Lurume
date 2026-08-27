@@ -36,13 +36,77 @@ struct FileIdentity: Codable, Equatable, Sendable {
     }
 }
 
+enum MetadataField: String, Codable, Hashable, Sendable, CaseIterable {
+    case title
+    case authors
+    case year
+}
+
+/// PDF 文件自带的标题与作者属性读取结果。
+struct PaperMetadata: Equatable, Sendable {
+    let title: String?
+    let authors: String?
+
+    init(title: String?, authors: String?) {
+        self.title = Self.normalized(title)
+        self.authors = Self.normalized(authors)
+    }
+
+    private static func normalized(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+}
+
+protocol PaperMetadataReading: Sendable {
+    /// 读取文件自带的标题与作者属性。实现不得要求在主线程调用。
+    func metadata(at url: URL) async -> PaperMetadata?
+}
+
+/// P1 标题判废规则：属性标题只有空白、或与文件名相同两种情况不可信，其余一律可信。
+enum PaperTitleRules {
+    static func usablePropertyTitle(
+        _ raw: String?,
+        comparingAgainstFileName fileName: String?
+    ) -> String? {
+        guard var usable = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !usable.isEmpty else {
+            return nil
+        }
+        if let fileName {
+            let nameOnly = (fileName as NSString).lastPathComponent
+            if normalize(nameOnly) == normalize(usable) {
+                return nil
+            }
+        }
+        return usable
+    }
+
+    private static func normalize(_ value: String) -> String {
+        var lowered = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if lowered.hasSuffix(".pdf") {
+            lowered.removeLast(4)
+        }
+        return lowered
+    }
+}
+
+/// v2 文献记录。自动元数据只在导入时与存量库惰性补全时各读取一次。
 struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     var volumeUUID: String?
     var documentIdentifier: Int?
     var bookmarkData: Data
     var fallbackPath: String
-    var displayName: String
+    var originalFileName: String
+    var title: String
+    var authors: String?
+    var year: Int?
+    var manuallyEditedFields: Set<MetadataField>
+    var didReadAutoMetadata: Bool
     let dateAdded: Date
     var lastOpenedAt: Date?
     var lastPageIndex: Int
@@ -55,6 +119,7 @@ struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
         )
     }
 
+    /// 导入与迁移共用：标题以文件名起步，等待一次性自动补全或用户编辑。
     init(
         id: UUID = UUID(),
         identity: FileIdentity,
@@ -69,7 +134,12 @@ struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
         self.documentIdentifier = identity.documentIdentifier
         self.bookmarkData = bookmarkData
         self.fallbackPath = identity.fallbackPath
-        self.displayName = displayName
+        self.originalFileName = displayName
+        self.title = displayName
+        self.authors = nil
+        self.year = nil
+        self.manuallyEditedFields = []
+        self.didReadAutoMetadata = false
         self.dateAdded = dateAdded
         self.lastOpenedAt = lastOpenedAt
         self.lastPageIndex = max(0, lastPageIndex)
@@ -77,14 +147,49 @@ struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
 
     mutating func replaceFileReference(
         identity: FileIdentity,
-        bookmarkData: Data,
-        displayName: String
+        bookmarkData: Data
     ) {
         volumeUUID = identity.volumeUUID
         documentIdentifier = identity.documentIdentifier
         fallbackPath = identity.fallbackPath
         self.bookmarkData = bookmarkData
-        self.displayName = displayName
+    }
+
+    mutating func setManualTitle(_ newValue: String) {
+        let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        title = trimmed.isEmpty ? originalFileName : trimmed
+        manuallyEditedFields.insert(.title)
+    }
+
+    mutating func setManualAuthors(_ newValue: String?) {
+        let trimmed = newValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        authors = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        // 清空同样是用户决定，之后不得被自动结果复活。
+        manuallyEditedFields.insert(.authors)
+    }
+
+    mutating func setManualYear(_ newValue: Int?) {
+        year = newValue
+        manuallyEditedFields.insert(.year)
+    }
+
+    mutating func applyAutoMetadata(_ metadata: PaperMetadata?) {
+        guard !didReadAutoMetadata else { return }
+        didReadAutoMetadata = true
+
+        guard let metadata else { return }
+        let currentFileName = (fallbackPath as NSString).lastPathComponent
+        if !manuallyEditedFields.contains(.title),
+           let trustedTitle = PaperTitleRules.usablePropertyTitle(
+            metadata.title,
+            comparingAgainstFileName: currentFileName
+           ) {
+            title = trustedTitle
+        }
+        if !manuallyEditedFields.contains(.authors), authors == nil,
+           let autoAuthors = metadata.authors {
+            authors = autoAuthors
+        }
     }
 }
 

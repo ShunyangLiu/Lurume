@@ -3,6 +3,6 @@ import XCTest
 
 final class LurumeSmokeTests: XCTestCase {
     func testApplicationTargetLoads() {
-        XCTAssertEqual(LibrarySchema.currentVersion, 1)
+        XCTAssertEqual(LibrarySchema.currentVersion, 2)
     }
 }
