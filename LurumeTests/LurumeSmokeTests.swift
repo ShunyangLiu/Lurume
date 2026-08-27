@@ -89,6 +89,81 @@ final class LurumeSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testPDFSelectionCreatesRendersAndReactivatesHighlight() throws {
+        let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta gamma"))
+        let page = try XCTUnwrap(document.page(at: 0))
+        let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        pdfView.document = document
+        pdfView.layoutSubtreeIfNeeded()
+        let controller = PDFReaderController()
+        controller.attach(pdfView)
+        let selection = try XCTUnwrap(
+            document.findString("beta", withOptions: .caseInsensitive).first
+        )
+        pdfView.setCurrentSelection(selection, animate: false)
+        let paperID = UUID()
+
+        let highlight = try XCTUnwrap(controller.makeHighlightCandidate(paperID: paperID))
+        XCTAssertEqual(highlight.paperID, paperID)
+        XCTAssertEqual(highlight.rawText, "beta")
+        XCTAssertEqual(highlight.segments.count, 1)
+
+        controller.renderHighlights([highlight])
+        XCTAssertEqual(page.annotations.count, 1)
+        XCTAssertEqual(controller.skippedHighlightFragmentCount, 0)
+        let rect = try XCTUnwrap(highlight.segments.first?.rects.first?.cgRect)
+        let viewPoint = pdfView.convert(
+            CGPoint(x: rect.midX, y: rect.midY),
+            from: page
+        )
+        XCTAssertEqual(controller.highlightID(at: viewPoint), highlight.id)
+
+        pdfView.clearSelection()
+        controller.activateHighlight(highlight, translate: true)
+        XCTAssertEqual(pdfView.currentSelection?.string, "beta")
+        XCTAssertEqual(controller.currentHighlightID, highlight.id)
+
+        controller.renderHighlights([])
+        XCTAssertTrue(page.annotations.isEmpty)
+    }
+
+    @MainActor
+    func testPDFSearchResultCannotBeSavedAsUserHighlight() throws {
+        let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta"))
+        let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        pdfView.document = document
+        let controller = PDFReaderController()
+        controller.attach(pdfView)
+        controller.searchText = "alpha"
+
+        controller.search()
+
+        XCTAssertNil(controller.makeHighlightCandidate(paperID: UUID()))
+    }
+
+    @MainActor
+    func testRenderingHighlightDoesNotModifyOriginalPDFFile() throws {
+        let generated = try XCTUnwrap(makeSearchablePDF(text: "alpha beta gamma"))
+        let originalData = try XCTUnwrap(generated.dataRepresentation())
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Lurume-highlight-source-\(UUID().uuidString).pdf")
+        try originalData.write(to: fileURL)
+        addTeardownBlock { try? FileManager.default.removeItem(at: fileURL) }
+        let document = try XCTUnwrap(PDFDocument(url: fileURL))
+        let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        pdfView.document = document
+        let controller = PDFReaderController()
+        controller.attach(pdfView)
+        let selection = try XCTUnwrap(document.findString("beta", withOptions: []).first)
+        pdfView.setCurrentSelection(selection, animate: false)
+        let highlight = try XCTUnwrap(controller.makeHighlightCandidate(paperID: UUID()))
+
+        controller.renderHighlights([highlight])
+
+        XCTAssertEqual(try Data(contentsOf: fileURL), originalData)
+    }
+
+    @MainActor
     private func makeSearchablePDF(text: String) -> PDFDocument? {
         let data = NSMutableData()
         var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)

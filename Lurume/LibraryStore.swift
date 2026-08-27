@@ -124,15 +124,26 @@ final class LibraryStore: ObservableObject {
         persistReportingErrors()
     }
 
-    func removePaper(id: UUID) {
-        guard rejectMutationIfReadOnly() == false else { return }
+    func removePaper(id: UUID) throws {
+        try requireWritableLibrary()
         flushPendingSave()
+
+        let previousPapers = papers
+        let previousUnavailablePaperIDs = unavailablePaperIDs
+        let previousSelectedPaperID = selectedPaperID
         papers.removeAll { $0.id == id }
         unavailablePaperIDs.remove(id)
         if selectedPaperID == id {
             selectedPaperID = papers.first?.id
         }
-        persistReportingErrors()
+        do {
+            try saveNow()
+        } catch {
+            papers = previousPapers
+            unavailablePaperIDs = previousUnavailablePaperIDs
+            selectedPaperID = previousSelectedPaperID
+            throw error
+        }
     }
 
     func updatePageIndex(_ pageIndex: Int, for paperID: UUID) {

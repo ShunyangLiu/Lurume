@@ -5,6 +5,7 @@ struct LurumeApp: App {
     @StateObject private var libraryStore = LibraryStore()
     @StateObject private var appSettings = AppSettings()
     @StateObject private var translationController = TranslationController()
+    @StateObject private var highlightStore = HighlightStore()
 
     var body: some Scene {
         Window("Lurume", id: "main") {
@@ -12,6 +13,7 @@ struct LurumeApp: App {
                 .environmentObject(libraryStore)
                 .environmentObject(appSettings)
                 .environmentObject(translationController)
+                .environmentObject(highlightStore)
                 .onDisappear {
                     libraryStore.flushPendingSave()
                 }

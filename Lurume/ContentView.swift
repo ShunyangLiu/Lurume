@@ -10,9 +10,11 @@ struct ContentView: View {
     }
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.undoManager) private var undoManager
     @EnvironmentObject private var libraryStore: LibraryStore
     @EnvironmentObject private var appSettings: AppSettings
     @EnvironmentObject private var translationController: TranslationController
+    @EnvironmentObject private var highlightStore: HighlightStore
     @StateObject private var pdfController = PDFReaderController()
     @State private var isImporterPresented = false
     @State private var importerPurpose: FileImporterPurpose?
@@ -20,6 +22,8 @@ struct ContentView: View {
     @State private var activeAccess: SecurityScopedAccess?
     @State private var documentError: String?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var inspectorMode: ReaderInspectorMode = .translation
+    @State private var pendingPaperRemoval: UUID?
 
     @State private var searchText = ""
     @FocusState private var searchFieldFocused: Bool
@@ -39,6 +43,10 @@ struct ContentView: View {
 
     private var filteredPapers: [PaperRecord] {
         libraryStore.papers(matching: searchText)
+    }
+
+    private var presentedError: String? {
+        highlightStore.presentedError ?? libraryStore.presentedError
     }
 
     /// Return 改名快捷键只在没有文本输入进行时生效。
@@ -97,15 +105,36 @@ struct ContentView: View {
             .alert(
                 "Lurume",
                 isPresented: Binding(
-                    get: { libraryStore.presentedError != nil },
-                    set: { if !$0 { libraryStore.presentedError = nil } }
+                    get: { presentedError != nil },
+                    set: { if !$0 { clearPresentedErrors() } }
                 )
             ) {
                 Button("好", role: .cancel) {
-                    libraryStore.presentedError = nil
+                    clearPresentedErrors()
                 }
             } message: {
-                Text(libraryStore.presentedError ?? "发生未知错误。")
+                Text(presentedError ?? "发生未知错误。")
+            }
+            .confirmationDialog(
+                "移除文献？",
+                isPresented: Binding(
+                    get: { pendingPaperRemoval != nil },
+                    set: { if !$0 { pendingPaperRemoval = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("移除文献和高亮", role: .destructive) {
+                    guard let id = pendingPaperRemoval else { return }
+                    pendingPaperRemoval = nil
+                    removePaper(id)
+                }
+                Button("取消", role: .cancel) {
+                    pendingPaperRemoval = nil
+                }
+            } message: {
+                if let id = pendingPaperRemoval {
+                    Text(removalConfirmationMessage(for: id))
+                }
             }
             .task(id: libraryStore.selectedPaperID) {
                 await Task.yield()
@@ -129,7 +158,13 @@ struct ContentView: View {
             .inspector(isPresented: $translationController.isInspectorPresented) {
                 TranslationInspector(
                     controller: translationController,
-                    settings: appSettings
+                    settings: appSettings,
+                    highlightStore: highlightStore,
+                    pdfController: pdfController,
+                    mode: $inspectorMode,
+                    paper: libraryStore.selectedPaper,
+                    navigateToHighlight: navigateToHighlight,
+                    deleteHighlight: deleteHighlight
                 )
             }
             .translationTask(translationController.configuration) { session in
@@ -145,6 +180,7 @@ struct ContentView: View {
                 previousPDFSearchResult: pdfController.previousSearchResult,
                 nextPDFSearchResult: pdfController.nextSearchResult,
                 isPDFSearchPresented: isPDFSearchPresented,
+                togglePDFHighlight: toggleCurrentHighlight,
                 beginTitleEdit: beginInlineTitleEdit
             )
             .frame(width: 0, height: 0)
@@ -200,7 +236,7 @@ struct ContentView: View {
                             .disabled(libraryStore.persistenceDisabled)
                         }
                         Button("移除引用", role: .destructive) {
-                            removePaper(paper.id)
+                            requestPaperRemoval(paper.id)
                         }
                         .disabled(libraryStore.persistenceDisabled)
                     }
@@ -264,13 +300,18 @@ struct ContentView: View {
         if let paper = libraryStore.selectedPaper {
             if let activeAccess {
                 PDFReaderView(
+                    paperID: paper.id,
                     documentURL: activeAccess.url,
                     initialPageIndex: paper.lastPageIndex,
                     controller: pdfController,
+                    highlights: highlightStore.highlights(for: paper.id),
                     onPageChanged: { pageIndex in
                         libraryStore.updatePageIndex(pageIndex, for: paper.id)
                     },
                     onSelectionChanged: { event in
+                        if event != nil {
+                            inspectorMode = .translation
+                        }
                         translationController.receiveSelection(
                             event,
                             paperID: paper.id,
@@ -280,6 +321,9 @@ struct ContentView: View {
                             sourceLanguage: appSettings.sourceLanguage
                         )
                     },
+                    onToggleHighlight: toggleCurrentHighlight,
+                    onHighlightActivated: activatePageHighlight,
+                    onDeleteHighlight: deleteHighlight,
                     onError: { message in
                         documentError = message
                     }
@@ -445,18 +489,106 @@ struct ContentView: View {
     private func openSelectedPaper() {
         closePDFSearch()
         documentError = nil
+        pdfController.currentHighlightID = nil
         activeAccess = libraryStore.selectedPaperID.flatMap {
             libraryStore.resolveFile(for: $0)
         }
     }
 
-    private func removePaper(_ id: UUID) {
-        translationController.paperRemoved(id)
-        if libraryStore.selectedPaperID == id {
-            activeAccess = nil
+    private func toggleCurrentHighlight() {
+        guard let paper = libraryStore.selectedPaper,
+              let candidate = pdfController.makeHighlightCandidate(paperID: paper.id),
+              let result = highlightStore.toggle(candidate, undoManager: undoManager) else {
+            return
         }
-        libraryStore.removePaper(id: id)
+
+        switch result {
+        case let .added(record):
+            pdfController.currentHighlightID = record.id
+        case let .removed(record):
+            if pdfController.currentHighlightID == record.id {
+                pdfController.currentHighlightID = nil
+            }
+        }
+        pdfController.clearCurrentSelection()
+    }
+
+    private func activatePageHighlight(_ id: UUID) {
+        guard let highlight = highlightStore.highlight(id: id),
+              highlight.paperID == libraryStore.selectedPaperID else {
+            return
+        }
+        inspectorMode = .translation
+        pdfController.activateHighlight(highlight, translate: true)
+    }
+
+    private func navigateToHighlight(_ highlight: HighlightRecord) {
+        guard highlight.paperID == libraryStore.selectedPaperID else { return }
+        pdfController.clearCurrentSelection()
+        pdfController.activateHighlight(highlight, translate: false)
+    }
+
+    private func deleteHighlight(_ id: UUID) {
+        guard let paperID = libraryStore.selectedPaperID else { return }
+        let ordered = highlightStore.highlights(for: paperID)
+        let removedIndex = ordered.firstIndex { $0.id == id }
+        guard highlightStore.remove(id: id, undoManager: undoManager) else { return }
+
+        if pdfController.currentHighlightID == id {
+            let remaining = highlightStore.highlights(for: paperID)
+            if let removedIndex, !remaining.isEmpty {
+                pdfController.currentHighlightID = remaining[min(removedIndex, remaining.count - 1)].id
+            } else {
+                pdfController.currentHighlightID = nil
+            }
+        }
+    }
+
+    private func requestPaperRemoval(_ id: UUID) {
+        if highlightStore.count(for: id) > 0 {
+            pendingPaperRemoval = id
+        } else {
+            removePaper(id)
+        }
+    }
+
+    private func removePaper(_ id: UUID) {
+        let removedHighlights: [HighlightRecord]
+        do {
+            if highlightStore.count(for: id) > 0 {
+                removedHighlights = try highlightStore.removeAll(for: id)
+            } else {
+                removedHighlights = []
+            }
+        } catch {
+            highlightStore.presentedError = "无法移除文献的高亮：\(error.localizedDescription)"
+            return
+        }
+
+        do {
+            try libraryStore.removePaper(id: id)
+        } catch {
+            do {
+                try highlightStore.restore(removedHighlights)
+                libraryStore.presentedError = "无法移除文献：\(error.localizedDescription)"
+            } catch let restoreError {
+                libraryStore.presentedError = "无法移除文献，且恢复高亮失败：\(restoreError.localizedDescription)"
+            }
+            return
+        }
+
+        translationController.paperRemoved(id)
         openSelectedPaper()
+    }
+
+    private func removalConfirmationMessage(for id: UUID) -> String {
+        let count = highlightStore.count(for: id)
+        return "移除后将同时删除 \(count) 条高亮。原始 PDF 不会被删除或修改。"
+    }
+
+    private func clearPresentedErrors() {
+        highlightStore.presentedError = nil
+        libraryStore.presentedError = nil
     }
 }
 
@@ -724,6 +856,7 @@ private struct KeyboardCommandMonitor: NSViewRepresentable {
     let previousPDFSearchResult: () -> Void
     let nextPDFSearchResult: () -> Void
     let isPDFSearchPresented: Bool
+    let togglePDFHighlight: () -> Void
     let beginTitleEdit: () -> Bool
 
     func makeNSView(context: Context) -> KeyboardCommandMonitoringView {
@@ -734,6 +867,7 @@ private struct KeyboardCommandMonitor: NSViewRepresentable {
             previousPDFSearchResult: previousPDFSearchResult,
             nextPDFSearchResult: nextPDFSearchResult,
             isPDFSearchPresented: isPDFSearchPresented,
+            togglePDFHighlight: togglePDFHighlight,
             beginTitleEdit: beginTitleEdit
         )
     }
@@ -745,6 +879,7 @@ private struct KeyboardCommandMonitor: NSViewRepresentable {
         nsView.previousPDFSearchResult = previousPDFSearchResult
         nsView.nextPDFSearchResult = nextPDFSearchResult
         nsView.isPDFSearchPresented = isPDFSearchPresented
+        nsView.togglePDFHighlight = togglePDFHighlight
         nsView.beginTitleEdit = beginTitleEdit
     }
 
@@ -760,6 +895,7 @@ private final class KeyboardCommandMonitoringView: NSView {
     var previousPDFSearchResult: () -> Void
     var nextPDFSearchResult: () -> Void
     var isPDFSearchPresented: Bool
+    var togglePDFHighlight: () -> Void
     var beginTitleEdit: () -> Bool
     private var eventMonitor: Any?
 
@@ -770,6 +906,7 @@ private final class KeyboardCommandMonitoringView: NSView {
         previousPDFSearchResult: @escaping () -> Void,
         nextPDFSearchResult: @escaping () -> Void,
         isPDFSearchPresented: Bool,
+        togglePDFHighlight: @escaping () -> Void,
         beginTitleEdit: @escaping () -> Bool
     ) {
         self.focusLibrarySearch = focusLibrarySearch
@@ -778,6 +915,7 @@ private final class KeyboardCommandMonitoringView: NSView {
         self.previousPDFSearchResult = previousPDFSearchResult
         self.nextPDFSearchResult = nextPDFSearchResult
         self.isPDFSearchPresented = isPDFSearchPresented
+        self.togglePDFHighlight = togglePDFHighlight
         self.beginTitleEdit = beginTitleEdit
         super.init(frame: .zero)
     }
@@ -817,6 +955,13 @@ private final class KeyboardCommandMonitoringView: NSView {
     private func handle(_ event: NSEvent) -> NSEvent? {
         guard event.window === window else { return event }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+        if event.charactersIgnoringModifiers?.lowercased() == "h",
+           modifiers == [.command, .shift],
+           !(window?.firstResponder is NSTextView) {
+            togglePDFHighlight()
+            return nil
+        }
 
         if event.charactersIgnoringModifiers?.lowercased() == "f",
            modifiers == [.command, .option] {

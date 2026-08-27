@@ -10,6 +10,11 @@
 		106513FBEC771211CB9DE862 /* LibraryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0325E1A53B306B4E070020D /* LibraryModels.swift */; };
 		132643F5DC3DDD1E9EB22813 /* TextNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA1583E513232AC7D0AA7CA0 /* TextNormalizer.swift */; };
 		1D1E1300196BD224FE89A00F /* TextNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969EC9C892796AB815567020 /* TextNormalizerTests.swift */; };
+		20A0B2C3D4E5F60718293A4B /* HighlightModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30A0B2C3D4E5F60718293A4B /* HighlightModels.swift */; };
+		20B0B2C3D4E5F60718293A4B /* HighlightPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30B0B2C3D4E5F60718293A4B /* HighlightPersistence.swift */; };
+		20C0B2C3D4E5F60718293A4B /* HighlightStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30C0B2C3D4E5F60718293A4B /* HighlightStore.swift */; };
+		20D0B2C3D4E5F60718293A4B /* HighlightPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30D0B2C3D4E5F60718293A4B /* HighlightPDFView.swift */; };
+		20E0B2C3D4E5F60718293A4B /* HighlightPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30E0B2C3D4E5F60718293A4B /* HighlightPersistenceTests.swift */; };
 		24F9D19682C67BFEFB015DAC /* TranslationInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */; };
 		32C8FFB0CE9301BED1D8F96D /* LibrarySchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AABCAEA8379FB217EF98010 /* LibrarySchema.swift */; };
 		33F14A5B4F2FF059040D2EBC /* LurumeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDCEED45D44F9A78BABF93BC /* LurumeApp.swift */; };
@@ -43,6 +48,11 @@
 		0B52C1CACB063DB3505EEF6C /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		1AC352337307455A20A17D1A /* TranslationControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationControllerTests.swift; sourceTree = "<group>"; };
 		1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LurumeSmokeTests.swift; sourceTree = "<group>"; };
+		30A0B2C3D4E5F60718293A4B /* HighlightModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightModels.swift; sourceTree = "<group>"; };
+		30B0B2C3D4E5F60718293A4B /* HighlightPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightPersistence.swift; sourceTree = "<group>"; };
+		30C0B2C3D4E5F60718293A4B /* HighlightStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightStore.swift; sourceTree = "<group>"; };
+		30D0B2C3D4E5F60718293A4B /* HighlightPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightPDFView.swift; sourceTree = "<group>"; };
+		30E0B2C3D4E5F60718293A4B /* HighlightPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightPersistenceTests.swift; sourceTree = "<group>"; };
 		451E4AC55AABA630D088790D /* SecurityScopedFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedFile.swift; sourceTree = "<group>"; };
 		4ACA72A5E79BC8728F19084D /* TranslationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationController.swift; sourceTree = "<group>"; };
 		50CE51B033570DB20B180628 /* LibraryPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPersistenceTests.swift; sourceTree = "<group>"; };
@@ -87,6 +97,10 @@
 			children = (
 				0B52C1CACB063DB3505EEF6C /* AppSettings.swift */,
 				813B2765B8739B290712AAD7 /* ContentView.swift */,
+				30A0B2C3D4E5F60718293A4B /* HighlightModels.swift */,
+				30D0B2C3D4E5F60718293A4B /* HighlightPDFView.swift */,
+				30B0B2C3D4E5F60718293A4B /* HighlightPersistence.swift */,
+				30C0B2C3D4E5F60718293A4B /* HighlightStore.swift */,
 				E0325E1A53B306B4E070020D /* LibraryModels.swift */,
 				70EE537C1DA409FE0C8BFD5B /* LibraryPersistence.swift */,
 				9AABCAEA8379FB217EF98010 /* LibrarySchema.swift */,
@@ -107,6 +121,7 @@
 			isa = PBXGroup;
 			children = (
 				B332936519E7741B917213C1 /* FileIdentityTests.swift */,
+				30E0B2C3D4E5F60718293A4B /* HighlightPersistenceTests.swift */,
 				50CE51B033570DB20B180628 /* LibraryPersistenceTests.swift */,
 				1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */,
 				BC5F48DA0E16EBAC5F6646BE /* PaperMetadataTests.swift */,
@@ -194,6 +209,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				61A1E8FC19A5F997C16108CE /* FileIdentityTests.swift in Sources */,
+				20E0B2C3D4E5F60718293A4B /* HighlightPersistenceTests.swift in Sources */,
 				3BA0251DCE1AE33611F16C6E /* LibraryPersistenceTests.swift in Sources */,
 				8A612497C2D39BFFBC3CD179 /* LurumeSmokeTests.swift in Sources */,
 				6C93CF0C527FC9C095C471D4 /* PaperMetadataTests.swift in Sources */,
@@ -208,6 +224,10 @@
 			files = (
 				9048D80279177B1F81AE0790 /* AppSettings.swift in Sources */,
 				68D5F0FC04789CBE194A49A1 /* ContentView.swift in Sources */,
+				20A0B2C3D4E5F60718293A4B /* HighlightModels.swift in Sources */,
+				20D0B2C3D4E5F60718293A4B /* HighlightPDFView.swift in Sources */,
+				20B0B2C3D4E5F60718293A4B /* HighlightPersistence.swift in Sources */,
+				20C0B2C3D4E5F60718293A4B /* HighlightStore.swift in Sources */,
 				106513FBEC771211CB9DE862 /* LibraryModels.swift in Sources */,
 				D34865219EA3EB4BF932BA66 /* LibraryPersistence.swift in Sources */,
 				32C8FFB0CE9301BED1D8F96D /* LibrarySchema.swift in Sources */,

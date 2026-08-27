@@ -36,9 +36,14 @@ final class PDFReaderController: ObservableObject {
     @Published private(set) var searchResultCount = 0
     @Published private(set) var currentSearchResultIndex: Int?
     @Published private(set) var activeSearchQuery: String?
+    @Published var currentHighlightID: UUID?
+    @Published private(set) var skippedHighlightFragmentCount = 0
 
     weak var pdfView: PDFView?
     private var searchResults: [PDFSelection] = []
+    private var renderedHighlights: [HighlightRecord] = []
+    private var highlightAnnotations: [PDFAnnotation] = []
+    private var highlightIDByAnnotation: [ObjectIdentifier: UUID] = [:]
 
     var pageCountLabel: String {
         guard pageCount > 0 else { return "/ —" }
@@ -57,7 +62,10 @@ final class PDFReaderController: ObservableObject {
 
     func attach(_ pdfView: PDFView) {
         guard self.pdfView !== pdfView else { return }
+        removeRenderedHighlights()
         self.pdfView = pdfView
+        renderedHighlights = []
+        skippedHighlightFragmentCount = 0
     }
 
     func zoomIn() { pdfView?.zoomIn(nil) }
@@ -136,6 +144,126 @@ final class PDFReaderController: ObservableObject {
         return selection === searchResults[currentSearchResultIndex]
     }
 
+    func makeHighlightCandidate(paperID: UUID) -> HighlightRecord? {
+        guard let pdfView,
+              let document = pdfView.document,
+              let selection = pdfView.currentSelection,
+              !isCurrentSearchSelection(selection),
+              let rawText = selection.string,
+              !rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+
+        var pageOrder: [Int] = []
+        var rectsByPage: [Int: [HighlightRect]] = [:]
+        for line in selection.selectionsByLine() {
+            for page in line.pages {
+                let pageIndex = document.index(for: page)
+                guard pageIndex >= 0,
+                      let rect = HighlightRect(cgRect: line.bounds(for: page)) else {
+                    continue
+                }
+                if rectsByPage[pageIndex] == nil {
+                    pageOrder.append(pageIndex)
+                }
+                rectsByPage[pageIndex, default: []].append(rect)
+            }
+        }
+
+        let segments = pageOrder.compactMap { pageIndex in
+            HighlightSegment(pageIndex: pageIndex, rects: rectsByPage[pageIndex] ?? [])
+        }
+        return HighlightRecord(
+            paperID: paperID,
+            rawText: rawText,
+            segments: segments
+        )
+    }
+
+    func currentSelectionMatchesHighlight(paperID: UUID) -> Bool {
+        guard let candidate = makeHighlightCandidate(paperID: paperID) else { return false }
+        return renderedHighlights.contains { $0.approximatelyMatches(candidate) }
+    }
+
+    func clearCurrentSelection() {
+        pdfView?.clearSelection()
+    }
+
+    func renderHighlights(_ highlights: [HighlightRecord]) {
+        guard let pdfView, let document = pdfView.document else { return }
+        guard renderedHighlights != highlights else { return }
+        removeRenderedHighlights()
+        renderedHighlights = highlights
+        var skippedFragmentCount = 0
+
+        for highlight in highlights {
+            for segment in highlight.segments {
+                guard let page = document.page(at: segment.pageIndex) else {
+                    skippedFragmentCount += segment.rects.count
+                    continue
+                }
+                let pageBounds = page.bounds(for: .cropBox)
+                for storedRect in segment.rects {
+                    let rect = storedRect.cgRect
+                    guard rect.intersects(pageBounds),
+                          !rect.intersection(pageBounds).isEmpty else {
+                        skippedFragmentCount += 1
+                        continue
+                    }
+                    let annotation = PDFAnnotation(
+                        bounds: rect,
+                        forType: .highlight,
+                        withProperties: nil
+                    )
+                    annotation.color = .systemYellow.withAlphaComponent(0.45)
+                    annotation.quadrilateralPoints = [
+                        NSValue(point: NSPoint(x: 0, y: rect.height)),
+                        NSValue(point: NSPoint(x: rect.width, y: rect.height)),
+                        NSValue(point: NSPoint(x: 0, y: 0)),
+                        NSValue(point: NSPoint(x: rect.width, y: 0)),
+                    ]
+                    page.addAnnotation(annotation)
+                    highlightAnnotations.append(annotation)
+                    highlightIDByAnnotation[ObjectIdentifier(annotation)] = highlight.id
+                }
+            }
+        }
+        skippedHighlightFragmentCount = skippedFragmentCount
+
+        if let currentHighlightID,
+           !highlights.contains(where: { $0.id == currentHighlightID }) {
+            self.currentHighlightID = nil
+        }
+    }
+
+    func highlightID(at viewPoint: CGPoint) -> UUID? {
+        guard let pdfView,
+              let page = pdfView.page(for: viewPoint, nearest: false) else {
+            return nil
+        }
+        let pagePoint = pdfView.convert(viewPoint, to: page)
+        for annotation in page.annotations.reversed()
+        where annotation.bounds.contains(pagePoint) {
+            if let id = highlightIDByAnnotation[ObjectIdentifier(annotation)] {
+                return id
+            }
+        }
+        return nil
+    }
+
+    func activateHighlight(_ highlight: HighlightRecord, translate: Bool) {
+        guard let pdfView,
+              let selection = selection(for: highlight) else {
+            return
+        }
+        currentHighlightID = highlight.id
+        if translate {
+            pdfView.setCurrentSelection(selection, animate: true)
+        }
+        pdfView.go(to: selection)
+        centerSelection(selection, in: pdfView)
+    }
+
     private func moveSearchResult(by offset: Int) {
         guard !searchResults.isEmpty else { return }
         let current = currentSearchResultIndex ?? 0
@@ -166,10 +294,27 @@ final class PDFReaderController: ObservableObject {
         pdfView.highlightedSelections = otherResults.isEmpty ? nil : otherResults
         pdfView.setCurrentSelection(currentResult, animate: true)
         pdfView.go(to: currentResult)
-        centerSearchResult(currentResult, in: pdfView)
+        centerSelection(currentResult, in: pdfView)
     }
 
-    private func centerSearchResult(_ selection: PDFSelection, in pdfView: PDFView) {
+    private func selection(for highlight: HighlightRecord) -> PDFSelection? {
+        guard let document = pdfView?.document else { return nil }
+        var selections: [PDFSelection] = []
+        for segment in highlight.segments {
+            guard let page = document.page(at: segment.pageIndex) else { continue }
+            for rect in segment.rects {
+                if let selection = page.selection(for: rect.cgRect.insetBy(dx: -0.5, dy: -0.5)) {
+                    selections.append(selection)
+                }
+            }
+        }
+        guard !selections.isEmpty else { return nil }
+        let combined = PDFSelection(document: document)
+        combined.add(selections)
+        return combined
+    }
+
+    private func centerSelection(_ selection: PDFSelection, in pdfView: PDFView) {
         guard let page = selection.pages.first,
               let documentView = pdfView.documentView,
               let scrollView = documentView.enclosingScrollView else {
@@ -188,6 +333,14 @@ final class PDFReaderController: ObservableObject {
         )
         clipView.scroll(to: origin)
         scrollView.reflectScrolledClipView(clipView)
+    }
+
+    private func removeRenderedHighlights() {
+        for annotation in highlightAnnotations {
+            annotation.page?.removeAnnotation(annotation)
+        }
+        highlightAnnotations = []
+        highlightIDByAnnotation = [:]
     }
 
     func updatePageState() {
@@ -214,11 +367,16 @@ final class PDFReaderController: ObservableObject {
 }
 
 struct PDFReaderView: NSViewRepresentable {
+    let paperID: UUID
     let documentURL: URL
     let initialPageIndex: Int
     let controller: PDFReaderController
+    let highlights: [HighlightRecord]
     let onPageChanged: (Int) -> Void
     let onSelectionChanged: (PDFSelectionEvent?) -> Void
+    let onToggleHighlight: () -> Void
+    let onHighlightActivated: (UUID) -> Void
+    let onDeleteHighlight: (UUID) -> Void
     let onError: (String) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -226,14 +384,16 @@ struct PDFReaderView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> PDFView {
-        let pdfView = PDFView()
+        let pdfView = HighlightPDFView()
         pdfView.autoScales = true
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
         pdfView.displaysPageBreaks = true
         pdfView.pageShadowsEnabled = true
         context.coordinator.observe(pdfView)
+        context.coordinator.installHighlightClickRecognizer(on: pdfView)
         controller.attach(pdfView)
+        configureHighlightActions(on: pdfView)
         loadDocument(in: pdfView, coordinator: context.coordinator)
         return pdfView
     }
@@ -241,9 +401,31 @@ struct PDFReaderView: NSViewRepresentable {
     func updateNSView(_ pdfView: PDFView, context: Context) {
         context.coordinator.parent = self
         controller.attach(pdfView)
+        configureHighlightActions(on: pdfView)
         if context.coordinator.loadedURL != documentURL {
             loadDocument(in: pdfView, coordinator: context.coordinator)
         }
+        controller.renderHighlights(highlights)
+    }
+
+    private func configureHighlightActions(on pdfView: PDFView) {
+        guard let highlightView = pdfView as? HighlightPDFView else { return }
+        highlightView.highlightIDAtEvent = { [weak highlightView, weak controller] event in
+            guard let highlightView else { return nil }
+            let point = highlightView.convert(event.locationInWindow, from: nil)
+            return controller?.highlightID(at: point)
+        }
+        highlightView.toggleHighlightTitle = { [weak controller] in
+            guard let controller,
+                  controller.makeHighlightCandidate(paperID: paperID) != nil else {
+                return nil
+            }
+            return controller.currentSelectionMatchesHighlight(paperID: paperID)
+                ? "取消高亮"
+                : "添加高亮"
+        }
+        highlightView.onToggleHighlight = onToggleHighlight
+        highlightView.onDeleteHighlight = onDeleteHighlight
     }
 
     private func loadDocument(in pdfView: PDFView, coordinator: Coordinator) {
@@ -264,10 +446,11 @@ struct PDFReaderView: NSViewRepresentable {
         if let page = document.page(at: index) {
             pdfView.go(to: page)
         }
+        controller.renderHighlights(highlights)
         coordinator.scheduleStateUpdate()
     }
 
-    final class Coordinator: NSObject, @unchecked Sendable {
+    final class Coordinator: NSObject, NSGestureRecognizerDelegate, @unchecked Sendable {
         var parent: PDFReaderView
         var loadedURL: URL?
         private var observationTokens: [NSObjectProtocol] = []
@@ -310,6 +493,37 @@ struct PDFReaderView: NSViewRepresentable {
                     }
                 }
             )
+        }
+
+        @MainActor
+        func installHighlightClickRecognizer(on pdfView: PDFView) {
+            let recognizer = NSClickGestureRecognizer(
+                target: self,
+                action: #selector(highlightClicked(_:))
+            )
+            recognizer.buttonMask = 0x1
+            recognizer.numberOfClicksRequired = 1
+            recognizer.delegate = self
+            pdfView.addGestureRecognizer(recognizer)
+        }
+
+        @MainActor
+        @objc private func highlightClicked(_ recognizer: NSClickGestureRecognizer) {
+            guard recognizer.state == .ended,
+                  let pdfView = recognizer.view as? PDFView else {
+                return
+            }
+            let point = recognizer.location(in: pdfView)
+            if let id = parent.controller.highlightID(at: point) {
+                parent.onHighlightActivated(id)
+            }
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: NSGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: NSGestureRecognizer
+        ) -> Bool {
+            true
         }
 
         func scheduleStateUpdate(error: String? = nil) {
