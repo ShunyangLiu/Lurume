@@ -6,6 +6,20 @@ Lurume 是一款面向 Apple 平台的开源、轻量、原生学术论文阅读
 
 [![Download](https://img.shields.io/github/v/release/ShunyangLiu/Lurume?include_prereleases&label=%E4%B8%8B%E8%BD%BD&sort=semver)](https://github.com/ShunyangLiu/Lurume/releases/latest)
 
+## 轻量化承诺
+
+轻量不是事后优化，而是 Lurume 的立身之本。我们为此守住四条纪律：
+
+- **系统框架优先**：能力尽量来自 macOS 自带的 PDFKit、Translation 等系统框架，
+  不引入任何运行时第三方依赖。未来每接纳一个新依赖，都必须先回答
+  “系统框架为什么做不到”。
+- **安装包保持个位数 MB**：不捆绑内嵌框架、资源包或后台服务。
+  体积一旦逼近承诺边界，优先做功能减法，而不是想办法压缩。
+- **性能是验收项**：启动耗时、打开大文档与长时间阅读的内存变化，
+  每个阶段都在真实硬件上测量并记录，不做脱离实测的口头承诺。
+- **功能克制**：默认只把一件事做到位。每个新能力先问一句
+  “拿掉它，应用是否仍然完整”。
+
 ## 下载安装
 
 前往 [Releases 页面](https://github.com/ShunyangLiu/Lurume/releases/latest) 下载最新的 `Lurume.dmg`：
