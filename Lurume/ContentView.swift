@@ -23,6 +23,8 @@ struct ContentView: View {
 
     @State private var searchText = ""
     @FocusState private var searchFieldFocused: Bool
+    @State private var isPDFSearchPresented = false
+    @FocusState private var pdfSearchFieldFocused: Bool
     @State private var metadataEditorTarget: UUID?
     @State private var inlineTitleEditID: UUID?
     @State private var inlineTitleDraft = ""
@@ -137,7 +139,12 @@ struct ContentView: View {
             }
 
             KeyboardCommandMonitor(
-                focusLibrarySearch: { searchFieldFocused = true },
+                focusLibrarySearch: focusLibrarySearch,
+                openPDFSearch: openPDFSearch,
+                closePDFSearch: closePDFSearch,
+                previousPDFSearchResult: pdfController.previousSearchResult,
+                nextPDFSearchResult: pdfController.nextSearchResult,
+                isPDFSearchPresented: isPDFSearchPresented,
                 beginTitleEdit: beginInlineTitleEdit
             )
             .frame(width: 0, height: 0)
@@ -278,11 +285,22 @@ struct ContentView: View {
                     }
                 )
                 .id(paper.id)
-                .overlay {
+                .overlay(alignment: .topTrailing) {
                     if let documentError {
                         DocumentErrorView(message: documentError)
                     }
+
+                    if isPDFSearchPresented, documentError == nil {
+                        PDFSearchOverlay(
+                            controller: pdfController,
+                            searchFieldFocused: $pdfSearchFieldFocused,
+                            close: closePDFSearch
+                        )
+                        .padding(12)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                 }
+                .animation(.easeOut(duration: 0.15), value: isPDFSearchPresented)
             } else {
                 UnavailablePaperView(paperName: paper.title) {
                     presentRelinker(for: paper.id)
@@ -295,6 +313,32 @@ struct ContentView: View {
                 description: Text("导入或从左侧选择 PDF 开始阅读。")
             )
         }
+    }
+
+    private func openPDFSearch() {
+        guard libraryStore.selectedPaper != nil,
+              activeAccess != nil,
+              documentError == nil else {
+            focusLibrarySearch()
+            return
+        }
+        isPDFSearchPresented = true
+        Task { @MainActor in
+            await Task.yield()
+            pdfSearchFieldFocused = true
+        }
+    }
+
+    private func closePDFSearch() {
+        isPDFSearchPresented = false
+        pdfSearchFieldFocused = false
+        pdfController.searchText = ""
+        pdfController.clearSearchResults()
+    }
+
+    private func focusLibrarySearch() {
+        closePDFSearch()
+        searchFieldFocused = true
     }
 
     // MARK: - 行内改标题
@@ -399,6 +443,7 @@ struct ContentView: View {
     }
 
     private func openSelectedPaper() {
+        closePDFSearch()
         documentError = nil
         activeAccess = libraryStore.selectedPaperID.flatMap {
             libraryStore.resolveFile(for: $0)
@@ -412,6 +457,71 @@ struct ContentView: View {
         }
         libraryStore.removePaper(id: id)
         openSelectedPaper()
+    }
+}
+
+private struct PDFSearchOverlay: View {
+    @ObservedObject var controller: PDFReaderController
+    var searchFieldFocused: FocusState<Bool>.Binding
+    let close: () -> Void
+    @State private var pendingSearch: Task<Void, Never>?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            TextField("搜索 PDF", text: $controller.searchText)
+                .textFieldStyle(.plain)
+                .focused(searchFieldFocused)
+                .frame(minWidth: 170)
+                .onSubmit(controller.nextSearchResult)
+                .onChange(of: controller.searchText) {
+                    scheduleSearch()
+                }
+
+            Text(controller.searchResultLabel ?? "0 / 0")
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .frame(minWidth: 42, alignment: .trailing)
+
+            Button(action: controller.previousSearchResult) {
+                Image(systemName: "chevron.up")
+            }
+            .help("上一个匹配（⇧↩）")
+            .disabled(!controller.canNavigateSearchResults)
+
+            Button(action: controller.nextSearchResult) {
+                Image(systemName: "chevron.down")
+            }
+            .help("下一个匹配（↩）")
+            .disabled(!controller.canNavigateSearchResults)
+
+            Button(action: close) {
+                Image(systemName: "xmark")
+            }
+            .help("关闭（Esc）")
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(.separator.opacity(0.7), lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+        .onExitCommand(perform: close)
+        .onDisappear {
+            pendingSearch?.cancel()
+        }
+    }
+
+    private func scheduleSearch() {
+        pendingSearch?.cancel()
+        controller.searchTextDidChange()
+        pendingSearch = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled else { return }
+            controller.search()
+        }
     }
 }
 
@@ -609,17 +719,32 @@ private struct FileDropReceiver: NSViewRepresentable {
 /// 无界面的窗口级快捷键监听，避免用隐藏 Button 产生焦点环或点击区域。
 private struct KeyboardCommandMonitor: NSViewRepresentable {
     let focusLibrarySearch: () -> Void
+    let openPDFSearch: () -> Void
+    let closePDFSearch: () -> Void
+    let previousPDFSearchResult: () -> Void
+    let nextPDFSearchResult: () -> Void
+    let isPDFSearchPresented: Bool
     let beginTitleEdit: () -> Bool
 
     func makeNSView(context: Context) -> KeyboardCommandMonitoringView {
         KeyboardCommandMonitoringView(
             focusLibrarySearch: focusLibrarySearch,
+            openPDFSearch: openPDFSearch,
+            closePDFSearch: closePDFSearch,
+            previousPDFSearchResult: previousPDFSearchResult,
+            nextPDFSearchResult: nextPDFSearchResult,
+            isPDFSearchPresented: isPDFSearchPresented,
             beginTitleEdit: beginTitleEdit
         )
     }
 
     func updateNSView(_ nsView: KeyboardCommandMonitoringView, context: Context) {
         nsView.focusLibrarySearch = focusLibrarySearch
+        nsView.openPDFSearch = openPDFSearch
+        nsView.closePDFSearch = closePDFSearch
+        nsView.previousPDFSearchResult = previousPDFSearchResult
+        nsView.nextPDFSearchResult = nextPDFSearchResult
+        nsView.isPDFSearchPresented = isPDFSearchPresented
         nsView.beginTitleEdit = beginTitleEdit
     }
 
@@ -630,14 +755,29 @@ private struct KeyboardCommandMonitor: NSViewRepresentable {
 
 private final class KeyboardCommandMonitoringView: NSView {
     var focusLibrarySearch: () -> Void
+    var openPDFSearch: () -> Void
+    var closePDFSearch: () -> Void
+    var previousPDFSearchResult: () -> Void
+    var nextPDFSearchResult: () -> Void
+    var isPDFSearchPresented: Bool
     var beginTitleEdit: () -> Bool
     private var eventMonitor: Any?
 
     init(
         focusLibrarySearch: @escaping () -> Void,
+        openPDFSearch: @escaping () -> Void,
+        closePDFSearch: @escaping () -> Void,
+        previousPDFSearchResult: @escaping () -> Void,
+        nextPDFSearchResult: @escaping () -> Void,
+        isPDFSearchPresented: Bool,
         beginTitleEdit: @escaping () -> Bool
     ) {
         self.focusLibrarySearch = focusLibrarySearch
+        self.openPDFSearch = openPDFSearch
+        self.closePDFSearch = closePDFSearch
+        self.previousPDFSearchResult = previousPDFSearchResult
+        self.nextPDFSearchResult = nextPDFSearchResult
+        self.isPDFSearchPresented = isPDFSearchPresented
         self.beginTitleEdit = beginTitleEdit
         super.init(frame: .zero)
     }
@@ -678,13 +818,35 @@ private final class KeyboardCommandMonitoringView: NSView {
         guard event.window === window else { return event }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
-        if modifiers == .command,
-           event.charactersIgnoringModifiers?.lowercased() == "f" {
+        if event.charactersIgnoringModifiers?.lowercased() == "f",
+           modifiers == [.command, .option] {
             focusLibrarySearch()
             return nil
         }
 
+        if event.charactersIgnoringModifiers?.lowercased() == "f",
+           modifiers == .command {
+            openPDFSearch()
+            return nil
+        }
+
+        if isPDFSearchPresented, event.keyCode == 53 {
+            closePDFSearch()
+            return nil
+        }
+
         let isReturn = event.keyCode == 36 || event.keyCode == 76
+        if isPDFSearchPresented, isReturn {
+            if modifiers == .shift {
+                previousPDFSearchResult()
+                return nil
+            }
+            if modifiers.isEmpty {
+                nextPDFSearchResult()
+                return nil
+            }
+        }
+
         if modifiers.isEmpty,
            isReturn,
            !(window?.firstResponder is NSTextView),

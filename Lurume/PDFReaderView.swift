@@ -19,12 +19,25 @@ final class PDFReaderController: ObservableObject {
     @Published private(set) var pageCount = 0
     @Published var searchText = ""
     @Published private(set) var searchResultCount = 0
+    @Published private(set) var currentSearchResultIndex: Int?
+    @Published private(set) var activeSearchQuery: String?
 
     weak var pdfView: PDFView?
+    private var searchResults: [PDFSelection] = []
 
     var pageCountLabel: String {
         guard pageCount > 0 else { return "/ —" }
         return "/ \(pageCount)"
+    }
+
+    var searchResultLabel: String? {
+        guard activeSearchQuery != nil else { return nil }
+        guard let currentSearchResultIndex else { return "0 / 0" }
+        return "\(currentSearchResultIndex + 1) / \(searchResultCount)"
+    }
+
+    var canNavigateSearchResults: Bool {
+        !searchResults.isEmpty
     }
 
     func attach(_ pdfView: PDFView) {
@@ -48,18 +61,78 @@ final class PDFReaderController: ObservableObject {
         guard let pdfView, let document = pdfView.document else { return }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else {
-            pdfView.highlightedSelections = nil
-            searchResultCount = 0
+            clearSearchResults()
             return
         }
+        guard activeSearchQuery != query else { return }
 
-        let selections = document.findString(query, withOptions: .caseInsensitive)
-        selections.forEach { $0.color = .systemYellow.withAlphaComponent(0.55) }
-        pdfView.highlightedSelections = selections
-        searchResultCount = selections.count
-        if let first = selections.first {
-            pdfView.go(to: first)
+        clearSearchResults()
+        activeSearchQuery = query
+        searchResults = document.findString(query, withOptions: .caseInsensitive)
+        searchResultCount = searchResults.count
+        if !searchResults.isEmpty {
+            showSearchResult(at: 0)
         }
+    }
+
+    func searchTextDidChange() {
+        guard let activeSearchQuery else { return }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query != activeSearchQuery {
+            clearSearchResults()
+        }
+    }
+
+    func previousSearchResult() {
+        if refreshSearchIfNeeded() {
+            if !searchResults.isEmpty {
+                showSearchResult(at: searchResults.count - 1)
+            }
+            return
+        }
+        moveSearchResult(by: -1)
+    }
+
+    func nextSearchResult() {
+        if refreshSearchIfNeeded() {
+            return
+        }
+        moveSearchResult(by: 1)
+    }
+
+    func clearSearchResults() {
+        searchResults = []
+        searchResultCount = 0
+        currentSearchResultIndex = nil
+        activeSearchQuery = nil
+        pdfView?.highlightedSelections = nil
+    }
+
+    private func moveSearchResult(by offset: Int) {
+        guard !searchResults.isEmpty else { return }
+        let current = currentSearchResultIndex ?? 0
+        let count = searchResults.count
+        let destination = (current + offset + count) % count
+        showSearchResult(at: destination)
+    }
+
+    private func refreshSearchIfNeeded() -> Bool {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard activeSearchQuery != query else { return false }
+        search()
+        return true
+    }
+
+    private func showSearchResult(at index: Int) {
+        guard searchResults.indices.contains(index), let pdfView else { return }
+        currentSearchResultIndex = index
+        for (resultIndex, selection) in searchResults.enumerated() {
+            selection.color = resultIndex == index
+                ? .systemOrange.withAlphaComponent(0.8)
+                : .systemYellow.withAlphaComponent(0.5)
+        }
+        pdfView.highlightedSelections = searchResults
+        pdfView.go(to: searchResults[index])
     }
 
     func updatePageState() {
@@ -249,16 +322,6 @@ struct PDFToolbar: View {
                 Label("放大", systemImage: "plus.magnifyingglass")
             }
             .help("放大")
-
-            TextField("搜索 PDF", text: $controller.searchText)
-                .textFieldStyle(.roundedBorder)
-                .frame(minWidth: 140, idealWidth: 190)
-                .onSubmit(controller.search)
-
-            Button(action: controller.search) {
-                Label("搜索", systemImage: "magnifyingglass")
-            }
-            .help("搜索 PDF")
         }
         .onChange(of: controller.currentPageIndex, initial: true) {
             requestedPage = controller.currentPageIndex + 1
