@@ -503,6 +503,9 @@ struct PDFReaderView: NSViewRepresentable {
             )
             recognizer.buttonMask = 0x1
             recognizer.numberOfClicksRequired = 1
+            // 只观察高亮上的点击；普通点击必须完整交还 PDFKit，
+            // 否则它无法按系统行为清除现有蓝色选区。
+            recognizer.delaysPrimaryMouseButtonEvents = false
             recognizer.delegate = self
             pdfView.addGestureRecognizer(recognizer)
         }
@@ -517,6 +520,15 @@ struct PDFReaderView: NSViewRepresentable {
             if let id = parent.controller.highlightID(at: point) {
                 parent.onHighlightActivated(id)
             }
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: NSGestureRecognizer,
+            shouldAttemptToRecognizeWith event: NSEvent
+        ) -> Bool {
+            guard let pdfView = gestureRecognizer.view as? PDFView else { return false }
+            let point = pdfView.convert(event.locationInWindow, from: nil)
+            return parent.controller.highlightID(at: point) != nil
         }
 
         func gestureRecognizer(

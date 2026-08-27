@@ -117,6 +117,11 @@ final class LurumeSmokeTests: XCTestCase {
             from: page
         )
         XCTAssertEqual(controller.highlightID(at: viewPoint), highlight.id)
+        let ordinaryPoint = pdfView.convert(CGPoint(x: 500, y: 100), from: page)
+        XCTAssertNil(
+            controller.highlightID(at: ordinaryPoint),
+            "普通页面点击不应进入自定义高亮点击手势"
+        )
 
         pdfView.clearSelection()
         controller.activateHighlight(highlight, translate: true)
