@@ -22,10 +22,19 @@ final class LurumeSmokeTests: XCTestCase {
         XCTAssertEqual(controller.searchResultCount, 2)
         XCTAssertEqual(controller.currentSearchResultIndex, 0)
         XCTAssertEqual(controller.searchResultLabel, "1 / 2")
+        XCTAssertTrue(controller.isCurrentSearchSelection(pdfView.currentSelection))
+        XCTAssertEqual(pdfView.currentSelection?.color, .selectedTextBackgroundColor)
+        XCTAssertEqual(pdfView.highlightedSelections?.count, 1)
+        XCTAssertEqual(
+            pdfView.highlightedSelections?.first?.color,
+            .systemYellow.withAlphaComponent(0.5)
+        )
 
         controller.nextSearchResult()
         XCTAssertEqual(controller.currentSearchResultIndex, 1)
         XCTAssertEqual(controller.searchResultLabel, "2 / 2")
+        XCTAssertTrue(controller.isCurrentSearchSelection(pdfView.currentSelection))
+        XCTAssertEqual(pdfView.highlightedSelections?.count, 1)
 
         controller.nextSearchResult()
         XCTAssertEqual(controller.currentSearchResultIndex, 0, "下一项应从末尾循环到开头")
@@ -43,6 +52,11 @@ final class LurumeSmokeTests: XCTestCase {
         XCTAssertEqual(controller.searchResultCount, 1, "输入后立即按 Return 也应先执行新搜索")
         XCTAssertEqual(controller.currentSearchResultIndex, 0)
         XCTAssertEqual(controller.searchResultLabel, "1 / 1")
+        XCTAssertTrue(controller.isCurrentSearchSelection(pdfView.currentSelection))
+        XCTAssertNil(pdfView.highlightedSelections, "单个结果只使用当前选区，不需要普通高亮")
+
+        controller.clearSearchResults()
+        XCTAssertNil(pdfView.currentSelection)
     }
 
     @MainActor

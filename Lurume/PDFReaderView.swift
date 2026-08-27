@@ -101,11 +101,24 @@ final class PDFReaderController: ObservableObject {
     }
 
     func clearSearchResults() {
+        let shouldClearCurrentSelection = isCurrentSearchSelection(pdfView?.currentSelection)
         searchResults = []
         searchResultCount = 0
         currentSearchResultIndex = nil
         activeSearchQuery = nil
         pdfView?.highlightedSelections = nil
+        if shouldClearCurrentSelection {
+            pdfView?.clearSelection()
+        }
+    }
+
+    func isCurrentSearchSelection(_ selection: PDFSelection?) -> Bool {
+        guard let selection,
+              let currentSearchResultIndex,
+              searchResults.indices.contains(currentSearchResultIndex) else {
+            return false
+        }
+        return selection === searchResults[currentSearchResultIndex]
     }
 
     private func moveSearchResult(by offset: Int) {
@@ -128,11 +141,16 @@ final class PDFReaderController: ObservableObject {
         currentSearchResultIndex = index
         for (resultIndex, selection) in searchResults.enumerated() {
             selection.color = resultIndex == index
-                ? .systemOrange.withAlphaComponent(0.8)
+                ? .selectedTextBackgroundColor
                 : .systemYellow.withAlphaComponent(0.5)
         }
-        pdfView.highlightedSelections = searchResults
-        pdfView.go(to: searchResults[index])
+        let currentResult = searchResults[index]
+        let otherResults = searchResults.enumerated().compactMap { resultIndex, selection in
+            resultIndex == index ? nil : selection
+        }
+        pdfView.highlightedSelections = otherResults.isEmpty ? nil : otherResults
+        pdfView.setCurrentSelection(currentResult, animate: true)
+        pdfView.go(to: currentResult)
     }
 
     func updatePageState() {
@@ -248,6 +266,9 @@ struct PDFReaderView: NSViewRepresentable {
                 ) { [weak self, weak pdfView] _ in
                     Task { @MainActor [weak self, weak pdfView] in
                         guard let self, let pdfView else { return }
+                        guard !self.parent.controller.isCurrentSearchSelection(
+                            pdfView.currentSelection
+                        ) else { return }
                         self.parent.onSelectionChanged(self.selectionEvent(from: pdfView))
                     }
                 }
