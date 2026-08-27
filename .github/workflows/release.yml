@@ -13,7 +13,7 @@ jobs:
   build-and-release:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Select Xcode 26
         run: |
@@ -24,7 +24,11 @@ jobs:
           swift --version
 
       - name: Install tooling
-        run: brew install xcodegen create-dmg
+        run: |
+          # runner 镜像预装的第三方 tap 未受信任，会让所有 brew 命令打印审计警告；
+          # 卸掉与本次构建无关的 tap 保持日志干净。
+          brew untap aws/tap >/dev/null 2>&1 || true
+          brew install xcodegen create-dmg
 
       - name: Generate project
         run: xcodegen generate
@@ -77,7 +81,7 @@ jobs:
 
       - name: Upload as workflow artifact (manual runs)
         if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: "Lurume-${{ env.VERSION }}-dmg"
           path: dist/*.dmg
