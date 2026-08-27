@@ -142,24 +142,31 @@ final class TranslationController: ObservableObject {
         selection = newSelection
         translatedText = nil
         state = .waiting
-        isInspectorPresented = true
 
         guard automaticTranslation else { return }
         debounceTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }
-            self?.requestTranslation(targetLanguage: targetLanguage)
+            self?.requestTranslation(
+                targetLanguage: targetLanguage,
+                revealInspector: false
+            )
         }
     }
 
-    func requestTranslation(targetLanguage: Locale.Language) {
+    func requestTranslation(
+        targetLanguage: Locale.Language,
+        revealInspector: Bool = true
+    ) {
+        if revealInspector {
+            isInspectorPresented = true
+        }
         cancelWorkForNewGeneration()
         guard let selection else { return }
         guard let sourceLanguage = sourceLanguageRecognizer.language(
             for: selection.languageSample
         ) else {
             state = .failed("无法识别原文语言。请尝试选择更长的文本。")
-            isInspectorPresented = true
             return
         }
 
@@ -171,7 +178,6 @@ final class TranslationController: ObservableObject {
         if let cached = cache[cacheKey] {
             translatedText = cached
             state = .success
-            isInspectorPresented = true
             return
         }
 
@@ -184,7 +190,6 @@ final class TranslationController: ObservableObject {
         )
         pendingRequest = request
         state = .waiting
-        isInspectorPresented = true
 
         if var currentConfiguration = configuration,
            currentConfiguration.source == sourceLanguage,

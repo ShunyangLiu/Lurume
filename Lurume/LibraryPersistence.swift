@@ -52,6 +52,7 @@ enum LibraryMigrations {
                     ),
                     bookmarkData: paper.bookmarkData,
                     displayName: paper.displayName,
+                    originalFileName: Self.originalFileName(for: paper),
                     dateAdded: paper.dateAdded,
                     lastOpenedAt: paper.lastOpenedAt,
                     lastPageIndex: paper.lastPageIndex
@@ -59,6 +60,11 @@ enum LibraryMigrations {
             },
             selectedPaperID: legacy.selectedPaperID
         )
+    }
+
+    private static func originalFileName(for paper: PaperRecordV1) -> String {
+        let pathName = (paper.fallbackPath as NSString).lastPathComponent
+        return pathName.isEmpty ? paper.displayName : pathName
     }
 }
 

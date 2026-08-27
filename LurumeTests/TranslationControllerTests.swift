@@ -144,6 +144,40 @@ final class TranslationControllerTests: XCTestCase {
         XCTAssertEqual(controller.state, .waiting)
     }
 
+    func testAutomaticTranslationDoesNotReopenHiddenInspector() async {
+        let controller = makeController()
+        controller.isInspectorPresented = false
+        controller.receiveSelection(
+            PDFSelectionEvent(rawText: "Original", pageIndex: 0),
+            paperID: UUID(),
+            paperName: "Paper",
+            automaticTranslation: true,
+            targetLanguage: Locale.Language(identifier: "zh-Hans")
+        )
+
+        try? await Task.sleep(for: .milliseconds(300))
+
+        XCTAssertFalse(controller.isInspectorPresented)
+        XCTAssertNotNil(controller.configuration)
+    }
+
+    func testManualTranslationReopensHiddenInspector() {
+        let controller = makeController()
+        let target = Locale.Language(identifier: "zh-Hans")
+        controller.receiveSelection(
+            PDFSelectionEvent(rawText: "Original", pageIndex: 0),
+            paperID: UUID(),
+            paperName: "Paper",
+            automaticTranslation: false,
+            targetLanguage: target
+        )
+        controller.isInspectorPresented = false
+
+        controller.requestTranslation(targetLanguage: target)
+
+        XCTAssertTrue(controller.isInspectorPresented)
+    }
+
     func testShortTermUsesPageContextForSourceLanguage() {
         let controller = TranslationController(
             sourceLanguageRecognizer: ContextAwareSourceLanguageRecognizer()

@@ -42,6 +42,21 @@ enum MetadataField: String, Codable, Hashable, Sendable, CaseIterable {
     case year
 }
 
+enum PaperYearInput: Equatable, Sendable {
+    case empty
+    case value(Int)
+    case invalid
+}
+
+enum PaperYearRules {
+    static func parse(_ raw: String) -> PaperYearInput {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .empty }
+        guard let year = Int(trimmed) else { return .invalid }
+        return .value(year)
+    }
+}
+
 /// PDF 文件自带的标题与作者属性读取结果。
 struct PaperMetadata: Equatable, Sendable {
     let title: String?
@@ -72,7 +87,7 @@ enum PaperTitleRules {
         _ raw: String?,
         comparingAgainstFileName fileName: String?
     ) -> String? {
-        guard var usable = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+        guard let usable = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
               !usable.isEmpty else {
             return nil
         }
@@ -119,12 +134,31 @@ struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
         )
     }
 
+    var fallbackTitle: String {
+        let stem = (originalFileName as NSString).deletingPathExtension
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return stem.isEmpty ? originalFileName : stem
+    }
+
+    var librarySubtitle: String? {
+        var segments: [String] = []
+        if let authors = authors?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !authors.isEmpty {
+            segments.append(authors)
+        }
+        if let year {
+            segments.append(String(year))
+        }
+        return segments.isEmpty ? nil : segments.joined(separator: " · ")
+    }
+
     /// 导入与迁移共用：标题以文件名起步，等待一次性自动补全或用户编辑。
     init(
         id: UUID = UUID(),
         identity: FileIdentity,
         bookmarkData: Data,
         displayName: String,
+        originalFileName: String? = nil,
         dateAdded: Date = Date(),
         lastOpenedAt: Date? = nil,
         lastPageIndex: Int = 0
@@ -134,7 +168,7 @@ struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
         self.documentIdentifier = identity.documentIdentifier
         self.bookmarkData = bookmarkData
         self.fallbackPath = identity.fallbackPath
-        self.originalFileName = displayName
+        self.originalFileName = originalFileName ?? displayName
         self.title = displayName
         self.authors = nil
         self.year = nil
@@ -147,17 +181,37 @@ struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
 
     mutating func replaceFileReference(
         identity: FileIdentity,
-        bookmarkData: Data
+        bookmarkData: Data,
+        originalFileName: String
     ) {
+        let previousFallbackTitle = fallbackTitle
         volumeUUID = identity.volumeUUID
         documentIdentifier = identity.documentIdentifier
         fallbackPath = identity.fallbackPath
         self.bookmarkData = bookmarkData
+        self.originalFileName = originalFileName
+        if !manuallyEditedFields.contains(.title), title == previousFallbackTitle {
+            title = fallbackTitle
+        }
+    }
+
+    /// 修复早期 v2 构建把回退标题误存为 originalFileName 的记录。
+    @discardableResult
+    mutating func synchronizeOriginalFileNameWithFallbackPath() -> Bool {
+        let pathName = (fallbackPath as NSString).lastPathComponent
+        guard !pathName.isEmpty, pathName != originalFileName else { return false }
+
+        let previousFallbackTitle = fallbackTitle
+        originalFileName = pathName
+        if !manuallyEditedFields.contains(.title), title == previousFallbackTitle {
+            title = fallbackTitle
+        }
+        return true
     }
 
     mutating func setManualTitle(_ newValue: String) {
         let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        title = trimmed.isEmpty ? originalFileName : trimmed
+        title = trimmed.isEmpty ? fallbackTitle : trimmed
         manuallyEditedFields.insert(.title)
     }
 

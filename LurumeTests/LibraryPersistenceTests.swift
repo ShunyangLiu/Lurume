@@ -98,7 +98,7 @@ final class LibraryPersistenceTests: XCTestCase {
         XCTAssertEqual(migrated.bookmarkData, Data([0, 1, 2]))
         XCTAssertEqual(migrated.fallbackPath, "/tmp/paper.pdf")
         XCTAssertEqual(migrated.title, "Old Display Name")
-        XCTAssertEqual(migrated.originalFileName, "Old Display Name")
+        XCTAssertEqual(migrated.originalFileName, "paper.pdf")
         XCTAssertNil(migrated.authors)
         XCTAssertNil(migrated.year)
         XCTAssertTrue(migrated.manuallyEditedFields.isEmpty)

@@ -1,11 +1,20 @@
 import Foundation
 
+enum LibraryStoreError: LocalizedError, Equatable {
+    case persistenceUnavailable
+
+    var errorDescription: String? {
+        "文献库当前为只读状态。为保护原有数据，无法保存这项操作。"
+    }
+}
+
 @MainActor
 final class LibraryStore: ObservableObject {
     @Published private(set) var papers: [PaperRecord] = []
     @Published var selectedPaperID: UUID?
     @Published private(set) var unavailablePaperIDs: Set<UUID> = []
     @Published var presentedError: String?
+    @Published private(set) var persistenceFailure: String?
 
     /// 载入失败或版本无法迁移时为真：所有写盘被禁止，避免静默清空重建用户文献库。
     private(set) var persistenceDisabled = false
@@ -60,6 +69,7 @@ final class LibraryStore: ObservableObject {
 
     @discardableResult
     func importPDF(at url: URL) throws -> UUID {
+        try requireWritableLibrary()
         let didStartAccessing = url.startAccessingSecurityScopedResource()
         defer {
             if didStartAccessing {
@@ -80,6 +90,7 @@ final class LibraryStore: ObservableObject {
             identity: identity,
             bookmarkData: bookmarkData,
             displayName: url.deletingPathExtension().lastPathComponent,
+            originalFileName: url.lastPathComponent,
             lastOpenedAt: Date()
         )
         papers.append(record)
@@ -101,6 +112,10 @@ final class LibraryStore: ObservableObject {
 
     func selectPaper(id: UUID?) {
         guard selectedPaperID != id else { return }
+        if persistenceDisabled {
+            selectedPaperID = id
+            return
+        }
         flushPendingSave()
         selectedPaperID = id
         if let id, let index = papers.firstIndex(where: { $0.id == id }) {
@@ -110,6 +125,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func removePaper(id: UUID) {
+        guard rejectMutationIfReadOnly() == false else { return }
         flushPendingSave()
         papers.removeAll { $0.id == id }
         unavailablePaperIDs.remove(id)
@@ -120,6 +136,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func updatePageIndex(_ pageIndex: Int, for paperID: UUID) {
+        guard !persistenceDisabled else { return }
         guard let index = papers.firstIndex(where: { $0.id == paperID }) else { return }
         let normalizedIndex = max(0, pageIndex)
         guard papers[index].lastPageIndex != normalizedIndex else { return }
@@ -130,6 +147,7 @@ final class LibraryStore: ObservableObject {
     // MARK: - 手动编辑
 
     func setManualTitle(_ value: String, for id: UUID) {
+        guard rejectMutationIfReadOnly() == false else { return }
         guard let index = papers.firstIndex(where: { $0.id == id }) else { return }
         papers[index].setManualTitle(value)
         flushPendingSave()
@@ -137,6 +155,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func setManualAuthors(_ value: String?, for id: UUID) {
+        guard rejectMutationIfReadOnly() == false else { return }
         guard let index = papers.firstIndex(where: { $0.id == id }) else { return }
         papers[index].setManualAuthors(value)
         flushPendingSave()
@@ -144,6 +163,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func setManualYear(_ value: Int?, for id: UUID) {
+        guard rejectMutationIfReadOnly() == false else { return }
         guard let index = papers.firstIndex(where: { $0.id == id }) else { return }
         papers[index].setManualYear(value)
         flushPendingSave()
@@ -170,9 +190,11 @@ final class LibraryStore: ObservableObject {
             var didUpdateReference = false
             if let resolvedIdentity = try? FileIdentity(url: resolved.url),
                papers[index].identity != resolvedIdentity {
-                papers[index].volumeUUID = resolvedIdentity.volumeUUID
-                papers[index].documentIdentifier = resolvedIdentity.documentIdentifier
-                papers[index].fallbackPath = resolvedIdentity.fallbackPath
+                papers[index].replaceFileReference(
+                    identity: resolvedIdentity,
+                    bookmarkData: papers[index].bookmarkData,
+                    originalFileName: resolved.url.lastPathComponent
+                )
                 didUpdateReference = true
             }
             if resolved.refreshedBookmarkData != nil || didUpdateReference {
@@ -188,6 +210,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func relinkPaper(id: UUID, to url: URL) throws {
+        try requireWritableLibrary()
         guard let index = papers.firstIndex(where: { $0.id == id }) else { return }
         let didStartAccessing = url.startAccessingSecurityScopedResource()
         defer {
@@ -200,7 +223,8 @@ final class LibraryStore: ObservableObject {
         let bookmarkData = try SecurityScopedFile.makeBookmark(for: url)
         papers[index].replaceFileReference(
             identity: identity,
-            bookmarkData: bookmarkData
+            bookmarkData: bookmarkData,
+            originalFileName: url.lastPathComponent
         )
         unavailablePaperIDs.remove(id)
         try saveNow()
@@ -218,15 +242,23 @@ final class LibraryStore: ObservableObject {
         do {
             let loaded = try persistence.load()
             papers = loaded.snapshot.papers
+            let repairedCurrentRecords = papers.indices.reduce(into: false) { repaired, index in
+                if papers[index].synchronizeOriginalFileNameWithFallbackPath() {
+                    repaired = true
+                }
+            }
             selectedPaperID = loaded.snapshot.selectedPaperID.flatMap { selectedID in
                 papers.contains(where: { $0.id == selectedID }) ? selectedID : nil
             }
-            if loaded.migratedFromLegacy {
-                persistReportingErrors()
+            if loaded.migratedFromLegacy || repairedCurrentRecords {
+                do {
+                    try persistence.save(snapshot)
+                } catch {
+                    disablePersistence(because: error)
+                }
             }
         } catch {
-            persistenceDisabled = true
-            presentedError = error.localizedDescription
+            disablePersistence(because: error)
         }
     }
 
@@ -241,7 +273,7 @@ final class LibraryStore: ObservableObject {
     }
 
     private func saveNow() throws {
-        guard !persistenceDisabled else { return }
+        try requireWritableLibrary()
         try persistence.save(snapshot)
     }
 
@@ -260,6 +292,25 @@ final class LibraryStore: ObservableObject {
         } catch {
             presentedError = error.localizedDescription
         }
+    }
+
+    private func requireWritableLibrary() throws {
+        guard !persistenceDisabled else {
+            throw LibraryStoreError.persistenceUnavailable
+        }
+    }
+
+    @discardableResult
+    private func rejectMutationIfReadOnly() -> Bool {
+        guard persistenceDisabled else { return false }
+        presentedError = LibraryStoreError.persistenceUnavailable.localizedDescription
+        return true
+    }
+
+    private func disablePersistence(because error: Error) {
+        persistenceDisabled = true
+        persistenceFailure = error.localizedDescription
+        presentedError = error.localizedDescription
     }
 
     private func setUnavailable(_ unavailable: Bool, for paperID: UUID) {

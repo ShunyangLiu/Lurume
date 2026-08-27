@@ -107,6 +107,26 @@ final class PaperMetadataTests: XCTestCase {
         XCTAssertNil(record.authors)
     }
 
+    func testLibrarySubtitleContainsOnlyAuthorsAndYear() {
+        var record = makeRecord()
+        XCTAssertNil(record.librarySubtitle)
+
+        record.authors = "  Alice, Bob  "
+        XCTAssertEqual(record.librarySubtitle, "Alice, Bob")
+
+        record.year = 2026
+        XCTAssertEqual(record.librarySubtitle, "Alice, Bob · 2026")
+
+        record.authors = nil
+        XCTAssertEqual(record.librarySubtitle, "2026")
+    }
+
+    func testYearInputDistinguishesEmptyValidAndInvalidValues() {
+        XCTAssertEqual(PaperYearRules.parse("  \n"), .empty)
+        XCTAssertEqual(PaperYearRules.parse(" 2024 "), .value(2024))
+        XCTAssertEqual(PaperYearRules.parse("20xx"), .invalid)
+    }
+
     func testInaccessibleFileDoesNotConsumeTheSingleAutoRead() {
         var record = makeRecord()
         record.applyAutoMetadata(nil)
@@ -164,6 +184,7 @@ final class PaperMetadataTests: XCTestCase {
         let paper = try XCTUnwrap(harness.store.papers.first { $0.id == id })
         XCTAssertEqual(paper.title, "Attention Mechanisms Survey")
         XCTAssertEqual(paper.authors, "Yun Li")
+        XCTAssertEqual(paper.originalFileName, "attention.pdf")
     }
 
     @MainActor
@@ -229,6 +250,7 @@ final class PaperMetadataTests: XCTestCase {
         let store = LibraryStore(persistence: harness.persistence, metadataReader: StaticMetadataReader(nil))
 
         XCTAssertEqual(store.papers.map(\.title), ["legacy-name"])
+        XCTAssertEqual(store.papers.map(\.originalFileName), ["legacy.pdf"])
         XCTAssertEqual(store.papers.map(\.lastPageIndex), [5])
         XCTAssertEqual(store.selectedPaperID, legacyID)
         XCTAssertFalse(store.persistenceDisabled)
@@ -241,6 +263,36 @@ final class PaperMetadataTests: XCTestCase {
     }
 
     @MainActor
+    func testStoreRepairsOriginalFileNameWrittenByEarlyV2Build() async throws {
+        let harness = try StoreHarness(reader: StaticMetadataReader(nil))
+        var record = PaperRecord(
+            identity: FileIdentity(
+                volumeUUID: nil,
+                documentIdentifier: nil,
+                fallbackPath: harness.directory.appendingPathComponent("legacy-v2.pdf").path
+            ),
+            bookmarkData: Data(),
+            displayName: "legacy-v2"
+        )
+        record.originalFileName = "legacy-v2"
+        try harness.persistence.save(LibrarySnapshot(
+            schemaVersion: LibrarySchema.currentVersion,
+            papers: [record],
+            selectedPaperID: record.id
+        ))
+
+        let store = LibraryStore(
+            persistence: harness.persistence,
+            metadataReader: StaticMetadataReader(nil)
+        )
+
+        XCTAssertEqual(store.papers.first?.originalFileName, "legacy-v2.pdf")
+        XCTAssertEqual(store.papers.first?.title, "legacy-v2")
+        let reloaded = try harness.persistence.load()
+        XCTAssertEqual(reloaded.snapshot.papers.first?.originalFileName, "legacy-v2.pdf")
+    }
+
+    @MainActor
     func testCorruptLibraryDisablesPersistenceWithoutOverwritingFile() async throws {
         let harness = try StoreHarness(reader: StaticMetadataReader(nil))
         let corruptBytes = Data("{ not a library".utf8)
@@ -250,6 +302,12 @@ final class PaperMetadataTests: XCTestCase {
 
         XCTAssertTrue(store.persistenceDisabled)
         XCTAssertNotNil(store.presentedError)
+
+        let importURL = harness.paperURL(named: "must-not-appear")
+        XCTAssertThrowsError(try store.importPDF(at: importURL)) { error in
+            XCTAssertEqual(error as? LibraryStoreError, .persistenceUnavailable)
+        }
+        XCTAssertTrue(store.papers.isEmpty)
 
         // 任何写路径都不允许覆盖损坏文件。
         try (corruptBytes + Data([0xFF])).write(to: harness.libraryFileURL)

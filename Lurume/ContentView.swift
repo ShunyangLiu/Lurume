@@ -41,7 +41,8 @@ struct ContentView: View {
 
     /// Return 改名快捷键只在没有文本输入进行时生效。
     private var returnShortcutDisabled: Bool {
-        inlineTitleEditID != nil
+        libraryStore.persistenceDisabled
+            || inlineTitleEditID != nil
             || metadataEditorTarget != nil
             || searchFieldFocused
             || libraryStore.selectedPaperID == nil
@@ -64,6 +65,7 @@ struct ContentView: View {
                         Label("导入 PDF", systemImage: "plus")
                     }
                     .help("导入 PDF")
+                    .disabled(libraryStore.persistenceDisabled)
 
                     if libraryStore.selectedPaper != nil {
                         PDFToolbar(controller: pdfController)
@@ -80,6 +82,7 @@ struct ContentView: View {
             )
             .overlay {
                 FileDropReceiver { urls in
+                    guard !libraryStore.persistenceDisabled else { return }
                     let pdfURLs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
                     guard !pdfURLs.isEmpty else { return }
                     libraryStore.importPDFs(at: pdfURLs)
@@ -141,17 +144,12 @@ struct ContentView: View {
                 )
             }
 
-            // 隐藏的全局快捷键：⌘F 聚焦文献库搜索，Return 进入标题改名（Finder 习惯）。
-            Button(action: { searchFieldFocused = true }) {
-                Color.clear.frame(width: 0, height: 0)
-            }
-            .keyboardShortcut("f", modifiers: .command)
-
-            Button(action: beginInlineTitleEdit) {
-                Color.clear.frame(width: 0, height: 0)
-            }
-            .keyboardShortcut(.return, modifiers: [])
-            .disabled(returnShortcutDisabled)
+            KeyboardCommandMonitor(
+                focusLibrarySearch: { searchFieldFocused = true },
+                beginTitleEdit: beginInlineTitleEdit
+            )
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
         }
     }
 
@@ -182,20 +180,29 @@ struct ContentView: View {
                             Button("编辑文献信息…") {
                                 metadataEditorTarget = paper.id
                             }
+                            .disabled(libraryStore.persistenceDisabled)
                         }
                         if libraryStore.unavailablePaperIDs.contains(paper.id) {
                             Button("重新定位…") {
                                 presentRelinker(for: paper.id)
                             }
+                            .disabled(libraryStore.persistenceDisabled)
                         }
                         Button("移除引用", role: .destructive) {
                             removePaper(paper.id)
                         }
+                        .disabled(libraryStore.persistenceDisabled)
                     }
                 }
             }
             .overlay {
-                if libraryStore.papers.isEmpty {
+                if libraryStore.persistenceDisabled {
+                    ContentUnavailableView(
+                        "文献库处于只读状态",
+                        systemImage: "lock.trianglebadge.exclamationmark",
+                        description: Text("无法安全载入或升级文献库。原有数据未被覆盖，请先修复文献库后再导入或编辑。")
+                    )
+                } else if libraryStore.papers.isEmpty {
                     ContentUnavailableView(
                         "尚未导入论文",
                         systemImage: "doc.text.magnifyingglass",
@@ -287,11 +294,12 @@ struct ContentView: View {
 
     // MARK: - 行内改标题
 
-    private func beginInlineTitleEdit() {
+    @discardableResult
+    private func beginInlineTitleEdit() -> Bool {
         guard !returnShortcutDisabled,
               !(NSApp.keyWindow?.firstResponder is NSTextView),
               let paper = libraryStore.selectedPaper else {
-            return
+            return false
         }
         inlineTitleDraft = paper.title
         inlineTitleEditID = paper.id
@@ -299,6 +307,7 @@ struct ContentView: View {
             try? await Task.sleep(for: .milliseconds(60))
             inlineTitleFieldFocused = true
         }
+        return true
     }
 
     private func commitActiveInlineTitleEdit() {
@@ -438,29 +447,13 @@ private struct PaperRow: View {
             Text("文件不可用")
                 .font(.caption)
                 .foregroundStyle(.orange)
-        } else {
-            Text(detailSegments.joined(separator: " · "))
+        } else if let subtitle = paper.librarySubtitle {
+            Text(subtitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .help(paper.originalFileName)
         }
-    }
-
-    /// 作者 · 年份 · 阅读进度，缺省片段自动跳过。
-    private var detailSegments: [String] {
-        var segments: [String] = []
-        if let authors = paper.authors?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !authors.isEmpty {
-            segments.append(authors)
-        }
-        if let year = paper.year {
-            segments.append(String(year))
-        }
-        if paper.lastOpenedAt != nil {
-            segments.append("第 \(paper.lastPageIndex + 1) 页")
-        }
-        return segments
     }
 }
 
@@ -484,6 +477,11 @@ private struct MetadataFormView: View {
                 TextField("标题", text: $titleText)
                 TextField("作者", text: $authorsText)
                 TextField("年份（如 2023）", text: $yearText)
+                if case .invalid = parsedYearInput {
+                    Text("年份必须是整数，或留空。")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -504,6 +502,7 @@ private struct MetadataFormView: View {
                 Button("保存", action: save)
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
+                    .disabled(parsedYearInput == .invalid || libraryStore.persistenceDisabled)
             }
         }
         .padding(20)
@@ -520,6 +519,7 @@ private struct MetadataFormView: View {
     }
 
     private func save() {
+        guard parsedYearInput != .invalid else { return }
         // 只提交发生变化的字段，避免未触碰的字段被误标记为手动维护。
         if titleText.trimmingCharacters(in: .whitespacesAndNewlines) != paper.title {
             libraryStore.setManualTitle(titleText, for: paper.id)
@@ -527,12 +527,24 @@ private struct MetadataFormView: View {
         if authorsText.trimmingCharacters(in: .whitespacesAndNewlines) != (paper.authors ?? "") {
             libraryStore.setManualAuthors(authorsText, for: paper.id)
         }
-        let parsedYear = Int(yearText.trimmingCharacters(in: .whitespaces))
+        let parsedYear: Int?
+        switch parsedYearInput {
+        case .empty:
+            parsedYear = nil
+        case let .value(year):
+            parsedYear = year
+        case .invalid:
+            return
+        }
         if parsedYear != paper.year {
             libraryStore.setManualYear(parsedYear, for: paper.id)
         }
         dismiss()
         onClose()
+    }
+
+    private var parsedYearInput: PaperYearInput {
+        PaperYearRules.parse(yearText)
     }
 
     private func closeWithoutSaving() {
@@ -586,6 +598,96 @@ private struct FileDropReceiver: NSViewRepresentable {
 
     func updateNSView(_ nsView: FileDropReceivingView, context: Context) {
         nsView.onDrop = onDrop
+    }
+}
+
+/// 无界面的窗口级快捷键监听，避免用隐藏 Button 产生焦点环或点击区域。
+private struct KeyboardCommandMonitor: NSViewRepresentable {
+    let focusLibrarySearch: () -> Void
+    let beginTitleEdit: () -> Bool
+
+    func makeNSView(context: Context) -> KeyboardCommandMonitoringView {
+        KeyboardCommandMonitoringView(
+            focusLibrarySearch: focusLibrarySearch,
+            beginTitleEdit: beginTitleEdit
+        )
+    }
+
+    func updateNSView(_ nsView: KeyboardCommandMonitoringView, context: Context) {
+        nsView.focusLibrarySearch = focusLibrarySearch
+        nsView.beginTitleEdit = beginTitleEdit
+    }
+
+    static func dismantleNSView(_ nsView: KeyboardCommandMonitoringView, coordinator: ()) {
+        nsView.stopMonitoring()
+    }
+}
+
+private final class KeyboardCommandMonitoringView: NSView {
+    var focusLibrarySearch: () -> Void
+    var beginTitleEdit: () -> Bool
+    private var eventMonitor: Any?
+
+    init(
+        focusLibrarySearch: @escaping () -> Void,
+        beginTitleEdit: @escaping () -> Bool
+    ) {
+        self.focusLibrarySearch = focusLibrarySearch
+        self.beginTitleEdit = beginTitleEdit
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is unavailable")
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            stopMonitoring()
+        } else {
+            startMonitoringIfNeeded()
+        }
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    func stopMonitoring() {
+        if let eventMonitor {
+            NSEvent.removeMonitor(eventMonitor)
+            self.eventMonitor = nil
+        }
+    }
+
+    private func startMonitoringIfNeeded() {
+        guard eventMonitor == nil else { return }
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handle(event) ?? event
+        }
+    }
+
+    private func handle(_ event: NSEvent) -> NSEvent? {
+        guard event.window === window else { return event }
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+        if modifiers == .command,
+           event.charactersIgnoringModifiers?.lowercased() == "f" {
+            focusLibrarySearch()
+            return nil
+        }
+
+        let isReturn = event.keyCode == 36 || event.keyCode == 76
+        if modifiers.isEmpty,
+           isReturn,
+           !(window?.firstResponder is NSTextView),
+           beginTitleEdit() {
+            return nil
+        }
+
+        return event
     }
 }
 
