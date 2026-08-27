@@ -120,7 +120,8 @@ final class TranslationController: ObservableObject {
         paperID: UUID,
         paperName: String,
         automaticTranslation: Bool,
-        targetLanguage: Locale.Language
+        targetLanguage: Locale.Language,
+        sourceLanguage: Locale.Language? = nil
     ) {
         guard let event else {
             return
@@ -149,6 +150,7 @@ final class TranslationController: ObservableObject {
             guard !Task.isCancelled else { return }
             self?.requestTranslation(
                 targetLanguage: targetLanguage,
+                sourceLanguage: sourceLanguage,
                 revealInspector: false
             )
         }
@@ -156,6 +158,7 @@ final class TranslationController: ObservableObject {
 
     func requestTranslation(
         targetLanguage: Locale.Language,
+        sourceLanguage: Locale.Language? = nil,
         revealInspector: Bool = true
     ) {
         if revealInspector {
@@ -163,16 +166,22 @@ final class TranslationController: ObservableObject {
         }
         cancelWorkForNewGeneration()
         guard let selection else { return }
-        guard let sourceLanguage = sourceLanguageRecognizer.language(
-            for: selection.languageSample
-        ) else {
-            state = .failed("无法识别原文语言。请尝试选择更长的文本。")
-            return
+        let resolvedSourceLanguage: Locale.Language
+        if let sourceLanguage {
+            resolvedSourceLanguage = sourceLanguage
+        } else {
+            guard let recognizedLanguage = sourceLanguageRecognizer.language(
+                for: selection.languageSample
+            ) else {
+                state = .failed("无法识别原文语言。请尝试选择更长的文本。")
+                return
+            }
+            resolvedSourceLanguage = recognizedLanguage
         }
 
         let cacheKey = CacheKey(
             text: selection.normalizedText,
-            sourceIdentifier: sourceLanguage.minimalIdentifier,
+            sourceIdentifier: resolvedSourceLanguage.minimalIdentifier,
             targetIdentifier: targetLanguage.minimalIdentifier
         )
         if let cached = cache[cacheKey] {
@@ -184,7 +193,7 @@ final class TranslationController: ObservableObject {
         let request = RequestContext(
             generation: generation,
             selection: selection,
-            sourceLanguage: sourceLanguage,
+            sourceLanguage: resolvedSourceLanguage,
             targetLanguage: targetLanguage,
             cacheKey: cacheKey
         )
@@ -192,13 +201,13 @@ final class TranslationController: ObservableObject {
         state = .waiting
 
         if var currentConfiguration = configuration,
-           currentConfiguration.source == sourceLanguage,
+           currentConfiguration.source == resolvedSourceLanguage,
            currentConfiguration.target == targetLanguage {
             currentConfiguration.invalidate()
             configuration = currentConfiguration
         } else {
             configuration = TranslationSession.Configuration(
-                source: sourceLanguage,
+                source: resolvedSourceLanguage,
                 target: targetLanguage
             )
         }

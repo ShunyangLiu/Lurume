@@ -201,6 +201,60 @@ final class TranslationControllerTests: XCTestCase {
         XCTAssertEqual(controller.configuration?.target?.minimalIdentifier, "zh")
     }
 
+    func testExplicitEnglishSourceBypassesIncorrectAutomaticRecognition() {
+        let controller = TranslationController(
+            sourceLanguageRecognizer: NorwegianSourceLanguageRecognizer()
+        )
+        let target = Locale.Language(identifier: "zh-Hans")
+        controller.receiveSelection(
+            PDFSelectionEvent(
+                rawText: "decay normalization",
+                pageIndex: 9,
+                languageSample: "Interleaved two-column PDF text"
+            ),
+            paperID: UUID(),
+            paperName: "Paper",
+            automaticTranslation: false,
+            targetLanguage: target
+        )
+
+        controller.requestTranslation(
+            targetLanguage: target,
+            sourceLanguage: Locale.Language(identifier: "en")
+        )
+
+        XCTAssertEqual(controller.configuration?.source?.minimalIdentifier, "en")
+        XCTAssertEqual(controller.configuration?.target?.minimalIdentifier, "zh")
+    }
+
+    func testSettingsDefaultToEnglishSourceAndSimplifiedChineseTarget() {
+        let suiteName = "TranslationControllerTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = AppSettings(defaults: defaults)
+
+        XCTAssertEqual(settings.sourceLanguageIdentifier, "en")
+        XCTAssertEqual(settings.sourceLanguage?.minimalIdentifier, "en")
+        XCTAssertEqual(settings.targetLanguage.minimalIdentifier, "zh")
+    }
+
+    func testSettingsCanPersistAutomaticSourceRecognition() {
+        let suiteName = "TranslationControllerTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = AppSettings(defaults: defaults)
+        settings.sourceLanguageIdentifier = TranslationSourceLanguageOption.automaticID
+        let restored = AppSettings(defaults: defaults)
+
+        XCTAssertNil(restored.sourceLanguage)
+        XCTAssertEqual(
+            restored.sourceLanguageIdentifier,
+            TranslationSourceLanguageOption.automaticID
+        )
+    }
+
     private func makeController() -> TranslationController {
         TranslationController(sourceLanguageRecognizer: FixedSourceLanguageRecognizer())
     }
@@ -216,6 +270,12 @@ private struct ContextAwareSourceLanguageRecognizer: SourceLanguageRecognizing {
     func language(for text: String) -> Locale.Language? {
         guard text.count >= 20 else { return nil }
         return Locale.Language(identifier: "en")
+    }
+}
+
+private struct NorwegianSourceLanguageRecognizer: SourceLanguageRecognizing {
+    func language(for text: String) -> Locale.Language? {
+        Locale.Language(identifier: "nb")
     }
 }
 

@@ -265,7 +265,8 @@ struct ContentView: View {
                             paperID: paper.id,
                             paperName: paper.title,
                             automaticTranslation: appSettings.automaticTranslation,
-                            targetLanguage: appSettings.targetLanguage
+                            targetLanguage: appSettings.targetLanguage,
+                            sourceLanguage: appSettings.sourceLanguage
                         )
                     },
                     onError: { message in

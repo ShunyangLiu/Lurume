@@ -76,7 +76,8 @@ struct TranslationInspector: View {
             if controller.state != .translating && controller.state != .resourcesNeeded {
                 Button("翻译") {
                     controller.requestTranslation(
-                        targetLanguage: settings.targetLanguage
+                        targetLanguage: settings.targetLanguage,
+                        sourceLanguage: settings.sourceLanguage
                     )
                 }
                 .buttonStyle(.borderedProminent)
@@ -142,6 +143,11 @@ struct TranslationSettingsView: View {
         Form {
             Section("翻译") {
                 Toggle("自动翻译选中文字", isOn: $settings.automaticTranslation)
+                Picker("原文语言", selection: $settings.sourceLanguageIdentifier) {
+                    ForEach(TranslationSourceLanguageOption.common) { language in
+                        Text(language.name).tag(language.id)
+                    }
+                }
                 Picker("目标语言", selection: $settings.targetLanguageIdentifier) {
                     ForEach(TranslationLanguageOption.common) { language in
                         Text(language.name).tag(language.id)
@@ -150,7 +156,7 @@ struct TranslationSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 180)
+        .frame(width: 420, height: 220)
         .navigationTitle("翻译")
     }
 }
