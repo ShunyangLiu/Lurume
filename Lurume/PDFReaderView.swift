@@ -22,9 +22,9 @@ final class PDFReaderController: ObservableObject {
 
     weak var pdfView: PDFView?
 
-    var pageLabel: String {
-        guard pageCount > 0 else { return "— / —" }
-        return "\(currentPageIndex + 1) / \(pageCount)"
+    var pageCountLabel: String {
+        guard pageCount > 0 else { return "/ —" }
+        return "/ \(pageCount)"
     }
 
     func attach(_ pdfView: PDFView) {
@@ -222,16 +222,18 @@ struct PDFToolbar: View {
             }
             .help("上一页")
 
-            TextField("页码", value: $requestedPage, format: .number)
-                .frame(width: 44)
-                .multilineTextAlignment(.trailing)
-                .onSubmit {
-                    controller.go(toOneBasedPage: requestedPage)
-                }
+            HStack(spacing: 4) {
+                TextField("页码", value: $requestedPage, format: .number)
+                    .frame(width: 44)
+                    .multilineTextAlignment(.trailing)
+                    .onSubmit {
+                        controller.go(toOneBasedPage: requestedPage)
+                    }
 
-            Text(controller.pageLabel)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+                Text(controller.pageCountLabel)
+                    .foregroundStyle(.secondary)
+            }
+            .monospacedDigit()
 
             Button(action: controller.nextPage) {
                 Label("下一页", systemImage: "chevron.right")
