@@ -53,7 +53,9 @@ PDF 属性元数据、手动文献信息编辑、文献库搜索，以及由 Lur
 切换为自动识别。
 详见 [P0 原型规格](docs/P0-prototype.md)、[P1 讨论记录](docs/P1-plan.md)、
 [P1 实现计划](docs/P1-implementation-plan.md)与 [P1 验收记录](docs/P1-acceptance.md)。
-P2 的范围、交互和验收标准详见 [P2 高亮阅读计划](docs/P2-plan.md)。
+P2 的范围、交互和验收标准详见 [P2 高亮阅读计划](docs/P2-plan.md)。P3 的基础目录、
+页面缩略图、阅读状态、筛选和排序需求已经确认但尚未实现，详见
+[P3 阅读导航与文献整理计划](docs/P3-plan.md)。
 
 使用 Xcode 26.3 或更新版本打开 `Lurume.xcodeproj`，选择 `Lurume` scheme 即可构建运行。
 工程最低支持 macOS 15，不包含运行时第三方依赖。修改 `project.yml` 后需使用 XcodeGen
