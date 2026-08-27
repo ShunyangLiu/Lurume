@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          echo "Using $XCODE_APP"
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version
+          swift --version
+
+      - name: Install tooling
+        run: brew install xcodegen create-dmg
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build (Release, universal)
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.0.0-dev.$(git rev-parse --short HEAD)"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          xcodebuild \
+            -project Lurume.xcodeproj \
+            -scheme Lurume \
+            -configuration Release \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$VERSION" \
+            -derivedDataPath build \
+            build
+
+      - name: Stage app and verify signature structure
+        run: |
+          mkdir dist
+          cp -R "build/Build/Products/Release/Lurume.app" dist/
+          codesign --verify --deep --strict --verbose=2 dist/Lurume.app
+          lipo -archs dist/Lurume.app/Contents/MacOS/Lurume
+
+      - name: Create DMG
+        run: |
+          cd dist
+          create-dmg \
+            --volname "Lurume $VERSION" \
+            --window-size 560 320 \
+            --icon-size 110 \
+            --icon "Lurume.app" 140 150 \
+            --app-drop-link 420 150 \
+            "Lurume-$VERSION.dmg" "Lurume.app" || true
+          hdiutil verify "Lurume-$VERSION.dmg"
+
+      - name: Attach to GitHub Release (tags only)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Lurume $VERSION" \
+            --generate-notes \
+            "dist/Lurume-$VERSION.dmg"
+
+      - name: Upload as workflow artifact (manual runs)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: "Lurume-${{ env.VERSION }}-dmg"
+          path: dist/*.dmg
