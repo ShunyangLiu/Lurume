@@ -322,7 +322,6 @@ struct ContentView: View {
                         )
                     },
                     onToggleHighlight: toggleCurrentHighlight,
-                    onHighlightActivated: activatePageHighlight,
                     onDeleteHighlight: deleteHighlight,
                     onError: { message in
                         documentError = message
@@ -511,15 +510,6 @@ struct ContentView: View {
             }
         }
         pdfController.clearCurrentSelection()
-    }
-
-    private func activatePageHighlight(_ id: UUID) {
-        guard let highlight = highlightStore.highlight(id: id),
-              highlight.paperID == libraryStore.selectedPaperID else {
-            return
-        }
-        inspectorMode = .translation
-        pdfController.activateHighlight(highlight, translate: true)
     }
 
     private func navigateToHighlight(_ highlight: HighlightRecord) {

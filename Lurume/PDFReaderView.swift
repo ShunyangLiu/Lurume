@@ -42,6 +42,7 @@ final class PDFReaderController: ObservableObject {
     weak var pdfView: PDFView?
     private var searchResults: [PDFSelection] = []
     private var renderedHighlights: [HighlightRecord] = []
+    private weak var renderedHighlightDocument: PDFDocument?
     private var highlightAnnotations: [PDFAnnotation] = []
     private var highlightIDByAnnotation: [ObjectIdentifier: UUID] = [:]
 
@@ -65,6 +66,7 @@ final class PDFReaderController: ObservableObject {
         removeRenderedHighlights()
         self.pdfView = pdfView
         renderedHighlights = []
+        renderedHighlightDocument = nil
         skippedHighlightFragmentCount = 0
     }
 
@@ -191,8 +193,11 @@ final class PDFReaderController: ObservableObject {
 
     func renderHighlights(_ highlights: [HighlightRecord]) {
         guard let pdfView, let document = pdfView.document else { return }
-        guard renderedHighlights != highlights else { return }
+        guard renderedHighlightDocument !== document || renderedHighlights != highlights else {
+            return
+        }
         removeRenderedHighlights()
+        renderedHighlightDocument = document
         renderedHighlights = highlights
         var skippedFragmentCount = 0
 
@@ -375,7 +380,6 @@ struct PDFReaderView: NSViewRepresentable {
     let onPageChanged: (Int) -> Void
     let onSelectionChanged: (PDFSelectionEvent?) -> Void
     let onToggleHighlight: () -> Void
-    let onHighlightActivated: (UUID) -> Void
     let onDeleteHighlight: (UUID) -> Void
     let onError: (String) -> Void
 
@@ -391,7 +395,6 @@ struct PDFReaderView: NSViewRepresentable {
         pdfView.displaysPageBreaks = true
         pdfView.pageShadowsEnabled = true
         context.coordinator.observe(pdfView)
-        context.coordinator.installHighlightClickRecognizer(on: pdfView)
         controller.attach(pdfView)
         configureHighlightActions(on: pdfView)
         loadDocument(in: pdfView, coordinator: context.coordinator)
@@ -493,32 +496,6 @@ struct PDFReaderView: NSViewRepresentable {
                     }
                 }
             )
-        }
-
-        @MainActor
-        func installHighlightClickRecognizer(on pdfView: PDFView) {
-            let recognizer = PassiveHighlightClickGestureRecognizer(
-                target: self,
-                action: #selector(highlightClicked(_:))
-            )
-            recognizer.buttonMask = 0x1
-            recognizer.numberOfClicksRequired = 1
-            // 只观察高亮上的点击；普通点击必须完整交还 PDFKit，
-            // 否则它无法按系统行为清除现有蓝色选区。
-            recognizer.delaysPrimaryMouseButtonEvents = false
-            pdfView.addGestureRecognizer(recognizer)
-        }
-
-        @MainActor
-        @objc private func highlightClicked(_ recognizer: NSClickGestureRecognizer) {
-            guard recognizer.state == .ended,
-                  let pdfView = recognizer.view as? PDFView else {
-                return
-            }
-            let point = recognizer.location(in: pdfView)
-            if let id = parent.controller.highlightID(at: point) {
-                parent.onHighlightActivated(id)
-            }
         }
 
         func scheduleStateUpdate(error: String? = nil) {

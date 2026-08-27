@@ -169,6 +169,31 @@ final class LurumeSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testSameHighlightsAreRevalidatedAfterPDFDocumentChanges() throws {
+        let onePageDocument = try makeBlankPDF(pageCount: 1)
+        let sixPageDocument = try makeBlankPDF(pageCount: 6)
+        let rect = try XCTUnwrap(
+            HighlightRect(cgRect: CGRect(x: 360, y: 660, width: 90, height: 10))
+        )
+        let segment = try XCTUnwrap(HighlightSegment(pageIndex: 5, rects: [rect]))
+        let highlight = try XCTUnwrap(
+            HighlightRecord(paperID: UUID(), rawText: "persisted text", segments: [segment])
+        )
+        let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        let controller = PDFReaderController()
+        controller.attach(pdfView)
+
+        pdfView.document = onePageDocument
+        controller.renderHighlights([highlight])
+        XCTAssertEqual(controller.skippedHighlightFragmentCount, 1)
+
+        pdfView.document = sixPageDocument
+        controller.renderHighlights([highlight])
+        XCTAssertEqual(controller.skippedHighlightFragmentCount, 0)
+        XCTAssertEqual(sixPageDocument.page(at: 5)?.annotations.count, 1)
+    }
+
+    @MainActor
     private func makeSearchablePDF(text: String) -> PDFDocument? {
         let data = NSMutableData()
         var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)
@@ -189,5 +214,20 @@ final class LurumeSmokeTests: XCTestCase {
         context.closePDF()
 
         return PDFDocument(data: data as Data)
+    }
+
+    @MainActor
+    private func makeBlankPDF(pageCount: Int) throws -> PDFDocument {
+        let document = PDFDocument()
+        for index in 0..<pageCount {
+            let image = NSImage(size: NSSize(width: 612, height: 792))
+            image.lockFocus()
+            NSColor.white.setFill()
+            NSRect(origin: .zero, size: image.size).fill()
+            image.unlockFocus()
+            let page = try XCTUnwrap(PDFPage(image: image))
+            document.insert(page, at: index)
+        }
+        return document
     }
 }
