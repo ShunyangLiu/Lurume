@@ -23,4 +23,4 @@ macOS 原型已经完成 P1 并通过验收。当前版本包含本地 PDF 引�
 
 使用 Xcode 26.3 或更新版本打开 `Lurume.xcodeproj`，选择 `Lurume` scheme 即可构建运行。
 工程最低支持 macOS 15，不包含运行时第三方依赖。修改 `project.yml` 后需使用 XcodeGen
-重新生成工程。开源许可证和长期整体架构仍待确定。
+重新生成工程。项目以 [MIT 许可证](LICENSE)发布。
