@@ -11,8 +11,9 @@ final class LurumeSmokeTests: XCTestCase {
     @MainActor
     func testPDFSearchNavigatesAndWrapsThroughMatches() throws {
         let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta alpha"))
-        let pdfView = PDFView()
+        let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
         pdfView.document = document
+        pdfView.layoutSubtreeIfNeeded()
         let controller = PDFReaderController()
         controller.attach(pdfView)
         controller.searchText = "alpha"
@@ -28,6 +29,21 @@ final class LurumeSmokeTests: XCTestCase {
         XCTAssertEqual(
             pdfView.highlightedSelections?.first?.color,
             .systemYellow.withAlphaComponent(0.5)
+        )
+        let currentSelection = try XCTUnwrap(pdfView.currentSelection)
+        let currentPage = try XCTUnwrap(currentSelection.pages.first)
+        let documentView = try XCTUnwrap(pdfView.documentView)
+        let scrollView = try XCTUnwrap(documentView.enclosingScrollView)
+        let selectionInPDFView = pdfView.convert(
+            currentSelection.bounds(for: currentPage),
+            from: currentPage
+        )
+        let selectionInDocument = pdfView.convert(selectionInPDFView, to: documentView)
+        XCTAssertEqual(
+            selectionInDocument.midY,
+            scrollView.contentView.bounds.midY,
+            accuracy: 2,
+            "当前匹配项应位于阅读视口的垂直中央"
         )
 
         controller.nextSearchResult()
@@ -57,6 +73,19 @@ final class LurumeSmokeTests: XCTestCase {
 
         controller.clearSearchResults()
         XCTAssertNil(pdfView.currentSelection)
+
+        let centeredOrigin = PDFSearchViewport.centeredScrollOrigin(
+            targetCenter: CGPoint(x: 700, y: 1_200),
+            viewportSize: CGSize(width: 400, height: 600),
+            documentBounds: CGRect(x: 0, y: 0, width: 1_000, height: 2_000)
+        )
+        XCTAssertEqual(centeredOrigin, CGPoint(x: 500, y: 900))
+        let clampedOrigin = PDFSearchViewport.centeredScrollOrigin(
+            targetCenter: CGPoint(x: 20, y: 1_950),
+            viewportSize: CGSize(width: 400, height: 600),
+            documentBounds: CGRect(x: 0, y: 0, width: 1_000, height: 2_000)
+        )
+        XCTAssertEqual(clampedOrigin, CGPoint(x: 0, y: 1_400))
     }
 
     @MainActor
@@ -72,7 +101,7 @@ final class LurumeSmokeTests: XCTestCase {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
         (text as NSString).draw(
-            at: NSPoint(x: 72, y: 700),
+            at: NSPoint(x: 72, y: 400),
             withAttributes: [.font: NSFont.systemFont(ofSize: 14)]
         )
         NSGraphicsContext.restoreGraphicsState()

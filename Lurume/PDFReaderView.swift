@@ -13,6 +13,21 @@ struct PDFSelectionEvent: Equatable, Sendable {
     }
 }
 
+enum PDFSearchViewport {
+    static func centeredScrollOrigin(
+        targetCenter: CGPoint,
+        viewportSize: CGSize,
+        documentBounds: CGRect
+    ) -> CGPoint {
+        let maximumX = max(documentBounds.minX, documentBounds.maxX - viewportSize.width)
+        let maximumY = max(documentBounds.minY, documentBounds.maxY - viewportSize.height)
+        return CGPoint(
+            x: min(max(targetCenter.x - viewportSize.width / 2, documentBounds.minX), maximumX),
+            y: min(max(targetCenter.y - viewportSize.height / 2, documentBounds.minY), maximumY)
+        )
+    }
+}
+
 @MainActor
 final class PDFReaderController: ObservableObject {
     @Published private(set) var currentPageIndex = 0
@@ -151,6 +166,28 @@ final class PDFReaderController: ObservableObject {
         pdfView.highlightedSelections = otherResults.isEmpty ? nil : otherResults
         pdfView.setCurrentSelection(currentResult, animate: true)
         pdfView.go(to: currentResult)
+        centerSearchResult(currentResult, in: pdfView)
+    }
+
+    private func centerSearchResult(_ selection: PDFSelection, in pdfView: PDFView) {
+        guard let page = selection.pages.first,
+              let documentView = pdfView.documentView,
+              let scrollView = documentView.enclosingScrollView else {
+            return
+        }
+
+        pdfView.layoutSubtreeIfNeeded()
+        let pageRect = selection.bounds(for: page)
+        let pdfViewRect = pdfView.convert(pageRect, from: page)
+        let documentRect = pdfView.convert(pdfViewRect, to: documentView)
+        let clipView = scrollView.contentView
+        let origin = PDFSearchViewport.centeredScrollOrigin(
+            targetCenter: CGPoint(x: documentRect.midX, y: documentRect.midY),
+            viewportSize: clipView.bounds.size,
+            documentBounds: documentView.bounds
+        )
+        clipView.scroll(to: origin)
+        scrollView.reflectScrolledClipView(clipView)
     }
 
     func updatePageState() {
