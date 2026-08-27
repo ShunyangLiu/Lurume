@@ -139,7 +139,7 @@ struct TranslationInspector: View {
         } else if paperHighlights.isEmpty {
             highlightEmptyState(
                 title: "这篇论文还没有高亮",
-                description: "选择 PDF 文字后按 ⇧⌘H 添加黄色高亮。"
+                description: "选择 PDF 文字后按 ⌃⌘H 添加黄色高亮。"
             )
         } else {
             List(selection: $pdfController.currentHighlightID) {

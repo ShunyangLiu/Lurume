@@ -1,6 +1,18 @@
 import AppKit
 import PDFKit
 
+/// 观察单击但不与 PDFKit 自己的文字选择手势争夺事件。
+@MainActor
+final class PassiveHighlightClickGestureRecognizer: NSClickGestureRecognizer {
+    override func canPrevent(_ preventedGestureRecognizer: NSGestureRecognizer) -> Bool {
+        false
+    }
+
+    override func canBePrevented(by preventingGestureRecognizer: NSGestureRecognizer) -> Bool {
+        false
+    }
+}
+
 @MainActor
 final class HighlightPDFView: PDFView {
     var highlightIDAtEvent: ((NSEvent) -> UUID?)?

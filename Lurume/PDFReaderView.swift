@@ -450,7 +450,7 @@ struct PDFReaderView: NSViewRepresentable {
         coordinator.scheduleStateUpdate()
     }
 
-    final class Coordinator: NSObject, NSGestureRecognizerDelegate, @unchecked Sendable {
+    final class Coordinator: NSObject, @unchecked Sendable {
         var parent: PDFReaderView
         var loadedURL: URL?
         private var observationTokens: [NSObjectProtocol] = []
@@ -497,7 +497,7 @@ struct PDFReaderView: NSViewRepresentable {
 
         @MainActor
         func installHighlightClickRecognizer(on pdfView: PDFView) {
-            let recognizer = NSClickGestureRecognizer(
+            let recognizer = PassiveHighlightClickGestureRecognizer(
                 target: self,
                 action: #selector(highlightClicked(_:))
             )
@@ -506,7 +506,6 @@ struct PDFReaderView: NSViewRepresentable {
             // 只观察高亮上的点击；普通点击必须完整交还 PDFKit，
             // 否则它无法按系统行为清除现有蓝色选区。
             recognizer.delaysPrimaryMouseButtonEvents = false
-            recognizer.delegate = self
             pdfView.addGestureRecognizer(recognizer)
         }
 
@@ -520,22 +519,6 @@ struct PDFReaderView: NSViewRepresentable {
             if let id = parent.controller.highlightID(at: point) {
                 parent.onHighlightActivated(id)
             }
-        }
-
-        func gestureRecognizer(
-            _ gestureRecognizer: NSGestureRecognizer,
-            shouldAttemptToRecognizeWith event: NSEvent
-        ) -> Bool {
-            guard let pdfView = gestureRecognizer.view as? PDFView else { return false }
-            let point = pdfView.convert(event.locationInWindow, from: nil)
-            return parent.controller.highlightID(at: point) != nil
-        }
-
-        func gestureRecognizer(
-            _ gestureRecognizer: NSGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: NSGestureRecognizer
-        ) -> Bool {
-            true
         }
 
         func scheduleStateUpdate(error: String? = nil) {

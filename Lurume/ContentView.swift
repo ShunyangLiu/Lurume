@@ -957,7 +957,7 @@ private final class KeyboardCommandMonitoringView: NSView {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
         if event.charactersIgnoringModifiers?.lowercased() == "h",
-           modifiers == [.command, .shift],
+           modifiers == [.command, .control],
            !(window?.firstResponder is NSTextView) {
             togglePDFHighlight()
             return nil
