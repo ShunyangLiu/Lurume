@@ -58,16 +58,8 @@ struct ContentView: View {
             }
             .frame(minWidth: 900, minHeight: 600)
             .toolbar {
-                ToolbarItemGroup {
-                    Button {
-                        presentImporter()
-                    } label: {
-                        Label("导入 PDF", systemImage: "plus")
-                    }
-                    .help("导入 PDF")
-                    .disabled(libraryStore.persistenceDisabled)
-
-                    if libraryStore.selectedPaper != nil {
+                if libraryStore.selectedPaper != nil {
+                    ToolbarItemGroup {
                         PDFToolbar(controller: pdfController)
                     }
                 }
@@ -157,10 +149,22 @@ struct ContentView: View {
 
     private var librarySidebar: some View {
         VStack(spacing: 0) {
-            librarySearchField
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
+            HStack(spacing: 8) {
+                librarySearchField
+
+                Button {
+                    presentImporter()
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.borderless)
+                .help("导入 PDF")
+                .accessibilityLabel("导入 PDF")
+                .disabled(libraryStore.persistenceDisabled)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
 
             List(selection: selection) {
                 ForEach(filteredPapers) { paper in
