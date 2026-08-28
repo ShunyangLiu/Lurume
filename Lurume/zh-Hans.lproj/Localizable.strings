@@ -1,0 +1,4 @@
+/* Lurume 的开发语言为简体中文。界面文案默认直接以中文编写；
+   此资源同时让 AppKit、SwiftUI 与 PDFKit 选择系统框架中的简体中文菜单。 */
+
+"Lurume" = "Lurume";

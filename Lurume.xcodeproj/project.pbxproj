@@ -14,6 +14,7 @@
 		1D1E1300196BD224FE89A00F /* TextNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969EC9C892796AB815567020 /* TextNormalizerTests.swift */; };
 		24F9D19682C67BFEFB015DAC /* TranslationInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */; };
 		2845DD09521799EA1249F0AE /* LibraryOrganizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E489A1C10FD4AE7E9A33154 /* LibraryOrganizationTests.swift */; };
+		2D0ED8285C80930DD3959F6C /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 002933A34CD2A16535238505 /* InfoPlist.strings */; };
 		32C8FFB0CE9301BED1D8F96D /* LibrarySchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AABCAEA8379FB217EF98010 /* LibrarySchema.swift */; };
 		33F14A5B4F2FF059040D2EBC /* LurumeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDCEED45D44F9A78BABF93BC /* LurumeApp.swift */; };
 		3BA0251DCE1AE33611F16C6E /* LibraryPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50CE51B033570DB20B180628 /* LibraryPersistenceTests.swift */; };
@@ -27,6 +28,7 @@
 		8A612497C2D39BFFBC3CD179 /* LurumeSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */; };
 		901386E6D513046A375512B4 /* SystemPaperMetadataReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC49AD84FACDAB3ED5163A55 /* SystemPaperMetadataReader.swift */; };
 		9048D80279177B1F81AE0790 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B52C1CACB063DB3505EEF6C /* AppSettings.swift */; };
+		95E6621DB260C534F214A262 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 5BDFE7ED94697A4351F79112 /* Localizable.strings */; };
 		97CCFD06759640B719E96A5A /* HighlightStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DF3744718002E8D40888853 /* HighlightStore.swift */; };
 		A73E9083CB324645CFF43590 /* SecurityScopedFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 451E4AC55AABA630D088790D /* SecurityScopedFile.swift */; };
 		B1AE1C81032365A6F314978A /* HighlightModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFEAA76699D454EB7F711760 /* HighlightModels.swift */; };
@@ -54,6 +56,7 @@
 		1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LurumeSmokeTests.swift; sourceTree = "<group>"; };
 		1DF3744718002E8D40888853 /* HighlightStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightStore.swift; sourceTree = "<group>"; };
 		20CE4CB5998833B1454C74E2 /* HighlightPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightPDFView.swift; sourceTree = "<group>"; };
+		2B7B02F087BF7B9A01DDDE31 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		390A1F1BF533AFA28CCFD10F /* Credits.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = Credits.html; sourceTree = "<group>"; };
 		3C0C186E21CE73620E1ECB1C /* PDFNavigationSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFNavigationSidebar.swift; sourceTree = "<group>"; };
 		451E4AC55AABA630D088790D /* SecurityScopedFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedFile.swift; sourceTree = "<group>"; };
@@ -68,6 +71,7 @@
 		87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationInspector.swift; sourceTree = "<group>"; };
 		969EC9C892796AB815567020 /* TextNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextNormalizerTests.swift; sourceTree = "<group>"; };
 		9AABCAEA8379FB217EF98010 /* LibrarySchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySchema.swift; sourceTree = "<group>"; };
+		B1CA5FB5868E0A8EDB1056D6 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		B332936519E7741B917213C1 /* FileIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIdentityTests.swift; sourceTree = "<group>"; };
 		B43B08E498537804DB3769E8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B84CEE7D84F804319313E2FC /* HighlightPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightPersistenceTests.swift; sourceTree = "<group>"; };
@@ -124,6 +128,8 @@
 				BA1583E513232AC7D0AA7CA0 /* TextNormalizer.swift */,
 				4ACA72A5E79BC8728F19084D /* TranslationController.swift */,
 				87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */,
+				002933A34CD2A16535238505 /* InfoPlist.strings */,
+				5BDFE7ED94697A4351F79112 /* Localizable.strings */,
 			);
 			path = Lurume;
 			sourceTree = "<group>";
@@ -197,11 +203,11 @@
 				};
 			};
 			buildConfigurationList = 697174455B0BCA80CD5DFA4C /* Build configuration list for PBXProject "Lurume" */;
-			developmentRegion = en;
+			developmentRegion = "zh-Hans";
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				Base,
-				en,
+				"zh-Hans",
 			);
 			mainGroup = 0E20D9A5001B99B680F3CF4A;
 			minimizedProjectReferenceProxies = 1;
@@ -222,6 +228,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				15EDF2A25C2A3FEAE4972ED4 /* Credits.html in Resources */,
+				2D0ED8285C80930DD3959F6C /* InfoPlist.strings in Resources */,
+				95E6621DB260C534F214A262 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -278,6 +286,25 @@
 			targetProxy = BD8B2D506B52C9A7F80D33FF /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		002933A34CD2A16535238505 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				2B7B02F087BF7B9A01DDDE31 /* zh-Hans */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		5BDFE7ED94697A4351F79112 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				B1CA5FB5868E0A8EDB1056D6 /* zh-Hans */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		12F7E21E2FEB3AEC3B4B63D6 /* Release */ = {

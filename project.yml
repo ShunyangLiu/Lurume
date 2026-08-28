@@ -2,6 +2,7 @@ name: Lurume
 
 options:
   bundleIdPrefix: app.lurume
+  developmentLanguage: zh-Hans
   deploymentTarget:
     macOS: "15.0"
   xcodeVersion: "26.3"
