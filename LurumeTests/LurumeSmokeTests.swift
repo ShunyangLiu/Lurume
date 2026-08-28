@@ -372,6 +372,38 @@ final class LurumeSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testHighlightActionsExtendSystemContextMenuWithoutCopyingIt() throws {
+        let pdfView = HighlightPDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        pdfView.toggleHighlightTitle = { "添加高亮" }
+        let systemMenu = NSMenu()
+        systemMenu.addItem(withTitle: "拷贝", action: nil, keyEquivalent: "")
+        let event = try XCTUnwrap(
+            NSEvent.mouseEvent(
+                with: .rightMouseDown,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                eventNumber: 0,
+                clickCount: 1,
+                pressure: 1
+            )
+        )
+
+        let result = pdfView.appendHighlightItems(to: systemMenu, for: event)
+        let repeatedResult = pdfView.appendHighlightItems(to: systemMenu, for: event)
+
+        XCTAssertTrue(result === systemMenu, "PDFKit 的视图型菜单项不能通过复制来扩展")
+        XCTAssertTrue(repeatedResult === systemMenu)
+        XCTAssertEqual(
+            repeatedResult.items.map(\.title),
+            ["拷贝", "", "添加高亮"],
+            "PDFKit 复用菜单实例时不得重复追加自定义项目"
+        )
+    }
+
+    @MainActor
     func testSameHighlightsAreRevalidatedAfterPDFDocumentChanges() throws {
         let onePageDocument = try makeBlankPDF(pageCount: 1)
         let sixPageDocument = try makeBlankPDF(pageCount: 6)

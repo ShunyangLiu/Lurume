@@ -74,6 +74,12 @@ final class HighlightNoteMarkerAnnotation: PDFAnnotation {
 
 @MainActor
 final class HighlightPDFView: PDFView {
+    private static let customMenuItemIdentifiers: Set<NSUserInterfaceItemIdentifier> = [
+        NSUserInterfaceItemIdentifier("Lurume.Highlight.Delete"),
+        NSUserInterfaceItemIdentifier("Lurume.Highlight.Toggle"),
+        NSUserInterfaceItemIdentifier("Lurume.Highlight.Separator"),
+    ]
+
     var highlightIDAtEvent: ((NSEvent) -> UUID?)?
     var toggleHighlightTitle: (() -> String?)?
     var onToggleHighlight: (() -> Void)?
@@ -178,7 +184,21 @@ final class HighlightPDFView: PDFView {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        let menu = (super.menu(for: event)?.copy() as? NSMenu) ?? NSMenu()
+        // PDFKit's menu contains private view-backed items (including its markup
+        // style picker). Copying that menu leaves those views attached to an
+        // invalid menu hierarchy and crashes while AppKit updates tracking areas.
+        // Extend the original menu instance instead.
+        let menu = super.menu(for: event) ?? NSMenu()
+        appendHighlightItems(to: menu, for: event)
+        return menu
+    }
+
+    @discardableResult
+    func appendHighlightItems(to menu: NSMenu, for event: NSEvent) -> NSMenu {
+        for item in menu.items.reversed()
+        where item.identifier.map(Self.customMenuItemIdentifiers.contains) == true {
+            menu.removeItem(item)
+        }
         var customItems: [NSMenuItem] = []
 
         let highlightID = highlightIDAtEvent?(event)
@@ -191,6 +211,7 @@ final class HighlightPDFView: PDFView {
                 keyEquivalent: ""
             )
             delete.target = self
+            delete.identifier = NSUserInterfaceItemIdentifier("Lurume.Highlight.Delete")
             delete.representedObject = highlightID.uuidString
             customItems.append(delete)
         }
@@ -203,12 +224,15 @@ final class HighlightPDFView: PDFView {
                 keyEquivalent: ""
             )
             toggle.target = self
+            toggle.identifier = NSUserInterfaceItemIdentifier("Lurume.Highlight.Toggle")
             customItems.append(toggle)
         }
 
         guard !customItems.isEmpty else { return menu }
         if !menu.items.isEmpty {
-            menu.addItem(.separator())
+            let separator = NSMenuItem.separator()
+            separator.identifier = NSUserInterfaceItemIdentifier("Lurume.Highlight.Separator")
+            menu.addItem(separator)
         }
         customItems.forEach(menu.addItem)
         return menu
