@@ -269,6 +269,7 @@ struct ContentView: View {
     private var librarySidebar: some View {
         VStack(spacing: 0) {
             librarySearchAndImport
+            libraryOrganizationSummary
             libraryPaperList
         }
     }
@@ -276,8 +277,6 @@ struct ContentView: View {
     private var librarySearchAndImport: some View {
         HStack(spacing: 8) {
             librarySearchField
-
-            libraryFilterAndSortMenu
 
             Button {
                 presentImporter()
@@ -291,50 +290,60 @@ struct ContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
-        .padding(.bottom, 6)
+        .padding(.bottom, 4)
     }
 
-    private var libraryFilterAndSortMenu: some View {
+    private var libraryOrganizationSummary: some View {
         Menu {
             Section("阅读状态") {
                 ForEach(ReadingStatusFilter.allCases) { filter in
-                    Button {
-                        statusFilter = filter
-                    } label: {
-                        menuSelectionLabel(filter.title, selected: statusFilter == filter)
-                    }
+                    Toggle(
+                        filter.title,
+                        isOn: Binding(
+                            get: { statusFilter == filter },
+                            set: { selected in
+                                if selected { statusFilter = filter }
+                            }
+                        )
+                    )
                 }
             }
 
             Section("排序方式") {
                 ForEach(LibrarySortOption.allCases) { option in
-                    Button {
-                        appSettings.librarySortOption = option
-                    } label: {
-                        menuSelectionLabel(
-                            option.title,
-                            selected: appSettings.librarySortOption == option
+                    Toggle(
+                        option.title,
+                        isOn: Binding(
+                            get: { appSettings.librarySortOption == option },
+                            set: { selected in
+                                if selected { appSettings.librarySortOption = option }
+                            }
                         )
-                    }
+                    )
                 }
             }
         } label: {
-            Image(systemName: "line.3.horizontal.decrease")
-                .foregroundStyle(
-                    hasNondefaultLibraryOrganization ? Color.accentColor : Color.secondary
-                )
-                .overlay(alignment: .topTrailing) {
-                    if hasNondefaultLibraryOrganization {
-                        Circle()
-                            .fill(Color.accentColor)
-                            .frame(width: 5, height: 5)
-                            .offset(x: 3, y: -2)
-                    }
-                }
+            HStack(spacing: 5) {
+                Image(systemName: "line.3.horizontal.decrease")
+                Text(statusFilter.title)
+                Text("·")
+                    .foregroundStyle(.tertiary)
+                Text(appSettings.librarySortOption.title)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.down")
+                    .font(.caption2)
+            }
+            .font(.caption)
+            .foregroundStyle(
+                hasNondefaultLibraryOrganization ? Color.primary : Color.secondary
+            )
+            .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 3)
         .help("\(statusFilter.title) · \(appSettings.librarySortOption.title)")
         .accessibilityLabel("筛选与排序")
         .accessibilityValue("\(statusFilter.title)，\(appSettings.librarySortOption.title)")
@@ -342,15 +351,6 @@ struct ContentView: View {
 
     private var hasNondefaultLibraryOrganization: Bool {
         statusFilter != .all || appSettings.librarySortOption != .recentlyOpened
-    }
-
-    @ViewBuilder
-    private func menuSelectionLabel(_ title: String, selected: Bool) -> some View {
-        if selected {
-            Label(title, systemImage: "checkmark")
-        } else {
-            Text(title)
-        }
     }
 
     private var libraryPaperList: some View {
