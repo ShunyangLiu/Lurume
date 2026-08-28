@@ -6,6 +6,7 @@ final class AppSettings: ObservableObject {
         static let automaticTranslation = "automaticTranslation"
         static let sourceLanguageIdentifier = "sourceLanguageIdentifier"
         static let targetLanguageIdentifier = "targetLanguageIdentifier"
+        static let librarySortOption = "librarySortOption"
     }
 
     private let defaults: UserDefaults
@@ -22,6 +23,10 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(sourceLanguageIdentifier, forKey: Key.sourceLanguageIdentifier) }
     }
 
+    @Published var librarySortOption: LibrarySortOption {
+        didSet { defaults.set(librarySortOption.rawValue, forKey: Key.librarySortOption) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         if defaults.object(forKey: Key.automaticTranslation) == nil {
@@ -33,6 +38,9 @@ final class AppSettings: ObservableObject {
             ?? TranslationSourceLanguageOption.englishID
         targetLanguageIdentifier = defaults.string(forKey: Key.targetLanguageIdentifier)
             ?? "zh-Hans"
+        librarySortOption = defaults.string(forKey: Key.librarySortOption)
+            .flatMap(LibrarySortOption.init(rawValue:))
+            ?? .recentlyOpened
     }
 
     /// `nil` 表示使用 Natural Language 自动识别；默认固定英语以适配论文阅读。

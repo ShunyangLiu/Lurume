@@ -54,15 +54,27 @@ final class LibraryStore: ObservableObject {
 
     // MARK: - 检索
 
-    func papers(matching rawQuery: String) -> [PaperRecord] {
-        let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return papers }
-        let needle = query.lowercased()
-        return papers.filter { paper in
-            paper.title.lowercased().contains(needle)
-                || (paper.authors?.lowercased().contains(needle) ?? false)
-                || paper.originalFileName.lowercased().contains(needle)
+    func papers(
+        matching rawQuery: String,
+        status: ReadingStatusFilter = .all,
+        sortedBy sort: LibrarySortOption? = nil
+    ) -> [PaperRecord] {
+        guard let sort else {
+            let filtered = LibraryQuery.apply(
+                to: papers,
+                searchText: rawQuery,
+                status: status,
+                sort: .dateAdded
+            )
+            let ids = Set(filtered.map(\.id))
+            return papers.filter { ids.contains($0.id) }
         }
+        return LibraryQuery.apply(
+            to: papers,
+            searchText: rawQuery,
+            status: status,
+            sort: sort
+        )
     }
 
     // MARK: - 导入与选择
@@ -179,6 +191,28 @@ final class LibraryStore: ObservableObject {
         papers[index].setManualYear(value)
         flushPendingSave()
         persistReportingErrors()
+    }
+
+    func cycleReadingStatus(for id: UUID) {
+        guard let paper = paper(withID: id) else { return }
+        setReadingStatus(paper.readingStatus.next, for: id)
+    }
+
+    func setReadingStatus(_ status: ReadingStatus, for id: UUID) {
+        guard rejectMutationIfReadOnly() == false else { return }
+        guard let index = papers.firstIndex(where: { $0.id == id }),
+              papers[index].readingStatus != status else {
+            return
+        }
+        flushPendingSave()
+        let previous = papers[index].readingStatus
+        papers[index].readingStatus = status
+        do {
+            try saveNow()
+        } catch {
+            papers[index].readingStatus = previous
+            presentedError = "无法保存阅读状态：\(error.localizedDescription)"
+        }
     }
 
     // MARK: - 文件访问与元数据补全

@@ -32,6 +32,7 @@ enum PDFSearchViewport {
 final class PDFReaderController: ObservableObject {
     @Published private(set) var currentPageIndex = 0
     @Published private(set) var pageCount = 0
+    @Published private(set) var document: PDFDocument?
     @Published var searchText = ""
     @Published private(set) var searchResultCount = 0
     @Published private(set) var currentSearchResultIndex: Int?
@@ -65,9 +66,37 @@ final class PDFReaderController: ObservableObject {
         guard self.pdfView !== pdfView else { return }
         removeRenderedHighlights()
         self.pdfView = pdfView
+        if document !== pdfView.document {
+            document = pdfView.document
+        }
         renderedHighlights = []
         renderedHighlightDocument = nil
-        skippedHighlightFragmentCount = 0
+        if skippedHighlightFragmentCount != 0 {
+            skippedHighlightFragmentCount = 0
+        }
+    }
+
+    func detach() {
+        clearSearchResults()
+        removeRenderedHighlights()
+        pdfView = nil
+        if document != nil {
+            document = nil
+        }
+        renderedHighlights = []
+        renderedHighlightDocument = nil
+        if currentHighlightID != nil {
+            currentHighlightID = nil
+        }
+        if skippedHighlightFragmentCount != 0 {
+            skippedHighlightFragmentCount = 0
+        }
+        if currentPageIndex != 0 {
+            currentPageIndex = 0
+        }
+        if pageCount != 0 {
+            pageCount = 0
+        }
     }
 
     func zoomIn() { pdfView?.zoomIn(nil) }
@@ -80,6 +109,11 @@ final class PDFReaderController: ObservableObject {
         let index = min(max(page - 1, 0), document.pageCount - 1)
         guard let destinationPage = document.page(at: index) else { return }
         pdfView?.go(to: destinationPage)
+    }
+
+    func go(to destination: PDFDestination) {
+        guard destination.page?.document === pdfView?.document else { return }
+        pdfView?.go(to: destination)
     }
 
     func search() {
@@ -128,9 +162,15 @@ final class PDFReaderController: ObservableObject {
     func clearSearchResults() {
         let shouldClearCurrentSelection = isCurrentSearchSelection(pdfView?.currentSelection)
         searchResults = []
-        searchResultCount = 0
-        currentSearchResultIndex = nil
-        activeSearchQuery = nil
+        if searchResultCount != 0 {
+            searchResultCount = 0
+        }
+        if currentSearchResultIndex != nil {
+            currentSearchResultIndex = nil
+        }
+        if activeSearchQuery != nil {
+            activeSearchQuery = nil
+        }
         pdfView?.highlightedSelections = nil
         if shouldClearCurrentSelection {
             pdfView?.clearSelection()
@@ -233,7 +273,9 @@ final class PDFReaderController: ObservableObject {
                 }
             }
         }
-        skippedHighlightFragmentCount = skippedFragmentCount
+        if skippedHighlightFragmentCount != skippedFragmentCount {
+            skippedHighlightFragmentCount = skippedFragmentCount
+        }
 
         if let currentHighlightID,
            !highlights.contains(where: { $0.id == currentHighlightID }) {
@@ -350,6 +392,9 @@ final class PDFReaderController: ObservableObject {
 
     func updatePageState() {
         guard let pdfView, let document = pdfView.document else {
+            if self.document != nil {
+                self.document = nil
+            }
             if currentPageIndex != 0 {
                 currentPageIndex = 0
             }
@@ -357,6 +402,10 @@ final class PDFReaderController: ObservableObject {
                 pageCount = 0
             }
             return
+        }
+
+        if self.document !== document {
+            self.document = document
         }
 
         if pageCount != document.pageCount {

@@ -6,7 +6,7 @@ enum LibraryPersistenceError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case let .unsupportedSchema(found):
-            "文献库格式版本为 \(found)，当前应用只支持版本 1 的自动升级和版本 \(LibrarySchema.currentVersion)。"
+            "文献库格式版本为 \(found)，当前应用只支持版本 1、2 的自动升级和版本 \(LibrarySchema.currentVersion)。"
         }
     }
 }
@@ -27,6 +27,30 @@ struct PaperRecordV1: Codable, Equatable, Sendable {
 struct LibrarySnapshotV1: Codable, Equatable, Sendable {
     var schemaVersion: Int
     var papers: [PaperRecordV1]
+    var selectedPaperID: UUID?
+}
+
+/// v2 快照原样保留：P3 迁移只补充阅读状态，不改动任何 P0–P2 字段。
+struct PaperRecordV2: Codable, Equatable, Sendable {
+    let id: UUID
+    var volumeUUID: String?
+    var documentIdentifier: Int?
+    var bookmarkData: Data
+    var fallbackPath: String
+    var originalFileName: String
+    var title: String
+    var authors: String?
+    var year: Int?
+    var manuallyEditedFields: Set<MetadataField>
+    var didReadAutoMetadata: Bool
+    let dateAdded: Date
+    var lastOpenedAt: Date?
+    var lastPageIndex: Int
+}
+
+struct LibrarySnapshotV2: Codable, Equatable, Sendable {
+    var schemaVersion: Int
+    var papers: [PaperRecordV2]
     var selectedPaperID: UUID?
 }
 
@@ -57,6 +81,36 @@ enum LibraryMigrations {
                     lastOpenedAt: paper.lastOpenedAt,
                     lastPageIndex: paper.lastPageIndex
                 )
+            },
+            selectedPaperID: legacy.selectedPaperID
+        )
+    }
+
+    static func migrate(_ legacy: LibrarySnapshotV2) -> LibrarySnapshot {
+        LibrarySnapshot(
+            schemaVersion: LibrarySchema.currentVersion,
+            papers: legacy.papers.map { paper in
+                var migrated = PaperRecord(
+                    id: paper.id,
+                    identity: FileIdentity(
+                        volumeUUID: paper.volumeUUID,
+                        documentIdentifier: paper.documentIdentifier,
+                        fallbackPath: paper.fallbackPath
+                    ),
+                    bookmarkData: paper.bookmarkData,
+                    displayName: paper.title,
+                    originalFileName: paper.originalFileName,
+                    dateAdded: paper.dateAdded,
+                    lastOpenedAt: paper.lastOpenedAt,
+                    lastPageIndex: paper.lastPageIndex,
+                    readingStatus: .unread
+                )
+                migrated.title = paper.title
+                migrated.authors = paper.authors
+                migrated.year = paper.year
+                migrated.manuallyEditedFields = paper.manuallyEditedFields
+                migrated.didReadAutoMetadata = paper.didReadAutoMetadata
+                return migrated
             },
             selectedPaperID: legacy.selectedPaperID
         )
@@ -99,6 +153,12 @@ struct LibraryPersistence: Sendable {
         case LibrarySchema.currentVersion:
             let snapshot = try Self.decoder.decode(LibrarySnapshot.self, from: data)
             return LoadedLibrary(snapshot: snapshot, migratedFromLegacy: false)
+        case 2:
+            let legacy = try Self.decoder.decode(LibrarySnapshotV2.self, from: data)
+            return LoadedLibrary(
+                snapshot: LibraryMigrations.migrate(legacy),
+                migratedFromLegacy: true
+            )
         case 1:
             let legacy = try Self.decoder.decode(LibrarySnapshotV1.self, from: data)
             return LoadedLibrary(

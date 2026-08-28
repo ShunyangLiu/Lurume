@@ -42,6 +42,161 @@ enum MetadataField: String, Codable, Hashable, Sendable, CaseIterable {
     case year
 }
 
+enum ReadingStatus: String, Codable, Hashable, Sendable, CaseIterable, Identifiable {
+    case unread
+    case reading
+    case finished
+
+    var id: Self { self }
+
+    var next: Self {
+        switch self {
+        case .unread: .reading
+        case .reading: .finished
+        case .finished: .unread
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .unread: "未读"
+        case .reading: "阅读中"
+        case .finished: "已读完"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .unread: "circle"
+        case .reading: "circle.lefthalf.filled"
+        case .finished: "checkmark.circle.fill"
+        }
+    }
+}
+
+enum ReadingStatusFilter: String, Hashable, Sendable, CaseIterable, Identifiable {
+    case all
+    case unread
+    case reading
+    case finished
+
+    var id: Self { self }
+
+    func includes(_ status: ReadingStatus) -> Bool {
+        switch self {
+        case .all: true
+        case .unread: status == .unread
+        case .reading: status == .reading
+        case .finished: status == .finished
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .all: "全部"
+        case .unread: "未读"
+        case .reading: "阅读中"
+        case .finished: "已读完"
+        }
+    }
+}
+
+enum LibrarySortOption: String, Hashable, Sendable, CaseIterable, Identifiable {
+    case recentlyOpened
+    case dateAdded
+    case title
+    case year
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .recentlyOpened: "最近打开"
+        case .dateAdded: "添加时间"
+        case .title: "标题"
+        case .year: "年份"
+        }
+    }
+}
+
+enum LibraryQuery {
+    static func apply(
+        to papers: [PaperRecord],
+        searchText rawQuery: String,
+        status: ReadingStatusFilter,
+        sort: LibrarySortOption
+    ) -> [PaperRecord] {
+        let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        return papers
+            .filter { status.includes($0.readingStatus) }
+            .filter { paper in
+                guard !query.isEmpty else { return true }
+                return matches(query, in: paper.title)
+                    || paper.authors.map { matches(query, in: $0) } == true
+                    || matches(query, in: paper.originalFileName)
+            }
+            .sorted { orderedBefore($0, $1, by: sort) }
+    }
+
+    private static func matches(_ query: String, in value: String) -> Bool {
+        value.range(
+            of: query,
+            options: [.caseInsensitive, .diacriticInsensitive],
+            locale: .current
+        ) != nil
+    }
+
+    private static func orderedBefore(
+        _ lhs: PaperRecord,
+        _ rhs: PaperRecord,
+        by option: LibrarySortOption
+    ) -> Bool {
+        switch option {
+        case .recentlyOpened:
+            switch (lhs.lastOpenedAt, rhs.lastOpenedAt) {
+            case let (left?, right?) where left != right:
+                return left > right
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            default:
+                return dateAddedThenID(lhs, rhs)
+            }
+        case .dateAdded:
+            return dateAddedThenID(lhs, rhs)
+        case .title:
+            let titleOrder = lhs.title.localizedCaseInsensitiveCompare(rhs.title)
+            if titleOrder != .orderedSame {
+                return titleOrder == .orderedAscending
+            }
+            return dateAddedThenID(lhs, rhs)
+        case .year:
+            switch (lhs.year, rhs.year) {
+            case let (left?, right?) where left != right:
+                return left > right
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            default:
+                let titleOrder = lhs.title.localizedCaseInsensitiveCompare(rhs.title)
+                if titleOrder != .orderedSame {
+                    return titleOrder == .orderedAscending
+                }
+                return dateAddedThenID(lhs, rhs)
+            }
+        }
+    }
+
+    private static func dateAddedThenID(_ lhs: PaperRecord, _ rhs: PaperRecord) -> Bool {
+        if lhs.dateAdded != rhs.dateAdded {
+            return lhs.dateAdded > rhs.dateAdded
+        }
+        return lhs.id.uuidString < rhs.id.uuidString
+    }
+}
+
 enum PaperYearInput: Equatable, Sendable {
     case empty
     case value(Int)
@@ -109,7 +264,7 @@ enum PaperTitleRules {
     }
 }
 
-/// v2 文献记录。自动元数据只在导入时与存量库惰性补全时各读取一次。
+/// v3 文献记录。自动元数据只在导入时与存量库惰性补全时各读取一次。
 struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     var volumeUUID: String?
@@ -125,6 +280,7 @@ struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
     let dateAdded: Date
     var lastOpenedAt: Date?
     var lastPageIndex: Int
+    var readingStatus: ReadingStatus
 
     var identity: FileIdentity {
         FileIdentity(
@@ -161,7 +317,8 @@ struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
         originalFileName: String? = nil,
         dateAdded: Date = Date(),
         lastOpenedAt: Date? = nil,
-        lastPageIndex: Int = 0
+        lastPageIndex: Int = 0,
+        readingStatus: ReadingStatus = .unread
     ) {
         self.id = id
         self.volumeUUID = identity.volumeUUID
@@ -177,6 +334,7 @@ struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
         self.dateAdded = dateAdded
         self.lastOpenedAt = lastOpenedAt
         self.lastPageIndex = max(0, lastPageIndex)
+        self.readingStatus = readingStatus
     }
 
     mutating func replaceFileReference(

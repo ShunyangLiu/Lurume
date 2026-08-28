@@ -20,12 +20,16 @@ struct ContentView: View {
     @State private var importerPurpose: FileImporterPurpose?
     @State private var relinkingPaperID: UUID?
     @State private var activeAccess: SecurityScopedAccess?
+    @State private var activeAccessPaperID: UUID?
     @State private var documentError: String?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var inspectorMode: ReaderInspectorMode = .translation
     @State private var pendingPaperRemoval: UUID?
 
     @State private var searchText = ""
+    @State private var sidebarMode: ReaderSidebarMode = .library
+    @State private var statusFilter: ReadingStatusFilter = .all
+    @State private var statusInteractionLocked = false
     @FocusState private var searchFieldFocused: Bool
     @State private var isPDFSearchPresented = false
     @FocusState private var pdfSearchFieldFocused: Bool
@@ -37,12 +41,23 @@ struct ContentView: View {
     private var selection: Binding<UUID?> {
         Binding(
             get: { libraryStore.selectedPaperID },
-            set: { libraryStore.selectPaper(id: $0) }
+            set: { newValue in
+                if newValue == nil,
+                   let current = libraryStore.selectedPaperID,
+                   !filteredPapers.contains(where: { $0.id == current }) {
+                    return
+                }
+                libraryStore.selectPaper(id: newValue)
+            }
         )
     }
 
     private var filteredPapers: [PaperRecord] {
-        libraryStore.papers(matching: searchText)
+        libraryStore.papers(
+            matching: searchText,
+            status: statusFilter,
+            sortedBy: appSettings.librarySortOption
+        )
     }
 
     private var presentedError: String? {
@@ -52,6 +67,7 @@ struct ContentView: View {
     /// Return 改名快捷键只在没有文本输入进行时生效。
     private var returnShortcutDisabled: Bool {
         libraryStore.persistenceDisabled
+            || sidebarMode != .library
             || inlineTitleEditID != nil
             || metadataEditorTarget != nil
             || searchFieldFocused
@@ -61,7 +77,7 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             NavigationSplitView(columnVisibility: $columnVisibility) {
-                librarySidebar
+                sidebar
                     .navigationSplitViewColumnWidth(min: 210, ideal: 250, max: 340)
             } detail: {
                 detail
@@ -188,83 +204,211 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - 左侧栏
+
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            Picker("侧边栏", selection: $sidebarMode) {
+                ForEach(ReaderSidebarMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            Divider()
+
+            sidebarContent
+        }
+        .navigationTitle(sidebarMode.title)
+    }
+
+    @ViewBuilder
+    private var sidebarContent: some View {
+        switch sidebarMode {
+        case .library:
+            librarySidebar
+        case .outline:
+            if hasCurrentNavigationContext {
+                PDFOutlineSidebar(controller: pdfController)
+            } else {
+                navigationLoadingState(systemImage: "list.bullet.indent")
+            }
+        case .pages:
+            if hasCurrentNavigationContext {
+                PDFThumbnailSidebar(controller: pdfController)
+            } else {
+                navigationLoadingState(systemImage: "rectangle.stack")
+            }
+        }
+    }
+
+    private var hasCurrentNavigationContext: Bool {
+        guard let selectedPaperID = libraryStore.selectedPaperID else { return false }
+        return activeAccessPaperID == selectedPaperID
+    }
+
+    private func navigationLoadingState(systemImage: String) -> some View {
+        ContentUnavailableView(
+            libraryStore.selectedPaperID == nil ? "尚未选择论文" : "正在载入 PDF",
+            systemImage: systemImage,
+            description: Text(
+                libraryStore.selectedPaperID == nil
+                    ? "从文献列表选择一篇论文。"
+                    : "目录和页面将在文档打开后显示。"
+            )
+        )
+    }
+
     // MARK: - 文献列表
 
     private var librarySidebar: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                librarySearchField
+            libraryOrganizationControls
+            librarySearchAndImport
+            libraryPaperList
+        }
+    }
 
-                Button {
-                    presentImporter()
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .buttonStyle(.borderless)
-                .help("导入 PDF")
-                .accessibilityLabel("导入 PDF")
-                .disabled(libraryStore.persistenceDisabled)
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
-            .padding(.bottom, 4)
-
-            List(selection: selection) {
-                ForEach(filteredPapers) { paper in
-                    PaperRow(
-                        paper: paper,
-                        isUnavailable: libraryStore.unavailablePaperIDs.contains(paper.id),
-                        isEditingTitle: inlineTitleEditID == paper.id,
-                        titleDraft: $inlineTitleDraft,
-                        titleFieldFocused: $inlineTitleFieldFocused,
-                        commitTitle: commitActiveInlineTitleEdit,
-                        cancelTitle: cancelInlineTitleEdit
-                    )
-                    .tag(paper.id)
-                    .help(paper.originalFileName)
-                    .contextMenu {
-                        if paper.id == libraryStore.selectedPaperID {
-                            Button("编辑文献信息…") {
-                                metadataEditorTarget = paper.id
-                            }
-                            .disabled(libraryStore.persistenceDisabled)
-                        }
-                        if libraryStore.unavailablePaperIDs.contains(paper.id) {
-                            Button("重新定位…") {
-                                presentRelinker(for: paper.id)
-                            }
-                            .disabled(libraryStore.persistenceDisabled)
-                        }
-                        Button("移除引用", role: .destructive) {
-                            requestPaperRemoval(paper.id)
-                        }
-                        .disabled(libraryStore.persistenceDisabled)
-                    }
+    private var libraryOrganizationControls: some View {
+        HStack(spacing: 8) {
+            Picker("阅读状态", selection: $statusFilter) {
+                ForEach(ReadingStatusFilter.allCases) { filter in
+                    Text(filter.title).tag(filter)
                 }
             }
-            .overlay {
-                if libraryStore.persistenceDisabled {
-                    ContentUnavailableView(
-                        "文献库处于只读状态",
-                        systemImage: "lock.trianglebadge.exclamationmark",
-                        description: Text("无法安全载入或升级文献库。原有数据未被覆盖，请先修复文献库后再导入或编辑。")
-                    )
-                } else if libraryStore.papers.isEmpty {
-                    ContentUnavailableView(
-                        "尚未导入论文",
-                        systemImage: "doc.text.magnifyingglass",
-                        description: Text("点击工具栏的加号，或把 PDF 拖入窗口。")
-                    )
-                } else if filteredPapers.isEmpty {
-                    ContentUnavailableView(
-                        "无匹配文献",
-                        systemImage: "magnifyingglass",
-                        description: Text("试试其他标题、作者或文件名关键词。")
-                    )
+            .pickerStyle(.menu)
+            .labelsHidden()
+
+            Picker("排序", selection: $appSettings.librarySortOption) {
+                ForEach(LibrarySortOption.allCases) { option in
+                    Text(option.title).tag(option)
                 }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+
+    private var librarySearchAndImport: some View {
+        HStack(spacing: 8) {
+            librarySearchField
+
+            Button {
+                presentImporter()
+            } label: {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(.borderless)
+            .help("导入 PDF")
+            .accessibilityLabel("导入 PDF")
+            .disabled(libraryStore.persistenceDisabled)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+
+    private var libraryPaperList: some View {
+        List(selection: selection) {
+            ForEach(filteredPapers) { paper in
+                paperRow(for: paper)
             }
         }
-        .navigationTitle("文献")
+        .overlay { libraryEmptyState }
+    }
+
+    private func paperRow(for paper: PaperRecord) -> some View {
+        PaperRow(
+            paper: paper,
+            isUnavailable: libraryStore.unavailablePaperIDs.contains(paper.id),
+            isEditingTitle: inlineTitleEditID == paper.id,
+            titleDraft: $inlineTitleDraft,
+            titleFieldFocused: $inlineTitleFieldFocused,
+            commitTitle: commitActiveInlineTitleEdit,
+            cancelTitle: cancelInlineTitleEdit,
+            statusInteractionLocked: statusInteractionLocked,
+            statusDisabled: libraryStore.persistenceDisabled,
+            cycleReadingStatus: {
+                changeReadingStatus(paper.readingStatus.next, for: paper.id)
+            }
+        )
+        .tag(paper.id)
+        .help(paper.originalFileName)
+        .contextMenu { paperContextMenu(for: paper) }
+    }
+
+    @ViewBuilder
+    private func paperContextMenu(for paper: PaperRecord) -> some View {
+        Menu("阅读状态") {
+            ForEach(ReadingStatus.allCases) { status in
+                Button {
+                    changeReadingStatus(status, for: paper.id)
+                } label: {
+                    Label(
+                        status.title,
+                        systemImage: paper.readingStatus == status
+                            ? "checkmark"
+                            : status.systemImage
+                    )
+                }
+                .disabled(
+                    paper.readingStatus == status
+                        || libraryStore.persistenceDisabled
+                )
+            }
+        }
+        if paper.id == libraryStore.selectedPaperID {
+            Button("编辑文献信息…") {
+                metadataEditorTarget = paper.id
+            }
+            .disabled(libraryStore.persistenceDisabled)
+        }
+        if libraryStore.unavailablePaperIDs.contains(paper.id) {
+            Button("重新定位…") {
+                presentRelinker(for: paper.id)
+            }
+            .disabled(libraryStore.persistenceDisabled)
+        }
+        Button("移除引用", role: .destructive) {
+            requestPaperRemoval(paper.id)
+        }
+        .disabled(libraryStore.persistenceDisabled)
+    }
+
+    @ViewBuilder
+    private var libraryEmptyState: some View {
+        if libraryStore.persistenceDisabled {
+            ContentUnavailableView(
+                "文献库处于只读状态",
+                systemImage: "lock.trianglebadge.exclamationmark",
+                description: Text("无法安全载入或升级文献库。原有数据未被覆盖，请先修复文献库后再导入或编辑。")
+            )
+        } else if libraryStore.papers.isEmpty {
+            ContentUnavailableView(
+                "尚未导入论文",
+                systemImage: "doc.text.magnifyingglass",
+                description: Text("点击搜索框旁的加号，或把 PDF 拖入窗口。")
+            )
+        } else if filteredPapers.isEmpty {
+            ContentUnavailableView(
+                searchText.isEmpty ? "此状态下没有文献" : "无匹配文献",
+                systemImage: searchText.isEmpty
+                    ? "line.3.horizontal.decrease.circle"
+                    : "magnifyingglass",
+                description: Text(
+                    searchText.isEmpty
+                        ? "选择其他阅读状态查看文献。"
+                        : "试试其他标题、作者或文件名关键词。"
+                )
+            )
+        }
     }
 
     private var librarySearchField: some View {
@@ -298,7 +442,7 @@ struct ContentView: View {
     @ViewBuilder
     private var detail: some View {
         if let paper = libraryStore.selectedPaper {
-            if let activeAccess {
+            if activeAccessPaperID == paper.id, let activeAccess {
                 PDFReaderView(
                     paperID: paper.id,
                     documentURL: activeAccess.url,
@@ -344,10 +488,13 @@ struct ContentView: View {
                     }
                 }
                 .animation(.easeOut(duration: 0.15), value: isPDFSearchPresented)
-            } else {
+            } else if activeAccessPaperID == paper.id {
                 UnavailablePaperView(paperName: paper.title) {
                     presentRelinker(for: paper.id)
                 }
+            } else {
+                ProgressView("正在打开 PDF…")
+                    .controlSize(.small)
             }
         } else {
             ContentUnavailableView(
@@ -360,6 +507,7 @@ struct ContentView: View {
 
     private func openPDFSearch() {
         guard libraryStore.selectedPaper != nil,
+              activeAccessPaperID == libraryStore.selectedPaperID,
               activeAccess != nil,
               documentError == nil else {
             focusLibrarySearch()
@@ -381,7 +529,11 @@ struct ContentView: View {
 
     private func focusLibrarySearch() {
         closePDFSearch()
-        searchFieldFocused = true
+        sidebarMode = .library
+        Task { @MainActor in
+            await Task.yield()
+            searchFieldFocused = true
+        }
     }
 
     // MARK: - 行内改标题
@@ -488,10 +640,12 @@ struct ContentView: View {
     private func openSelectedPaper() {
         closePDFSearch()
         documentError = nil
-        pdfController.currentHighlightID = nil
-        activeAccess = libraryStore.selectedPaperID.flatMap {
-            libraryStore.resolveFile(for: $0)
-        }
+        pdfController.detach()
+        activeAccess = nil
+        activeAccessPaperID = nil
+        guard let paperID = libraryStore.selectedPaperID else { return }
+        activeAccess = libraryStore.resolveFile(for: paperID)
+        activeAccessPaperID = paperID
     }
 
     private func toggleCurrentHighlight() {
@@ -539,6 +693,20 @@ struct ContentView: View {
             pendingPaperRemoval = id
         } else {
             removePaper(id)
+        }
+    }
+
+    private func changeReadingStatus(_ status: ReadingStatus, for id: UUID) {
+        guard !statusInteractionLocked else { return }
+        let needsMisclickGuard = statusFilter != .all
+        if needsMisclickGuard {
+            statusInteractionLocked = true
+        }
+        libraryStore.setReadingStatus(status, for: id)
+        guard needsMisclickGuard else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            statusInteractionLocked = false
         }
     }
 
@@ -655,6 +823,9 @@ private struct PaperRow: View {
     var titleFieldFocused: FocusState<Bool>.Binding
     let commitTitle: () -> Void
     let cancelTitle: () -> Void
+    let statusInteractionLocked: Bool
+    let statusDisabled: Bool
+    let cycleReadingStatus: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -672,10 +843,34 @@ private struct PaperRow: View {
                     Text(paper.title)
                         .lineLimit(2, reservesSpace: false)
                 }
+
+                Spacer(minLength: 4)
+
+                Button(action: cycleReadingStatus) {
+                    Image(systemName: paper.readingStatus.systemImage)
+                        .foregroundStyle(statusColor)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.borderless)
+                .allowsHitTesting(!statusInteractionLocked && !statusDisabled)
+                .help(
+                    "\(paper.readingStatus.title)，点击标记为\(paper.readingStatus.next.title)"
+                )
+                .accessibilityLabel(
+                    "\(paper.readingStatus.title)，点击标记为\(paper.readingStatus.next.title)"
+                )
             }
             secondaryLine
         }
         .padding(.vertical, 3)
+    }
+
+    private var statusColor: Color {
+        switch paper.readingStatus {
+        case .unread: .secondary
+        case .reading: .accentColor
+        case .finished: .green
+        }
     }
 
     @ViewBuilder

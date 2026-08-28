@@ -106,6 +106,60 @@ final class LibraryPersistenceTests: XCTestCase {
         XCTAssertEqual(migrated.dateAdded, legacy.papers[0].dateAdded)
         XCTAssertEqual(migrated.lastOpenedAt, legacy.papers[0].lastOpenedAt)
         XCTAssertEqual(migrated.lastPageIndex, 17)
+        XCTAssertEqual(migrated.readingStatus, .unread)
+    }
+
+    func testMigratesV2SnapshotPreservingP0ThroughP2Data() throws {
+        let fileURL = makeTempFileURL("library.json")
+        defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
+        let paperID = UUID()
+        let legacy = LibrarySnapshotV2(
+            schemaVersion: 2,
+            papers: [
+                PaperRecordV2(
+                    id: paperID,
+                    volumeUUID: "volume-v2",
+                    documentIdentifier: 72,
+                    bookmarkData: Data([7, 2]),
+                    fallbackPath: "/tmp/v2.pdf",
+                    originalFileName: "v2.pdf",
+                    title: "V2 Title",
+                    authors: "Ada, Lin",
+                    year: 2025,
+                    manuallyEditedFields: [.title, .year],
+                    didReadAutoMetadata: true,
+                    dateAdded: Date(timeIntervalSince1970: 1_710_000_000),
+                    lastOpenedAt: Date(timeIntervalSince1970: 1_710_000_100),
+                    lastPageIndex: 23
+                ),
+            ],
+            selectedPaperID: paperID
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let directory = fileURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try encoder.encode(legacy).write(to: fileURL)
+
+        let loaded = try LibraryPersistence(fileURL: fileURL).load()
+
+        XCTAssertTrue(loaded.migratedFromLegacy)
+        XCTAssertEqual(loaded.snapshot.schemaVersion, 3)
+        XCTAssertEqual(loaded.snapshot.selectedPaperID, paperID)
+        let migrated = try XCTUnwrap(loaded.snapshot.papers.first)
+        XCTAssertEqual(migrated.id, paperID)
+        XCTAssertEqual(migrated.volumeUUID, "volume-v2")
+        XCTAssertEqual(migrated.documentIdentifier, 72)
+        XCTAssertEqual(migrated.bookmarkData, Data([7, 2]))
+        XCTAssertEqual(migrated.fallbackPath, "/tmp/v2.pdf")
+        XCTAssertEqual(migrated.originalFileName, "v2.pdf")
+        XCTAssertEqual(migrated.title, "V2 Title")
+        XCTAssertEqual(migrated.authors, "Ada, Lin")
+        XCTAssertEqual(migrated.year, 2025)
+        XCTAssertEqual(migrated.manuallyEditedFields, [.title, .year])
+        XCTAssertTrue(migrated.didReadAutoMetadata)
+        XCTAssertEqual(migrated.lastPageIndex, 23)
+        XCTAssertEqual(migrated.readingStatus, .unread)
     }
 
     func testCorruptLibraryFailsToLoadInsteadOfSilentReset() throws {

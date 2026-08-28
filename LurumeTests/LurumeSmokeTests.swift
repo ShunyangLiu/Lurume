@@ -5,7 +5,64 @@ import XCTest
 
 final class LurumeSmokeTests: XCTestCase {
     func testApplicationTargetLoads() {
-        XCTAssertEqual(LibrarySchema.currentVersion, 2)
+        XCTAssertEqual(LibrarySchema.currentVersion, 3)
+    }
+
+    @MainActor
+    func testOutlineBuildsHierarchyAndRejectsExternalActions() throws {
+        let document = PDFDocument()
+        let page = PDFPage()
+        document.insert(page, at: 0)
+        let root = PDFOutline()
+
+        let section = PDFOutline()
+        section.label = "Section"
+        section.destination = PDFDestination(page: page, at: CGPoint(x: 10, y: 20))
+        let subsection = PDFOutline()
+        subsection.label = "Subsection"
+        subsection.destination = PDFDestination(page: page, at: CGPoint(x: 30, y: 40))
+        section.insertChild(subsection, at: 0)
+        root.insertChild(section, at: 0)
+
+        let external = PDFOutline()
+        external.label = "External"
+        external.action = PDFActionURL(url: URL(string: "https://example.com")!)
+        root.insertChild(external, at: 1)
+        document.outlineRoot = root
+
+        let nodes = PDFOutlineNode.roots(in: document)
+
+        XCTAssertEqual(nodes.map(\.label), ["Section", "External"])
+        XCTAssertNotNil(nodes[0].destination)
+        XCTAssertEqual(nodes[0].children?.map(\.label), ["Subsection"])
+        XCTAssertNotNil(nodes[0].children?.first?.destination)
+        XCTAssertNil(nodes[1].destination, "外部 URL 目录动作不得成为可执行的文档内跳转")
+    }
+
+    @MainActor
+    func testThumbnailViewUsesTheLivePDFViewAndSingleColumn() throws {
+        let document = PDFDocument()
+        let firstPage = PDFPage()
+        let secondPage = PDFPage()
+        document.insert(firstPage, at: 0)
+        document.insert(secondPage, at: 1)
+        let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        pdfView.document = document
+        let thumbnailView = PDFThumbnailView()
+        thumbnailView.pdfView = pdfView
+        thumbnailView.maximumNumberOfColumns = 1
+        thumbnailView.allowsDragging = false
+        thumbnailView.allowsMultipleSelection = false
+
+        pdfView.go(to: secondPage)
+        pdfView.layoutSubtreeIfNeeded()
+        thumbnailView.layoutSubtreeIfNeeded()
+
+        XCTAssertTrue(thumbnailView.pdfView === pdfView)
+        XCTAssertEqual(thumbnailView.maximumNumberOfColumns, 1)
+        XCTAssertFalse(thumbnailView.allowsDragging)
+        XCTAssertFalse(thumbnailView.allowsMultipleSelection)
+        XCTAssertTrue(thumbnailView.selectedPages?.first === secondPage)
     }
 
     @MainActor
