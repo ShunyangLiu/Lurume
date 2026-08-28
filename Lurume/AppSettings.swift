@@ -40,7 +40,7 @@ final class AppSettings: ObservableObject {
             ?? "zh-Hans"
         librarySortOption = defaults.string(forKey: Key.librarySortOption)
             .flatMap(LibrarySortOption.init(rawValue:))
-            ?? .recentlyOpened
+            ?? .dateAdded
     }
 
     /// `nil` 表示使用 Natural Language 自动识别；默认固定英语以适配论文阅读。

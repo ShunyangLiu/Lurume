@@ -124,7 +124,7 @@ final class LibraryOrganizationTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let settings = AppSettings(defaults: defaults)
-        XCTAssertEqual(settings.librarySortOption, .recentlyOpened)
+        XCTAssertEqual(settings.librarySortOption, .dateAdded)
         settings.librarySortOption = .year
 
         XCTAssertEqual(AppSettings(defaults: defaults).librarySortOption, .year)
