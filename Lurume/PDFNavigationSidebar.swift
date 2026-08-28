@@ -179,30 +179,29 @@ private struct PDFPageThumbnailRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .top, spacing: 10) {
+            VStack(spacing: 3) {
+                PDFPageThumbnailImage(page: page)
+
                 Text("\(pageIndex + 1)")
-                    .font(.callout.monospacedDigit())
+                    .font(.caption.monospacedDigit())
                     .fontWeight(isCurrent ? .semibold : .regular)
                     .foregroundStyle(isCurrent ? Color.accentColor : .secondary)
-                    .frame(width: 32, alignment: .trailing)
-                    .padding(.top, 4)
-
-                PDFPageThumbnailImage(page: page)
             }
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.vertical, 7)
-            .padding(.horizontal, 8)
+            .frame(width: 92)
+            .padding(.vertical, 5)
+            .padding(.horizontal, 7)
             .contentShape(Rectangle())
             .background {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(rowBackground)
             }
             .overlay {
                 if isCurrent {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .stroke(Color.accentColor.opacity(0.42), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.accentColor.opacity(0.38), lineWidth: 1)
                 }
             }
+            .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -213,9 +212,9 @@ private struct PDFPageThumbnailRow: View {
 
     private var rowBackground: Color {
         if isCurrent {
-            return Color.accentColor.opacity(0.13)
+            return Color.accentColor.opacity(0.1)
         }
-        return isHovering ? Color.primary.opacity(0.055) : .clear
+        return isHovering ? Color.primary.opacity(0.045) : .clear
     }
 }
 
@@ -238,7 +237,7 @@ private struct PDFPageThumbnailImage: View {
                     .controlSize(.small)
             }
         }
-        .frame(width: 76, height: 98)
+        .frame(width: 68, height: 88)
         .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 3, style: .continuous)
