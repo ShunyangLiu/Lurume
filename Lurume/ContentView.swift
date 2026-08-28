@@ -331,6 +331,15 @@ struct ContentView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .overlay(alignment: .topTrailing) {
+            if statusFilter != .all {
+                Circle()
+                    .fill(.blue)
+                    .frame(width: 5, height: 5)
+                    .offset(x: -1, y: 2)
+                    .allowsHitTesting(false)
+            }
+        }
         .help(
             "阅读状态：\(statusFilter.title)；排序方式：\(appSettings.librarySortOption.title)"
         )
