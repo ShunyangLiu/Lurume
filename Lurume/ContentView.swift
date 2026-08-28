@@ -294,8 +294,8 @@ struct ContentView: View {
     }
 
     private var libraryOrganizationSummary: some View {
-        Menu {
-            Section("阅读状态") {
+        HStack(spacing: 8) {
+            Menu {
                 ForEach(ReadingStatusFilter.allCases) { filter in
                     Toggle(
                         filter.title,
@@ -307,9 +307,18 @@ struct ContentView: View {
                         )
                     )
                 }
+            } label: {
+                Label(statusFilter.title, systemImage: "line.3.horizontal.decrease")
             }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .help("阅读状态：\(statusFilter.title)")
+            .accessibilityLabel("阅读状态筛选")
+            .accessibilityValue(statusFilter.title)
 
-            Section("排序方式") {
+            Spacer(minLength: 8)
+
+            Menu {
                 ForEach(LibrarySortOption.allCases) { option in
                     Toggle(
                         option.title,
@@ -321,36 +330,23 @@ struct ContentView: View {
                         )
                     )
                 }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(appSettings.librarySortOption.title)
+                    Image(systemName: "arrow.up.arrow.down")
+                        .font(.caption2)
+                }
             }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "line.3.horizontal.decrease")
-                Text(statusFilter.title)
-                Text("·")
-                    .foregroundStyle(.tertiary)
-                Text(appSettings.librarySortOption.title)
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.down")
-                    .font(.caption2)
-            }
-            .font(.caption)
-            .foregroundStyle(
-                hasNondefaultLibraryOrganization ? Color.primary : Color.secondary
-            )
-            .contentShape(Rectangle())
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .help("排序方式：\(appSettings.librarySortOption.title)")
+            .accessibilityLabel("文献排序方式")
+            .accessibilityValue(appSettings.librarySortOption.title)
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .frame(maxWidth: .infinity)
+        .font(.caption)
+        .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
         .padding(.vertical, 3)
-        .help("\(statusFilter.title) · \(appSettings.librarySortOption.title)")
-        .accessibilityLabel("筛选与排序")
-        .accessibilityValue("\(statusFilter.title)，\(appSettings.librarySortOption.title)")
-    }
-
-    private var hasNondefaultLibraryOrganization: Bool {
-        statusFilter != .all || appSettings.librarySortOption != .recentlyOpened
     }
 
     private var libraryPaperList: some View {
