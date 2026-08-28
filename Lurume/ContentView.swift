@@ -331,12 +331,12 @@ struct ContentView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .overlay(alignment: .topTrailing) {
+        .foregroundStyle(statusFilter == .all ? Color.primary : Color.blue)
+        .background {
             if statusFilter != .all {
-                Circle()
-                    .fill(.blue)
-                    .frame(width: 5, height: 5)
-                    .offset(x: -1, y: 2)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.blue.opacity(0.14))
+                    .frame(width: 24, height: 24)
                     .allowsHitTesting(false)
             }
         }
