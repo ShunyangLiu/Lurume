@@ -246,6 +246,11 @@ final class PDFReaderController: ObservableObject {
         return renderedHighlights.contains { $0.approximatelyMatches(candidate) }
     }
 
+    func currentSelectionOverlapsHighlight(paperID: UUID) -> Bool {
+        guard let candidate = makeHighlightCandidate(paperID: paperID) else { return false }
+        return renderedHighlights.contains { $0.overlaps(candidate) }
+    }
+
     func clearCurrentSelection() {
         pdfView?.clearSelection()
     }
@@ -791,12 +796,11 @@ struct PDFReaderView: NSViewRepresentable {
         }
         highlightView.toggleHighlightTitle = { [weak controller] in
             guard let controller,
-                  controller.makeHighlightCandidate(paperID: paperID) != nil else {
+                  controller.makeHighlightCandidate(paperID: paperID) != nil,
+                  !controller.currentSelectionOverlapsHighlight(paperID: paperID) else {
                 return nil
             }
-            return controller.currentSelectionMatchesHighlight(paperID: paperID)
-                ? "取消高亮"
-                : "添加高亮"
+            return "添加高亮"
         }
         highlightView.onTranslateSelection = onTranslateSelection
         highlightView.onToggleHighlight = onToggleHighlight

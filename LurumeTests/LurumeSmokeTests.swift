@@ -451,6 +451,36 @@ final class LurumeSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testPartiallyOverlappingSelectionCannotCreateDuplicateHighlight() throws {
+        let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta gamma"))
+        let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        pdfView.document = document
+        let controller = PDFReaderController()
+        controller.attach(pdfView)
+        let paperID = UUID()
+
+        pdfView.setCurrentSelection(
+            try XCTUnwrap(document.findString("alpha", withOptions: []).first),
+            animate: false
+        )
+        let existing = try XCTUnwrap(controller.makeHighlightCandidate(paperID: paperID))
+        controller.renderHighlights([existing])
+
+        pdfView.setCurrentSelection(
+            try XCTUnwrap(document.findString("alpha beta", withOptions: []).first),
+            animate: false
+        )
+        XCTAssertFalse(controller.currentSelectionMatchesHighlight(paperID: paperID))
+        XCTAssertTrue(controller.currentSelectionOverlapsHighlight(paperID: paperID))
+
+        pdfView.setCurrentSelection(
+            try XCTUnwrap(document.findString("gamma", withOptions: []).first),
+            animate: false
+        )
+        XCTAssertFalse(controller.currentSelectionOverlapsHighlight(paperID: paperID))
+    }
+
+    @MainActor
     func testSameHighlightsAreRevalidatedAfterPDFDocumentChanges() throws {
         let onePageDocument = try makeBlankPDF(pageCount: 1)
         let sixPageDocument = try makeBlankPDF(pageCount: 6)

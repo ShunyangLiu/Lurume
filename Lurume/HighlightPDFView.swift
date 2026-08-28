@@ -233,8 +233,7 @@ final class HighlightPDFView: PDFView {
             highlightItems.append(delete)
         }
 
-        if let title = toggleTitle,
-           highlightID == nil || title != "取消高亮" {
+        if let title = toggleTitle, highlightID == nil {
             let toggle = NSMenuItem(
                 title: title,
                 action: #selector(toggleHighlight(_:)),

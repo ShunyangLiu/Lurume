@@ -202,6 +202,26 @@ struct HighlightRecord: Identifiable, Codable, Equatable, Hashable, Sendable {
         }
     }
 
+    func overlaps(_ other: HighlightRecord, minimumIntersection: Double = 0.5) -> Bool {
+        guard paperID == other.paperID else { return false }
+        for leftSegment in segments {
+            for rightSegment in other.segments
+            where leftSegment.pageIndex == rightSegment.pageIndex {
+                for leftRect in leftSegment.rects {
+                    for rightRect in rightSegment.rects {
+                        let intersection = leftRect.cgRect.intersection(rightRect.cgRect)
+                        if !intersection.isNull,
+                           intersection.width > minimumIntersection,
+                           intersection.height > minimumIntersection {
+                            return true
+                        }
+                    }
+                }
+            }
+        }
+        return false
+    }
+
     static func documentOrdered(_ lhs: HighlightRecord, _ rhs: HighlightRecord) -> Bool {
         guard lhs.startPageIndex == rhs.startPageIndex else {
             return lhs.startPageIndex < rhs.startPageIndex
