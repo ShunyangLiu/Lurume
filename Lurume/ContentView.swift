@@ -521,6 +521,9 @@ struct ContentView: View {
                             highlightStore.updateNote(id: id, text: note)
                         }
                     },
+                    onMoveHighlightNoteMarker: { id, position in
+                        highlightStore.updateNoteMarkerPosition(id: id, position: position)
+                    },
                     onError: { message in
                         documentError = message
                     }

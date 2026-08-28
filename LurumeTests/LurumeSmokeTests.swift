@@ -226,6 +226,58 @@ final class LurumeSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testNoteMarkerCanMoveAndRestoreItsSavedPagePosition() throws {
+        let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta gamma"))
+        let page = try XCTUnwrap(document.page(at: 0))
+        let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        pdfView.document = document
+        pdfView.layoutSubtreeIfNeeded()
+        let controller = PDFReaderController()
+        controller.attach(pdfView)
+        let selection = try XCTUnwrap(document.findString("beta", withOptions: []).first)
+        pdfView.setCurrentSelection(selection, animate: false)
+        let highlight = try XCTUnwrap(
+            controller.makeHighlightCandidate(paperID: UUID())?.updatingNote("move me")
+        )
+        controller.renderHighlights([highlight])
+        let initialRect = try XCTUnwrap(controller.noteMarkerAnchorRect(for: highlight.id))
+        let start = CGPoint(x: initialRect.midX, y: initialRect.midY)
+        let target = CGPoint(x: start.x + 45, y: start.y + 35)
+
+        XCTAssertNotNil(
+            controller.moveNoteMarker(
+                id: highlight.id,
+                from: start,
+                to: target,
+                finished: false
+            )
+        )
+        let liveMovedRect = try XCTUnwrap(controller.noteMarkerAnchorRect(for: highlight.id))
+        XCTAssertEqual(liveMovedRect.midX, target.x, accuracy: 1)
+        XCTAssertEqual(liveMovedRect.midY, target.y, accuracy: 1)
+        let savedPosition = try XCTUnwrap(
+            controller.moveNoteMarker(
+                id: highlight.id,
+                from: start,
+                to: target,
+                finished: true
+            )
+        )
+        let movedRect = try XCTUnwrap(controller.noteMarkerAnchorRect(for: highlight.id))
+        XCTAssertEqual(movedRect.midX, target.x, accuracy: 1)
+        XCTAssertEqual(movedRect.midY, target.y, accuracy: 1)
+
+        controller.renderHighlights([highlight.updatingNoteMarkerPosition(savedPosition)])
+        let restoredRect = try XCTUnwrap(controller.noteMarkerAnchorRect(for: highlight.id))
+        let restoredPageCenter = pdfView.convert(
+            CGPoint(x: restoredRect.midX, y: restoredRect.midY),
+            to: page
+        )
+        XCTAssertEqual(restoredPageCenter.x, savedPosition.x, accuracy: 1)
+        XCTAssertEqual(restoredPageCenter.y, savedPosition.y, accuracy: 1)
+    }
+
+    @MainActor
     func testReadOnlyModeHidesTransientAddNoteMarker() throws {
         let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta gamma"))
         let page = try XCTUnwrap(document.page(at: 0))

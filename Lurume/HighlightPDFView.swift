@@ -2,6 +2,76 @@ import AppKit
 import PDFKit
 import SwiftUI
 
+final class HighlightNoteMarkerAnnotation: PDFAnnotation {
+    enum Style {
+        case add
+        case note
+    }
+
+    let markerStyle: Style
+
+    init(bounds: CGRect, style: Style) {
+        markerStyle = style
+        super.init(bounds: bounds, forType: .stamp, withProperties: nil)
+        isReadOnly = true
+    }
+
+    required init?(coder: NSCoder) {
+        markerStyle = .note
+        super.init(coder: coder)
+    }
+
+    override func draw(with box: PDFDisplayBox, in context: CGContext) {
+        context.saveGState()
+        defer { context.restoreGState() }
+
+        let rect = bounds.insetBy(dx: 1, dy: 1)
+        switch markerStyle {
+        case .add:
+            context.setFillColor(NSColor.controlAccentColor.cgColor)
+            context.fillEllipse(in: rect)
+            context.setStrokeColor(NSColor.white.cgColor)
+            context.setLineWidth(1.6)
+            context.setLineCap(.round)
+            context.move(to: CGPoint(x: rect.midX, y: rect.minY + 3.5))
+            context.addLine(to: CGPoint(x: rect.midX, y: rect.maxY - 3.5))
+            context.move(to: CGPoint(x: rect.minX + 3.5, y: rect.midY))
+            context.addLine(to: CGPoint(x: rect.maxX - 3.5, y: rect.midY))
+            context.strokePath()
+        case .note:
+            let body = CGRect(
+                x: rect.minX,
+                y: rect.minY + 2.5,
+                width: rect.width,
+                height: rect.height - 2.5
+            )
+            let bubble = CGPath(
+                roundedRect: body,
+                cornerWidth: 2.5,
+                cornerHeight: 2.5,
+                transform: nil
+            )
+            context.addPath(bubble)
+            context.setFillColor(NSColor.systemYellow.cgColor)
+            context.fillPath()
+            context.move(to: CGPoint(x: body.minX + 3, y: body.minY))
+            context.addLine(to: CGPoint(x: body.minX + 3, y: rect.minY))
+            context.addLine(to: CGPoint(x: body.minX + 6, y: body.minY))
+            context.closePath()
+            context.setFillColor(NSColor.systemYellow.cgColor)
+            context.fillPath()
+            context.setStrokeColor(NSColor.labelColor.withAlphaComponent(0.75).cgColor)
+            context.setLineWidth(1)
+            context.setLineCap(.round)
+            for offset in [4.5, 7.5, 10.5] {
+                context.move(to: CGPoint(x: body.minX + 3, y: body.minY + offset))
+                context.addLine(to: CGPoint(x: body.maxX - 3, y: body.minY + offset))
+            }
+            context.strokePath()
+        }
+    }
+}
+
 @MainActor
 final class HighlightPDFView: PDFView {
     var highlightIDAtEvent: ((NSEvent) -> UUID?)?
@@ -12,6 +82,7 @@ final class HighlightPDFView: PDFView {
     var interactiveHighlightIDAtEvent: ((NSEvent) -> UUID?)?
     var onSelectHighlight: ((UUID?) -> Void)?
     var onOpenHighlightNote: ((UUID) -> Void)?
+    var onMoveHighlightNoteMarker: ((UUID, CGPoint, CGPoint, Bool) -> Void)?
     var onHoverHighlight: ((UUID?) -> Void)?
 
     private var mouseDownPoint: NSPoint?
@@ -52,6 +123,11 @@ final class HighlightPDFView: PDFView {
                 didDragSinceMouseDown = true
             }
         }
+        if let markerID = mouseDownNoteMarkerID, let mouseDownPoint {
+            let point = convert(event.locationInWindow, from: nil)
+            onMoveHighlightNoteMarker?(markerID, mouseDownPoint, point, false)
+            return
+        }
         super.mouseDragged(with: event)
     }
 
@@ -63,6 +139,15 @@ final class HighlightPDFView: PDFView {
             didDragSinceMouseDown = false
         }
         let releasedMarkerID = noteMarkerIDAtEvent?(event)
+        if didDragSinceMouseDown,
+           let markerID = mouseDownNoteMarkerID,
+           let mouseDownPoint {
+            let point = convert(event.locationInWindow, from: nil)
+            onMoveHighlightNoteMarker?(markerID, mouseDownPoint, point, true)
+            clearSelection()
+            onSelectHighlight?(markerID)
+            return
+        }
         if !didDragSinceMouseDown,
            let markerID = mouseDownNoteMarkerID,
            markerID == releasedMarkerID {
@@ -220,9 +305,10 @@ private struct HighlightNotePopoverView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
+            HStack(alignment: .center, spacing: 7) {
                 Image(systemName: model.readOnly ? "lock" : "note.text")
                     .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18, alignment: .center)
                 Text("笔记")
                     .font(.headline)
                 Spacer()
@@ -252,8 +338,8 @@ private struct HighlightNotePopoverView: View {
                         if model.text.isEmpty {
                             Text("添加你的想法……")
                                 .foregroundStyle(.tertiary)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 12)
+                                .padding(.leading, 8)
+                                .padding(.top, 9)
                                 .allowsHitTesting(false)
                         }
                     }

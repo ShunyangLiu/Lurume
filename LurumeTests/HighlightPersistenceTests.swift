@@ -172,6 +172,27 @@ final class HighlightPersistenceTests: XCTestCase {
     }
 
     @MainActor
+    func testNoteMarkerPositionPersistsWithHighlightRecord() throws {
+        let fileURL = try temporaryFileURL()
+        let store = HighlightStore(persistence: HighlightPersistence(fileURL: fileURL))
+        let record = try makeRecord()
+        let position = try XCTUnwrap(HighlightPoint(cgPoint: CGPoint(x: 240, y: 360)))
+        XCTAssertNotNil(store.toggle(record, undoManager: nil))
+
+        XCTAssertTrue(store.updateNoteMarkerPosition(id: record.id, position: position))
+        XCTAssertEqual(store.highlight(id: record.id)?.noteMarkerPosition, position)
+        XCTAssertEqual(
+            try HighlightPersistence(fileURL: fileURL)
+                .load()
+                .snapshot
+                .highlights
+                .first?
+                .noteMarkerPosition,
+            position
+        )
+    }
+
+    @MainActor
     func testDeletingAndUndoingHighlightRestoresItsNote() throws {
         let fileURL = try temporaryFileURL()
         let store = HighlightStore(persistence: HighlightPersistence(fileURL: fileURL))

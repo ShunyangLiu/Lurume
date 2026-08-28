@@ -58,6 +58,21 @@ struct HighlightRect: Codable, Equatable, Hashable, Sendable {
     }
 }
 
+struct HighlightPoint: Codable, Equatable, Hashable, Sendable {
+    let x: Double
+    let y: Double
+
+    init?(cgPoint: CGPoint) {
+        guard cgPoint.x.isFinite, cgPoint.y.isFinite else { return nil }
+        x = cgPoint.x
+        y = cgPoint.y
+    }
+
+    var cgPoint: CGPoint {
+        CGPoint(x: x, y: y)
+    }
+}
+
 struct HighlightSegment: Codable, Equatable, Hashable, Sendable {
     let pageIndex: Int
     let rects: [HighlightRect]
@@ -91,6 +106,7 @@ struct HighlightRecord: Identifiable, Codable, Equatable, Hashable, Sendable {
     let segments: [HighlightSegment]
     let noteText: String?
     let noteModifiedAt: Date?
+    let noteMarkerPosition: HighlightPoint?
 
     init?(
         id: UUID = UUID(),
@@ -99,7 +115,8 @@ struct HighlightRecord: Identifiable, Codable, Equatable, Hashable, Sendable {
         createdAt: Date = Date(),
         segments: [HighlightSegment],
         noteText: String? = nil,
-        noteModifiedAt: Date? = nil
+        noteModifiedAt: Date? = nil,
+        noteMarkerPosition: HighlightPoint? = nil
     ) {
         guard !rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !segments.isEmpty else {
@@ -113,6 +130,7 @@ struct HighlightRecord: Identifiable, Codable, Equatable, Hashable, Sendable {
         let normalizedNote = Self.normalizedNote(noteText)
         self.noteText = normalizedNote
         self.noteModifiedAt = normalizedNote == nil ? nil : noteModifiedAt
+        self.noteMarkerPosition = noteMarkerPosition
     }
 
     var startPageIndex: Int {
@@ -150,7 +168,21 @@ struct HighlightRecord: Identifiable, Codable, Equatable, Hashable, Sendable {
             createdAt: createdAt,
             segments: segments,
             noteText: text,
-            noteModifiedAt: modifiedAt
+            noteModifiedAt: modifiedAt,
+            noteMarkerPosition: noteMarkerPosition
+        )!
+    }
+
+    func updatingNoteMarkerPosition(_ position: HighlightPoint?) -> HighlightRecord {
+        HighlightRecord(
+            id: id,
+            paperID: paperID,
+            rawText: rawText,
+            createdAt: createdAt,
+            segments: segments,
+            noteText: noteText,
+            noteModifiedAt: noteModifiedAt,
+            noteMarkerPosition: position
         )!
     }
 
@@ -197,6 +229,10 @@ struct HighlightRecord: Identifiable, Codable, Equatable, Hashable, Sendable {
         let segments = try values.decode([HighlightSegment].self, forKey: .segments)
         let noteText = try values.decodeIfPresent(String.self, forKey: .noteText)
         let noteModifiedAt = try values.decodeIfPresent(Date.self, forKey: .noteModifiedAt)
+        let noteMarkerPosition = try values.decodeIfPresent(
+            HighlightPoint.self,
+            forKey: .noteMarkerPosition
+        )
         guard let validated = HighlightRecord(
             id: id,
             paperID: paperID,
@@ -204,7 +240,8 @@ struct HighlightRecord: Identifiable, Codable, Equatable, Hashable, Sendable {
             createdAt: createdAt,
             segments: segments,
             noteText: noteText,
-            noteModifiedAt: noteModifiedAt
+            noteModifiedAt: noteModifiedAt,
+            noteMarkerPosition: noteMarkerPosition
         ) else {
             throw DecodingError.dataCorruptedError(
                 forKey: .segments,

@@ -58,6 +58,7 @@ final class PDFReaderController: ObservableObject {
     private var selectionAnnotations: [PDFAnnotation] = []
     private var noteMarkerAnnotations: [PDFAnnotation] = []
     private var noteMarkerIDByAnnotation: [ObjectIdentifier: UUID] = [:]
+    private var noteMarkerDragOffsets: [UUID: CGPoint] = [:]
     private var hoveredHighlightID: UUID?
     private var noteEditingEnabled = true
     private var noteEditorSession: HighlightNoteEditorSession?
@@ -360,6 +361,52 @@ final class PDFReaderController: ObservableObject {
         return pdfView.convert(annotation.bounds, from: page)
     }
 
+    func moveNoteMarker(
+        id: UUID,
+        from startViewPoint: CGPoint,
+        to viewPoint: CGPoint,
+        finished: Bool
+    ) -> HighlightPoint? {
+        guard noteEditingEnabled,
+              let pdfView,
+              let annotation = noteMarkerAnnotations.first(where: {
+                  noteMarkerIDByAnnotation[ObjectIdentifier($0)] == id
+              }),
+              let page = annotation.page else {
+            noteMarkerDragOffsets.removeValue(forKey: id)
+            return nil
+        }
+        if noteMarkerDragOffsets[id] == nil {
+            let currentRect = pdfView.convert(annotation.bounds, from: page)
+            noteMarkerDragOffsets[id] = CGPoint(
+                x: startViewPoint.x - currentRect.midX,
+                y: startViewPoint.y - currentRect.midY
+            )
+            closeNoteEditor()
+        }
+        let offset = noteMarkerDragOffsets[id] ?? .zero
+        let targetViewCenter = CGPoint(
+            x: viewPoint.x - offset.x,
+            y: viewPoint.y - offset.y
+        )
+        let targetPageCenter = pdfView.convert(targetViewCenter, to: page)
+        let pageBounds = page.bounds(for: .cropBox)
+        let halfWidth = annotation.bounds.width / 2
+        let halfHeight = annotation.bounds.height / 2
+        let clampedCenter = CGPoint(
+            x: min(max(targetPageCenter.x, pageBounds.minX + halfWidth), pageBounds.maxX - halfWidth),
+            y: min(max(targetPageCenter.y, pageBounds.minY + halfHeight), pageBounds.maxY - halfHeight)
+        )
+        annotation.bounds.origin = CGPoint(
+            x: clampedCenter.x - halfWidth,
+            y: clampedCenter.y - halfHeight
+        )
+        if finished {
+            noteMarkerDragOffsets.removeValue(forKey: id)
+        }
+        return HighlightPoint(cgPoint: clampedCenter)
+    }
+
     func presentNoteEditor(
         for highlight: HighlightRecord,
         readOnly: Bool,
@@ -573,30 +620,15 @@ final class PDFReaderController: ObservableObject {
             let markerRect = markerRect(
                 beside: anchor.rect,
                 pageBounds: anchor.page.bounds(for: .cropBox),
-                occupied: occupiedByPage[anchor.pageIndex, default: []]
+                occupied: occupiedByPage[anchor.pageIndex, default: []],
+                savedPosition: highlight.noteMarkerPosition?.cgPoint
             )
             occupiedByPage[anchor.pageIndex, default: []].append(markerRect)
-            let marker = PDFAnnotation(
+            let marker = HighlightNoteMarkerAnnotation(
                 bounds: markerRect,
-                forType: highlight.hasNote ? .text : .freeText,
-                withProperties: nil
+                style: highlight.hasNote ? .note : .add
             )
-            marker.isReadOnly = true
-            marker.color = highlight.hasNote
-                ? .systemYellow
-                : .controlAccentColor.withAlphaComponent(0.75)
-            if highlight.hasNote {
-                marker.iconType = .comment
-            } else {
-                marker.contents = "+"
-                marker.font = .systemFont(ofSize: 11, weight: .semibold)
-                marker.fontColor = .white
-                marker.alignment = .center
-                marker.interiorColor = .controlAccentColor.withAlphaComponent(0.82)
-                let border = PDFBorder()
-                border.lineWidth = 0
-                marker.border = border
-            }
+            marker.contents = highlight.hasNote ? "打开高亮笔记" : "添加高亮笔记"
             anchor.page.addAnnotation(marker)
             noteMarkerAnnotations.append(marker)
             noteMarkerIDByAnnotation[ObjectIdentifier(marker)] = highlight.id
@@ -613,6 +645,7 @@ final class PDFReaderController: ObservableObject {
         selectionAnnotations = []
         noteMarkerAnnotations = []
         noteMarkerIDByAnnotation = [:]
+        noteMarkerDragOffsets = [:]
     }
 
     private func markerAnchor(
@@ -635,9 +668,28 @@ final class PDFReaderController: ObservableObject {
     private func markerRect(
         beside highlightRect: CGRect,
         pageBounds: CGRect,
-        occupied: [CGRect]
+        occupied: [CGRect],
+        savedPosition: CGPoint?
     ) -> CGRect {
         let size = CGSize(width: 16, height: 16)
+        if let savedPosition {
+            let center = CGPoint(
+                x: min(
+                    max(savedPosition.x, pageBounds.minX + size.width / 2),
+                    pageBounds.maxX - size.width / 2
+                ),
+                y: min(
+                    max(savedPosition.y, pageBounds.minY + size.height / 2),
+                    pageBounds.maxY - size.height / 2
+                )
+            )
+            return CGRect(
+                x: center.x - size.width / 2,
+                y: center.y - size.height / 2,
+                width: size.width,
+                height: size.height
+            )
+        }
         let gap: CGFloat = 4
         var originX = highlightRect.maxX + gap
         if originX + size.width > pageBounds.maxX {
@@ -698,6 +750,7 @@ struct PDFReaderView: NSViewRepresentable {
     let onToggleHighlight: () -> Void
     let onDeleteHighlight: (UUID) -> Void
     let onOpenHighlightNote: (UUID) -> Void
+    let onMoveHighlightNoteMarker: (UUID, HighlightPoint) -> Void
     let onError: (String) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -760,6 +813,18 @@ struct PDFReaderView: NSViewRepresentable {
             controller?.currentHighlightID = id
         }
         highlightView.onOpenHighlightNote = onOpenHighlightNote
+        highlightView.onMoveHighlightNoteMarker = {
+            [weak controller] id, startPoint, point, finished in
+            guard let position = controller?.moveNoteMarker(
+                id: id,
+                from: startPoint,
+                to: point,
+                finished: finished
+            ), finished else {
+                return
+            }
+            onMoveHighlightNoteMarker(id, position)
+        }
         highlightView.onHoverHighlight = { [weak controller] id in
             controller?.setHoveredHighlightID(id)
         }

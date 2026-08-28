@@ -67,6 +67,19 @@ final class HighlightStore: ObservableObject {
     }
 
     @discardableResult
+    func updateNoteMarkerPosition(id: UUID, position: HighlightPoint) -> Bool {
+        guard !persistenceDisabled,
+              let index = highlights.firstIndex(where: { $0.id == id }) else {
+            return false
+        }
+        let current = highlights[index]
+        guard current.noteMarkerPosition != position else { return true }
+        var updated = highlights
+        updated[index] = current.updatingNoteMarkerPosition(position)
+        return saveAndPublish(updated)
+    }
+
+    @discardableResult
     func toggle(_ candidate: HighlightRecord, undoManager: UndoManager?) -> HighlightToggleResult? {
         guard requireWritable() else { return nil }
         if let existing = highlights.first(where: { $0.approximatelyMatches(candidate) }) {
