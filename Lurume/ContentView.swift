@@ -324,19 +324,13 @@ struct ContentView: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "line.3.horizontal.decrease")
-                    .font(.caption2.weight(.semibold))
-
-                Text(libraryOrganizationLabel)
-            }
-            .lineLimit(1)
+            Image(systemName: "line.3.horizontal.decrease")
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
         }
-        .font(.caption)
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .layoutPriority(1)
         .help(
             "阅读状态：\(statusFilter.title)；排序方式：\(appSettings.librarySortOption.title)"
         )
@@ -344,13 +338,6 @@ struct ContentView: View {
         .accessibilityValue(
             "\(statusFilter.title)，\(appSettings.librarySortOption.title)"
         )
-    }
-
-    private var libraryOrganizationLabel: String {
-        guard statusFilter != .all else {
-            return appSettings.librarySortOption.compactTitle
-        }
-        return "\(statusFilter.title)·\(appSettings.librarySortOption.compactTitle)"
     }
 
     private var libraryPaperList: some View {
