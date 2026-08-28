@@ -105,11 +105,15 @@ final class HighlightStore: ObservableObject {
     }
 
     func removeAll(for paperID: UUID) throws -> [HighlightRecord] {
+        try removeAll(for: [paperID])
+    }
+
+    func removeAll(for paperIDs: Set<UUID>) throws -> [HighlightRecord] {
         try requireWritableOrThrow()
-        let removed = highlights.filter { $0.paperID == paperID }
+        let removed = highlights.filter { paperIDs.contains($0.paperID) }
         guard !removed.isEmpty else { return [] }
         var updated = highlights
-        updated.removeAll { $0.paperID == paperID }
+        updated.removeAll { paperIDs.contains($0.paperID) }
         try persist(updated)
         highlights = updated
         return removed

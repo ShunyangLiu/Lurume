@@ -25,6 +25,7 @@ struct ContentView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var inspectorMode: ReaderInspectorMode = .translation
     @State private var pendingPaperRemoval: UUID?
+    @State private var pendingBatchPaperRemoval: Set<UUID> = []
     @State private var libraryModeSelection: Set<UUID> = []
     @State private var libraryModeSearchText = ""
     @State private var libraryModeStatusFilter: ReadingStatusFilter = .all
@@ -110,7 +111,8 @@ struct ContentView: View {
                         statusFilter: $libraryModeStatusFilter,
                         importPDFs: presentImporter,
                         editMetadata: { metadataEditorTarget = $0 },
-                        openPaper: openPaperFromLibrary
+                        openPaper: openPaperFromLibrary,
+                        removeFromLibrary: requestBatchPaperRemoval
                     )
                 }
             }
@@ -204,6 +206,25 @@ struct ContentView: View {
                 if let id = pendingPaperRemoval {
                     Text(removalConfirmationMessage(for: id))
                 }
+            }
+            .confirmationDialog(
+                "从文献库移除？",
+                isPresented: Binding(
+                    get: { !pendingBatchPaperRemoval.isEmpty },
+                    set: { if !$0 { pendingBatchPaperRemoval = [] } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("移除", role: .destructive) {
+                    let ids = pendingBatchPaperRemoval
+                    pendingBatchPaperRemoval = []
+                    removePapers(ids)
+                }
+                Button("取消", role: .cancel) {
+                    pendingBatchPaperRemoval = []
+                }
+            } message: {
+                Text(batchRemovalConfirmationMessage(for: pendingBatchPaperRemoval))
             }
             .task(id: libraryStore.selectedPaperID) {
                 guard appSettings.mainWindowMode == .reading else { return }
@@ -877,6 +898,11 @@ struct ContentView: View {
         }
     }
 
+    private func requestBatchPaperRemoval(_ ids: Set<UUID>) {
+        let existingIDs = Set(libraryStore.papers.map(\.id))
+        pendingBatchPaperRemoval = ids.intersection(existingIDs)
+    }
+
     @discardableResult
     private func changeReadingStatus(_ status: ReadingStatus, for id: UUID) -> Bool {
         guard statusInteractionGuard.shouldAccept(isFiltered: statusFilter != .all) else {
@@ -887,37 +913,38 @@ struct ContentView: View {
     }
 
     private func removePaper(_ id: UUID) {
-        let removedHighlights: [HighlightRecord]
+        removePapers([id])
+    }
+
+    private func removePapers(_ ids: Set<UUID>) {
+        let coordinator = PaperRemovalCoordinator(
+            libraryStore: libraryStore,
+            highlightStore: highlightStore
+        )
         do {
-            if highlightStore.count(for: id) > 0 {
-                removedHighlights = try highlightStore.removeAll(for: id)
-            } else {
-                removedHighlights = []
-            }
+            try coordinator.remove(paperIDs: ids, undoManager: undoManager)
         } catch {
-            highlightStore.presentedError = "无法移除文献的高亮：\(error.localizedDescription)"
+            libraryStore.presentedError = "无法移除文献：\(error.localizedDescription)"
             return
         }
-
-        do {
-            try libraryStore.removePaper(id: id)
-        } catch {
-            do {
-                try highlightStore.restore(removedHighlights)
-                libraryStore.presentedError = "无法移除文献：\(error.localizedDescription)"
-            } catch let restoreError {
-                libraryStore.presentedError = "无法移除文献，且恢复高亮失败：\(restoreError.localizedDescription)"
-            }
-            return
+        for id in ids {
+            translationController.paperRemoved(id)
         }
-
-        translationController.paperRemoved(id)
-        openSelectedPaper()
+        libraryModeSelection.subtract(ids)
+        if appSettings.mainWindowMode == .reading {
+            openSelectedPaper()
+        }
     }
 
     private func removalConfirmationMessage(for id: UUID) -> String {
         let count = highlightStore.count(for: id)
         return "移除后将同时删除 \(count) 条高亮。原始 PDF 不会被删除或修改。"
+    }
+
+    private func batchRemovalConfirmationMessage(for ids: Set<UUID>) -> String {
+        let affected = highlightStore.highlights.filter { ids.contains($0.paperID) }
+        let noteCount = affected.lazy.filter(\.hasNote).count
+        return "将从 Lurume 移除 \(ids.count) 篇文献，并删除 \(affected.count) 条高亮和 \(noteCount) 条笔记。原始 PDF 不会被删除或修改。"
     }
 
     private func clearPresentedErrors() {

@@ -42,10 +42,15 @@ struct LibraryTableView: NSViewRepresentable {
     let papers: [PaperRecord]
     @Binding var selection: Set<UUID>
     let unavailablePaperIDs: Set<UUID>
+    let collections: [CollectionRecord]
+    let currentSource: LibrarySource
     let isReadOnly: Bool
     let cycleReadingStatus: (UUID) -> Void
     let editMetadata: (UUID) -> Void
     let openPaper: (UUID) -> Void
+    let setMembership: (Set<UUID>, UUID, Bool) -> Void
+    let removeFromCurrentCollection: (Set<UUID>, UUID) -> Void
+    let removeFromLibrary: (Set<UUID>) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -65,6 +70,7 @@ struct LibraryTableView: NSViewRepresentable {
         tableView.target = context.coordinator
         tableView.doubleAction = #selector(Coordinator.didDoubleClick(_:))
         tableView.commandHandler = context.coordinator.handleKeyEvent
+        tableView.menuProvider = context.coordinator.makeContextMenu
         tableView.setDraggingSourceOperationMask(.copy, forLocal: true)
         tableView.setDraggingSourceOperationMask([], forLocal: false)
 
@@ -278,7 +284,88 @@ struct LibraryTableView: NSViewRepresentable {
                 perform(command)
                 return true
             }
+            if modifiers == .command, (event.keyCode == 51 || event.keyCode == 117) {
+                removeSelectionFromCurrentSource()
+                return true
+            }
             return false
+        }
+
+        func makeContextMenu(_ event: NSEvent) -> NSMenu? {
+            guard let tableView else { return nil }
+            let location = tableView.convert(event.locationInWindow, from: nil)
+            let row = tableView.row(at: location)
+            guard parent.papers.indices.contains(row) else { return nil }
+            if !tableView.selectedRowIndexes.contains(row) {
+                tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                parent.selection = [parent.papers[row].id]
+            }
+            let paperIDs = selectedPaperIDs(in: tableView)
+            guard !paperIDs.isEmpty else { return nil }
+
+            let menu = NSMenu()
+            let membershipItem = NSMenuItem(title: "加入文献集", action: nil, keyEquivalent: "")
+            let membershipMenu = NSMenu(title: "加入文献集")
+            for collection in parent.collections.sorted(by: collectionOrderedBefore) {
+                let state = membershipState(
+                    paperIDs: paperIDs,
+                    collectionID: collection.id
+                )
+                let item = NSMenuItem(
+                    title: collection.name,
+                    action: #selector(toggleMembership(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.state = switch state {
+                case .off: .off
+                case .mixed: .mixed
+                case .on: .on
+                }
+                item.representedObject = MembershipMenuPayload(
+                    paperIDs: paperIDs,
+                    collectionID: collection.id,
+                    shouldAdd: state != .on
+                )
+                item.isEnabled = !parent.isReadOnly
+                membershipMenu.addItem(item)
+            }
+            if parent.collections.isEmpty {
+                let empty = NSMenuItem(title: "尚无文献集", action: nil, keyEquivalent: "")
+                empty.isEnabled = false
+                membershipMenu.addItem(empty)
+            }
+            membershipItem.submenu = membershipMenu
+            menu.addItem(membershipItem)
+
+            if case let .collection(collectionID) = parent.currentSource,
+               let collection = parent.collections.first(where: { $0.id == collectionID }) {
+                let remove = NSMenuItem(
+                    title: "从“\(collection.name)”移除",
+                    action: #selector(removeFromCollection(_:)),
+                    keyEquivalent: ""
+                )
+                remove.target = self
+                remove.representedObject = MembershipMenuPayload(
+                    paperIDs: paperIDs,
+                    collectionID: collectionID,
+                    shouldAdd: false
+                )
+                remove.isEnabled = !parent.isReadOnly
+                menu.addItem(remove)
+            }
+
+            menu.addItem(.separator())
+            let removeLibrary = NSMenuItem(
+                title: "从文献库移除…",
+                action: #selector(removeFromLibrary(_:)),
+                keyEquivalent: ""
+            )
+            removeLibrary.target = self
+            removeLibrary.representedObject = PaperSelectionMenuPayload(paperIDs: paperIDs)
+            removeLibrary.isEnabled = !parent.isReadOnly
+            menu.addItem(removeLibrary)
+            return menu
         }
 
         @objc private func cycleStatus(_ sender: NSButton) {
@@ -286,6 +373,62 @@ struct LibraryTableView: NSViewRepresentable {
             let row = tableView.row(for: sender)
             guard parent.papers.indices.contains(row), !parent.isReadOnly else { return }
             parent.cycleReadingStatus(parent.papers[row].id)
+        }
+
+        @objc private func toggleMembership(_ sender: NSMenuItem) {
+            guard let payload = sender.representedObject as? MembershipMenuPayload else { return }
+            parent.setMembership(
+                payload.paperIDs,
+                payload.collectionID,
+                payload.shouldAdd
+            )
+        }
+
+        @objc private func removeFromCollection(_ sender: NSMenuItem) {
+            guard let payload = sender.representedObject as? MembershipMenuPayload else { return }
+            parent.removeFromCurrentCollection(payload.paperIDs, payload.collectionID)
+        }
+
+        @objc private func removeFromLibrary(_ sender: NSMenuItem) {
+            guard let payload = sender.representedObject as? PaperSelectionMenuPayload else { return }
+            parent.removeFromLibrary(payload.paperIDs)
+        }
+
+        private func removeSelectionFromCurrentSource() {
+            guard !parent.selection.isEmpty, !parent.isReadOnly else { return }
+            if case let .collection(collectionID) = parent.currentSource {
+                parent.removeFromCurrentCollection(parent.selection, collectionID)
+            } else {
+                parent.removeFromLibrary(parent.selection)
+            }
+        }
+
+        private func selectedPaperIDs(in tableView: NSTableView) -> Set<UUID> {
+            Set(tableView.selectedRowIndexes.compactMap { index in
+                parent.papers.indices.contains(index) ? parent.papers[index].id : nil
+            })
+        }
+
+        private func membershipState(
+            paperIDs: Set<UUID>,
+            collectionID: UUID
+        ) -> CollectionMembershipState {
+            let memberCount = parent.papers.lazy.filter {
+                paperIDs.contains($0.id) && $0.collectionIDs.contains(collectionID)
+            }.count
+            if memberCount == 0 { return .off }
+            if memberCount == paperIDs.count { return .on }
+            return .mixed
+        }
+
+        private func collectionOrderedBefore(
+            _ lhs: CollectionRecord,
+            _ rhs: CollectionRecord
+        ) -> Bool {
+            let order = lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+            if order != .orderedSame { return order == .orderedAscending }
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+            return lhs.id.uuidString < rhs.id.uuidString
         }
 
         private func perform(_ command: LibraryTableCommand) {
@@ -347,9 +490,35 @@ struct LibraryTableView: NSViewRepresentable {
 
 final class LibraryNSTableView: NSTableView {
     var commandHandler: ((NSEvent) -> Bool)?
+    var menuProvider: ((NSEvent) -> NSMenu?)?
 
     override func keyDown(with event: NSEvent) {
         if commandHandler?(event) == true { return }
         super.keyDown(with: event)
+    }
+
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        menuProvider?(event)
+    }
+}
+
+private final class MembershipMenuPayload: NSObject {
+    let paperIDs: Set<UUID>
+    let collectionID: UUID
+    let shouldAdd: Bool
+
+    init(paperIDs: Set<UUID>, collectionID: UUID, shouldAdd: Bool) {
+        self.paperIDs = paperIDs
+        self.collectionID = collectionID
+        self.shouldAdd = shouldAdd
+    }
+}
+
+private final class PaperSelectionMenuPayload: NSObject {
+    let paperIDs: Set<UUID>
+
+    init(paperIDs: Set<UUID>) {
+        self.paperIDs = paperIDs
     }
 }

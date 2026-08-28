@@ -23,6 +23,11 @@ enum LibraryStoreError: LocalizedError, Equatable {
     }
 }
 
+struct RemovedLibraryPapers: Sendable {
+    let papers: [PaperRecord]
+    let selectedPaperID: UUID?
+}
+
 @MainActor
 final class LibraryStore: ObservableObject {
     @Published private(set) var papers: [PaperRecord] = []
@@ -315,25 +320,45 @@ final class LibraryStore: ObservableObject {
     }
 
     func removePaper(id: UUID) throws {
+        _ = try removePapers(ids: [id])
+    }
+
+    func removePapers(ids: Set<UUID>) throws -> RemovedLibraryPapers {
         try requireWritableLibrary()
         flushPendingSave()
+        let removed = papers.filter { ids.contains($0.id) }
+        guard !removed.isEmpty else {
+            return RemovedLibraryPapers(papers: [], selectedPaperID: selectedPaperID)
+        }
+        let updatedPapers = papers.filter { !ids.contains($0.id) }
+        let updatedSelection = selectedPaperID.flatMap { ids.contains($0) ? nil : $0 }
+            ?? updatedPapers.first?.id
+        let batch = RemovedLibraryPapers(
+            papers: removed,
+            selectedPaperID: selectedPaperID
+        )
+        try commit(
+            papers: updatedPapers,
+            collections: collections,
+            selectedPaperID: updatedSelection
+        )
+        return batch
+    }
 
-        let previousPapers = papers
-        let previousUnavailablePaperIDs = unavailablePaperIDs
-        let previousSelectedPaperID = selectedPaperID
-        papers.removeAll { $0.id == id }
-        unavailablePaperIDs.remove(id)
-        if selectedPaperID == id {
-            selectedPaperID = papers.first?.id
-        }
-        do {
-            try saveNow()
-        } catch {
-            papers = previousPapers
-            unavailablePaperIDs = previousUnavailablePaperIDs
-            selectedPaperID = previousSelectedPaperID
-            throw error
-        }
+    func restorePapers(_ batch: RemovedLibraryPapers) throws {
+        guard !batch.papers.isEmpty else { return }
+        try requireWritableLibrary()
+        let knownIDs = Set(papers.map(\.id))
+        let restored = batch.papers.filter { !knownIDs.contains($0.id) }
+        guard !restored.isEmpty else { return }
+        let updatedSelection = batch.selectedPaperID.flatMap { selectedID in
+            (papers + restored).contains(where: { $0.id == selectedID }) ? selectedID : nil
+        } ?? selectedPaperID
+        try commit(
+            papers: papers + restored,
+            collections: collections,
+            selectedPaperID: updatedSelection
+        )
     }
 
     func updatePageIndex(_ pageIndex: Int, for paperID: UUID) {

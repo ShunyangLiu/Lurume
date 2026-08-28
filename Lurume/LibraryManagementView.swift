@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct LibrarySourceSidebar: View {
@@ -9,6 +10,7 @@ struct LibrarySourceSidebar: View {
     @State private var nameDraft = ""
     @State private var nameError: String?
     @State private var pendingDeletion: CollectionRecord?
+    @State private var activeDropSource: LibrarySource?
     @FocusState private var nameFieldFocused: Bool
 
     private var optionalSelection: Binding<LibrarySource?> {
@@ -24,14 +26,16 @@ struct LibrarySourceSidebar: View {
                 sourceRow(
                     title: "全部文献",
                     systemImage: "books.vertical",
-                    count: libraryStore.count(in: .all)
+                    count: libraryStore.count(in: .all),
+                    dropSource: .all
                 )
                 .tag(LibrarySource.all)
 
                 sourceRow(
                     title: "未分类",
                     systemImage: "tray",
-                    count: libraryStore.count(in: .unfiled)
+                    count: libraryStore.count(in: .unfiled),
+                    dropSource: .unfiled
                 )
                 .tag(LibrarySource.unfiled)
             }
@@ -93,7 +97,12 @@ struct LibrarySourceSidebar: View {
         }
     }
 
-    private func sourceRow(title: String, systemImage: String, count: Int) -> some View {
+    private func sourceRow(
+        title: String,
+        systemImage: String,
+        count: Int,
+        dropSource: LibrarySource
+    ) -> some View {
         HStack {
             Label(title, systemImage: systemImage)
             Spacer()
@@ -103,6 +112,23 @@ struct LibrarySourceSidebar: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title)，\(count) 篇文献")
+        .padding(.vertical, 2)
+        .background {
+            if activeDropSource == dropSource {
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.accentColor.opacity(0.16))
+            }
+        }
+        .overlay {
+            LibraryDropTargetView(
+                accepts: { payload in accepts(payload, at: dropSource) },
+                activeChanged: { active in
+                    activeDropSource = active ? dropSource : nil
+                },
+                perform: { payload in perform(payload, at: dropSource) }
+            )
+            .allowsHitTesting(false)
+        }
     }
 
     @ViewBuilder
@@ -115,7 +141,8 @@ struct LibrarySourceSidebar: View {
             sourceRow(
                 title: collection.name,
                 systemImage: "folder",
-                count: libraryStore.count(in: .collection(collection.id))
+                count: libraryStore.count(in: .collection(collection.id)),
+                dropSource: .collection(collection.id)
             )
         }
     }
@@ -217,9 +244,52 @@ struct LibrarySourceSidebar: View {
             libraryStore.presentedError = "无法删除文献集：\(error.localizedDescription)"
         }
     }
+
+    private func accepts(_ payload: LibraryDropPayload, at source: LibrarySource) -> Bool {
+        switch (payload, source) {
+        case (.finderPDFs, _):
+            true
+        case (.internalPapers, .collection):
+            true
+        default:
+            false
+        }
+    }
+
+    private func perform(_ payload: LibraryDropPayload, at source: LibrarySource) {
+        switch payload {
+        case let .internalPapers(ids):
+            guard case let .collection(collectionID) = source else { return }
+            do {
+                try libraryStore.setMembership(
+                    of: Set(ids),
+                    in: collectionID,
+                    isMember: true,
+                    undoManager: undoManager
+                )
+            } catch {
+                libraryStore.presentedError = "无法加入文献集：\(error.localizedDescription)"
+            }
+        case let .finderPDFs(urls):
+            let collectionID: UUID?
+            if case let .collection(id) = source {
+                collectionID = id
+            } else {
+                collectionID = nil
+            }
+            libraryStore.importPDFs(
+                at: urls,
+                collectionID: collectionID,
+                selectAfterImport: false
+            )
+        case .unsupported:
+            break
+        }
+    }
 }
 
 struct LibraryTablePane: View {
+    @Environment(\.undoManager) private var undoManager
     @EnvironmentObject private var libraryStore: LibraryStore
     @EnvironmentObject private var appSettings: AppSettings
     let source: LibrarySource
@@ -229,6 +299,7 @@ struct LibraryTablePane: View {
     let importPDFs: () -> Void
     let editMetadata: (UUID) -> Void
     let openPaper: (UUID) -> Void
+    let removeFromLibrary: (Set<UUID>) -> Void
 
     private var papers: [PaperRecord] {
         libraryStore.papers(
@@ -273,14 +344,40 @@ struct LibraryTablePane: View {
                     papers: papers,
                     selection: $selection,
                     unavailablePaperIDs: libraryStore.unavailablePaperIDs,
+                    collections: libraryStore.collections,
+                    currentSource: source,
                     isReadOnly: libraryStore.persistenceDisabled,
                     cycleReadingStatus: libraryStore.cycleReadingStatus,
                     editMetadata: editMetadata,
-                    openPaper: openPaper
+                    openPaper: openPaper,
+                    setMembership: setMembership,
+                    removeFromCurrentCollection: removeFromCollection,
+                    removeFromLibrary: removeFromLibrary
                 )
             }
         }
         .navigationTitle(sourceTitle)
+    }
+
+    private func setMembership(
+        _ paperIDs: Set<UUID>,
+        _ collectionID: UUID,
+        _ isMember: Bool
+    ) {
+        do {
+            try libraryStore.setMembership(
+                of: paperIDs,
+                in: collectionID,
+                isMember: isMember,
+                undoManager: undoManager
+            )
+        } catch {
+            libraryStore.presentedError = "无法修改文献集归属：\(error.localizedDescription)"
+        }
+    }
+
+    private func removeFromCollection(_ paperIDs: Set<UUID>, _ collectionID: UUID) {
+        setMembership(paperIDs, collectionID, false)
     }
 
     private var searchField: some View {
@@ -353,5 +450,69 @@ struct LibraryTablePane: View {
                 description: Text("调整搜索词或阅读状态筛选。")
             )
         }
+    }
+}
+
+private struct LibraryDropTargetView: NSViewRepresentable {
+    let accepts: (LibraryDropPayload) -> Bool
+    let activeChanged: (Bool) -> Void
+    let perform: (LibraryDropPayload) -> Void
+
+    func makeNSView(context: Context) -> LibraryDropReceivingView {
+        LibraryDropReceivingView(
+            accepts: accepts,
+            activeChanged: activeChanged,
+            perform: perform
+        )
+    }
+
+    func updateNSView(_ nsView: LibraryDropReceivingView, context: Context) {
+        nsView.accepts = accepts
+        nsView.activeChanged = activeChanged
+        nsView.perform = perform
+    }
+}
+
+private final class LibraryDropReceivingView: NSView {
+    var accepts: (LibraryDropPayload) -> Bool
+    var activeChanged: (Bool) -> Void
+    var perform: (LibraryDropPayload) -> Void
+
+    init(
+        accepts: @escaping (LibraryDropPayload) -> Bool,
+        activeChanged: @escaping (Bool) -> Void,
+        perform: @escaping (LibraryDropPayload) -> Void
+    ) {
+        self.accepts = accepts
+        self.activeChanged = activeChanged
+        self.perform = perform
+        super.init(frame: .zero)
+        registerForDraggedTypes([LibraryDragDropCodec.internalPaperType, .fileURL])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is unavailable")
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let payload = LibraryDragDropCodec.resolve(sender.draggingPasteboard)
+        guard accepts(payload) else { return [] }
+        activeChanged(true)
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        activeChanged(false)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        defer { activeChanged(false) }
+        let payload = LibraryDragDropCodec.resolve(sender.draggingPasteboard)
+        guard accepts(payload) else { return false }
+        perform(payload)
+        return true
     }
 }
