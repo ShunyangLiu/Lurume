@@ -181,4 +181,21 @@ final class LibraryCollectionStoreTests: XCTestCase {
             [collection.id]
         )
     }
+
+    @MainActor
+    func testBatchImportFailurePublishesNoneOfTheEarlierFiles() throws {
+        let (store, persistence, directory) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let validURL = directory.appendingPathComponent("valid.pdf")
+        let missingURL = directory.appendingPathComponent("missing.pdf")
+        try Data("%PDF-1.4\n%%EOF".utf8).write(to: validURL)
+
+        XCTAssertThrowsError(try store.importPDFBatch(
+            at: [validURL, missingURL],
+            selectAfterImport: false
+        ))
+
+        XCTAssertTrue(store.papers.isEmpty)
+        XCTAssertTrue(try persistence.load().snapshot.papers.isEmpty)
+    }
 }

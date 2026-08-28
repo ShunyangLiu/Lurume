@@ -236,55 +236,14 @@ final class LibraryStore: ObservableObject {
         collectionID: UUID? = nil,
         selectAfterImport: Bool = true
     ) throws -> UUID {
-        try requireWritableLibrary()
-        if let collectionID,
-           !collections.contains(where: { $0.id == collectionID }) {
-            throw LibraryStoreError.collectionNotFound
+        guard let id = try importPDFBatch(
+            at: [url],
+            collectionID: collectionID,
+            selectAfterImport: selectAfterImport
+        ).first else {
+            throw CocoaError(.fileReadUnsupportedScheme)
         }
-        let didStartAccessing = url.startAccessingSecurityScopedResource()
-        defer {
-            if didStartAccessing {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        let identity = try FileIdentity(url: url)
-        if let existingIndex = papers.firstIndex(where: {
-            $0.identity.identifiesSameFile(as: identity)
-        }) {
-            let existingID = papers[existingIndex].id
-            if let collectionID,
-               !papers[existingIndex].collectionIDs.contains(collectionID) {
-                var updatedPapers = papers
-                updatedPapers[existingIndex].collectionIDs.append(collectionID)
-                updatedPapers[existingIndex].collectionIDs.sort { $0.uuidString < $1.uuidString }
-                try commit(
-                    papers: updatedPapers,
-                    collections: collections,
-                    selectedPaperID: selectAfterImport ? existingID : selectedPaperID
-                )
-            } else if selectAfterImport {
-                selectPaper(id: existingID)
-            }
-            return existingID
-        }
-
-        let bookmarkData = try SecurityScopedFile.makeBookmark(for: url)
-        let record = PaperRecord(
-            identity: identity,
-            bookmarkData: bookmarkData,
-            displayName: url.deletingPathExtension().lastPathComponent,
-            originalFileName: url.lastPathComponent,
-            lastOpenedAt: selectAfterImport ? Date() : nil,
-            collectionIDs: collectionID.map { [$0] } ?? []
-        )
-        try commit(
-            papers: papers + [record],
-            collections: collections,
-            selectedPaperID: selectAfterImport ? record.id : selectedPaperID
-        )
-        scheduleMetadataRead(for: record.id, resolvedURL: nil)
-        return record.id
+        return id
     }
 
     func importPDFs(
@@ -292,17 +251,88 @@ final class LibraryStore: ObservableObject {
         collectionID: UUID? = nil,
         selectAfterImport: Bool = true
     ) {
-        for url in urls where url.pathExtension.lowercased() == "pdf" {
-            do {
-                _ = try importPDF(
-                    at: url,
-                    collectionID: collectionID,
-                    selectAfterImport: selectAfterImport
-                )
-            } catch {
-                presentedError = "无法导入“\(url.lastPathComponent)”：\(error.localizedDescription)"
-            }
+        do {
+            _ = try importPDFBatch(
+                at: urls,
+                collectionID: collectionID,
+                selectAfterImport: selectAfterImport
+            )
+        } catch {
+            presentedError = "无法导入 PDF：\(error.localizedDescription)"
         }
+    }
+
+    @discardableResult
+    func importPDFBatch(
+        at urls: [URL],
+        collectionID: UUID? = nil,
+        selectAfterImport: Bool = true
+    ) throws -> [UUID] {
+        try requireWritableLibrary()
+        if let collectionID,
+           !collections.contains(where: { $0.id == collectionID }) {
+            throw LibraryStoreError.collectionNotFound
+        }
+
+        let pdfURLs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
+        guard !pdfURLs.isEmpty else { return [] }
+        var updatedPapers = papers
+        var importedIDs: [UUID] = []
+        var newPaperIDs: [UUID] = []
+        let openedAt = Date()
+
+        for url in pdfURLs {
+            let didStartAccessing = url.startAccessingSecurityScopedResource()
+            defer {
+                if didStartAccessing {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let identity = try FileIdentity(url: url)
+            if let index = updatedPapers.firstIndex(where: {
+                $0.identity.identifiesSameFile(as: identity)
+            }) {
+                if let collectionID,
+                   !updatedPapers[index].collectionIDs.contains(collectionID) {
+                    updatedPapers[index].collectionIDs.append(collectionID)
+                    updatedPapers[index].collectionIDs.sort { $0.uuidString < $1.uuidString }
+                }
+                if selectAfterImport {
+                    updatedPapers[index].lastOpenedAt = openedAt
+                }
+                importedIDs.append(updatedPapers[index].id)
+                continue
+            }
+
+            let bookmarkData = try SecurityScopedFile.makeBookmark(for: url)
+            let record = PaperRecord(
+                identity: identity,
+                bookmarkData: bookmarkData,
+                displayName: url.deletingPathExtension().lastPathComponent,
+                originalFileName: url.lastPathComponent,
+                lastOpenedAt: selectAfterImport ? openedAt : nil,
+                collectionIDs: collectionID.map { [$0] } ?? []
+            )
+            updatedPapers.append(record)
+            importedIDs.append(record.id)
+            newPaperIDs.append(record.id)
+        }
+
+        let updatedSelection = selectAfterImport
+            ? importedIDs.last ?? selectedPaperID
+            : selectedPaperID
+        if updatedPapers != papers || updatedSelection != selectedPaperID {
+            try commit(
+                papers: updatedPapers,
+                collections: collections,
+                selectedPaperID: updatedSelection
+            )
+        }
+        for id in newPaperIDs {
+            scheduleMetadataRead(for: id, resolvedURL: nil)
+        }
+        return importedIDs
     }
 
     func selectPaper(id: UUID?) {

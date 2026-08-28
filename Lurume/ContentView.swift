@@ -147,20 +147,15 @@ struct ContentView: View {
                 onCompletion: handleFileImporter
             )
             .overlay {
-                FileDropReceiver { urls in
-                    guard !libraryStore.persistenceDisabled else { return }
-                    let pdfURLs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
-                    guard !pdfURLs.isEmpty else { return }
-                    let target = appSettings.mainWindowMode == .library
-                        ? collectionID(for: appSettings.lastLibrarySource)
-                        : nil
-                    libraryStore.importPDFs(
-                        at: pdfURLs,
-                        collectionID: target,
-                        selectAfterImport: appSettings.mainWindowMode == .reading
-                    )
+                if appSettings.mainWindowMode == .reading {
+                    FileDropReceiver { urls in
+                        guard !libraryStore.persistenceDisabled else { return }
+                        let pdfURLs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
+                        guard !pdfURLs.isEmpty else { return }
+                        libraryStore.importPDFs(at: pdfURLs)
+                    }
+                    .allowsHitTesting(false)
                 }
-                .allowsHitTesting(false)
             }
             .sheet(isPresented: Binding(
                 get: { metadataEditorTarget != nil },

@@ -72,6 +72,10 @@ struct LibrarySourceSidebar: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("文献库")
+        .contextMenu {
+            Button("新建文献集", action: beginCreate)
+                .disabled(libraryStore.persistenceDisabled || isCreating)
+        }
         .onKeyPress(.return) {
             guard case let .collection(id) = source,
                   editingCollectionID == nil,
@@ -357,6 +361,17 @@ struct LibraryTablePane: View {
             }
         }
         .navigationTitle(sourceTitle)
+        .overlay {
+            LibraryDropTargetView(
+                accepts: { payload in
+                    if case .finderPDFs = payload { return true }
+                    return false
+                },
+                activeChanged: { _ in },
+                perform: importDroppedPDFs
+            )
+            .allowsHitTesting(false)
+        }
     }
 
     private func setMembership(
@@ -378,6 +393,21 @@ struct LibraryTablePane: View {
 
     private func removeFromCollection(_ paperIDs: Set<UUID>, _ collectionID: UUID) {
         setMembership(paperIDs, collectionID, false)
+    }
+
+    private func importDroppedPDFs(_ payload: LibraryDropPayload) {
+        guard case let .finderPDFs(urls) = payload else { return }
+        let collectionID: UUID?
+        if case let .collection(id) = source {
+            collectionID = id
+        } else {
+            collectionID = nil
+        }
+        libraryStore.importPDFs(
+            at: urls,
+            collectionID: collectionID,
+            selectAfterImport: false
+        )
     }
 
     private var searchField: some View {
@@ -423,7 +453,11 @@ struct LibraryTablePane: View {
         } label: {
             Image(systemName: "line.3.horizontal.decrease")
                 .foregroundStyle(statusFilter == .all ? Color.primary : Color.accentColor)
+                .frame(width: 24, height: 24)
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
         .help("阅读状态：\(statusFilter.title)；排序方式：\(appSettings.librarySortOption.title)")
         .accessibilityLabel("文献筛选与排序")
         .accessibilityValue("\(statusFilter.title)，\(appSettings.librarySortOption.title)")
