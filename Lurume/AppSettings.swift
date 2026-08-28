@@ -8,6 +8,7 @@ final class AppSettings: ObservableObject {
         static let targetLanguageIdentifier = "targetLanguageIdentifier"
         // Keep the existing key so earlier choices become the startup default.
         static let defaultLibrarySortOption = "librarySortOption"
+        static let mainWindowMode = "mainWindowMode"
     }
 
     private let defaults: UserDefaults
@@ -36,6 +37,10 @@ final class AppSettings: ObservableObject {
     /// Current-session sorting. Sidebar changes intentionally do not persist.
     @Published var librarySortOption: LibrarySortOption
 
+    @Published var mainWindowMode: MainWindowMode {
+        didSet { defaults.set(mainWindowMode.rawValue, forKey: Key.mainWindowMode) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         if defaults.object(forKey: Key.automaticTranslation) == nil {
@@ -52,6 +57,9 @@ final class AppSettings: ObservableObject {
             ?? .dateAdded
         defaultLibrarySortOption = startupSortOption
         librarySortOption = startupSortOption
+        mainWindowMode = defaults.string(forKey: Key.mainWindowMode)
+            .flatMap(MainWindowMode.init(rawValue:))
+            ?? .reading
     }
 
     /// `nil` 表示使用 Natural Language 自动识别；默认固定英语以适配论文阅读。

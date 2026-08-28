@@ -1,0 +1,133 @@
+import Foundation
+import XCTest
+@testable import Lurume
+
+final class ReaderModeTransitionTests: XCTestCase {
+    private final class LockedCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = 0
+
+        func increment() {
+            lock.withLock { value += 1 }
+        }
+
+        func read() -> Int {
+            lock.withLock { value }
+        }
+    }
+
+    @MainActor
+    func testLeavingReadingModeFlushesBeforeDetachingAndReleasingAccess() {
+        var events: [String] = []
+        let boundary = ReadingSessionBoundary(
+            flushPendingPageSave: { events.append("page") },
+            closeNoteEditor: { events.append("note") },
+            detachReader: { events.append("detach") },
+            releaseSecurityScope: { events.append("scope") }
+        )
+
+        boundary.leaveReadingMode()
+
+        XCTAssertEqual(events, ["page", "note", "detach", "scope"])
+    }
+
+    @MainActor
+    func testLeavingReadingModePersistsPendingPageImmediately() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let persistence = LibraryPersistence(
+            fileURL: directory.appendingPathComponent("library.json")
+        )
+        let paper = PaperRecord(
+            identity: FileIdentity(
+                volumeUUID: "volume",
+                documentIdentifier: 5,
+                fallbackPath: "/tmp/page.pdf"
+            ),
+            bookmarkData: Data(),
+            displayName: "Page"
+        )
+        try persistence.save(LibrarySnapshot(
+            schemaVersion: LibrarySchema.currentVersion,
+            papers: [paper],
+            selectedPaperID: paper.id
+        ))
+        let store = LibraryStore(persistence: persistence)
+        store.updatePageIndex(27, for: paper.id)
+        let boundary = ReadingSessionBoundary(
+            flushPendingPageSave: store.flushPendingSave,
+            closeNoteEditor: {},
+            detachReader: {},
+            releaseSecurityScope: {}
+        )
+
+        boundary.leaveReadingMode()
+
+        XCTAssertEqual(try persistence.load().snapshot.papers.first?.lastPageIndex, 27)
+    }
+
+    @MainActor
+    func testClosingNoteBoundaryFlushesDraft() {
+        var savedText: String?
+        let model = HighlightNoteDraftModel(
+            text: "旧笔记",
+            persistedText: "旧笔记",
+            readOnly: false,
+            save: { value in
+                savedText = value
+                return true
+            },
+            onDraftChanged: { _ in },
+            onSaveSucceeded: {}
+        )
+        model.text = "切换前的新笔记"
+        let boundary = ReadingSessionBoundary(
+            flushPendingPageSave: {},
+            closeNoteEditor: model.flush,
+            detachReader: {},
+            releaseSecurityScope: {}
+        )
+
+        boundary.leaveReadingMode()
+
+        XCTAssertEqual(savedText, "切换前的新笔记")
+    }
+
+    @MainActor
+    func testSecurityScopedAccessStopsExactlyOnceAfterRelease() {
+        let startCount = LockedCounter()
+        let stopCount = LockedCounter()
+        var access: SecurityScopedAccess? = SecurityScopedAccess(
+            url: URL(fileURLWithPath: "/tmp/paper.pdf"),
+            startAccessing: { _ in
+                startCount.increment()
+                return true
+            },
+            stopAccessing: { _ in stopCount.increment() }
+        )
+        XCTAssertNotNil(access)
+        XCTAssertEqual(startCount.read(), 1)
+        XCTAssertEqual(stopCount.read(), 0)
+
+        access = nil
+
+        XCTAssertEqual(stopCount.read(), 1)
+    }
+
+    @MainActor
+    func testMainWindowModePersistsAndInvalidValueFallsBackToReading() {
+        let suiteName = "LurumeTests.MainWindowMode.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertEqual(settings.mainWindowMode, .reading)
+        settings.mainWindowMode = .library
+        XCTAssertEqual(AppSettings(defaults: defaults).mainWindowMode, .library)
+
+        defaults.set("future-mode", forKey: "mainWindowMode")
+        XCTAssertEqual(AppSettings(defaults: defaults).mainWindowMode, .reading)
+    }
+}

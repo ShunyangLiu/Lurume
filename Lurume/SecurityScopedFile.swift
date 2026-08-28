@@ -48,16 +48,35 @@ enum SecurityScopedFile {
 @MainActor
 final class SecurityScopedAccess {
     let url: URL
-    private let didStartAccessing: Bool
+    private let stopAccessing: (@Sendable () -> Void)?
 
     init(url: URL) {
         self.url = url
-        didStartAccessing = url.startAccessingSecurityScopedResource()
+        let didStartAccessing = url.startAccessingSecurityScopedResource()
+        if didStartAccessing {
+            stopAccessing = { @Sendable in
+                url.stopAccessingSecurityScopedResource()
+            }
+        } else {
+            stopAccessing = nil
+        }
+    }
+
+    init(
+        url: URL,
+        startAccessing: @Sendable (URL) -> Bool,
+        stopAccessing: @escaping @Sendable (URL) -> Void
+    ) {
+        self.url = url
+        let didStartAccessing = startAccessing(url)
+        if didStartAccessing {
+            self.stopAccessing = { @Sendable in stopAccessing(url) }
+        } else {
+            self.stopAccessing = nil
+        }
     }
 
     deinit {
-        if didStartAccessing {
-            url.stopAccessingSecurityScopedResource()
-        }
+        stopAccessing?()
     }
 }
