@@ -326,19 +326,25 @@ struct ContentView: View {
         } label: {
             Image(systemName: "line.3.horizontal.decrease")
                 .frame(width: 22, height: 22)
+                .opacity(0)
                 .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .foregroundStyle(statusFilter == .all ? Color.primary : Color.blue)
         .background {
             if statusFilter != .all {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.blue.opacity(0.14))
+                    .fill(Color.accentColor.opacity(0.14))
                     .frame(width: 24, height: 24)
                     .allowsHitTesting(false)
             }
+        }
+        .overlay {
+            Image(systemName: "line.3.horizontal.decrease")
+                .foregroundStyle(statusFilter == .all ? Color.primary : Color.accentColor)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
         .help(
             "阅读状态：\(statusFilter.title)；排序方式：\(appSettings.librarySortOption.title)"
