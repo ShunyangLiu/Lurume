@@ -130,4 +130,23 @@ final class ReaderModeTransitionTests: XCTestCase {
         defaults.set("future-mode", forKey: "mainWindowMode")
         XCTAssertEqual(AppSettings(defaults: defaults).mainWindowMode, .reading)
     }
+
+    @MainActor
+    func testLastLibrarySourcePersistsAndMalformedValueFallsBackToAll() {
+        let suiteName = "LurumeTests.LibrarySource.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let collectionID = UUID()
+
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertEqual(settings.lastLibrarySource, .all)
+        settings.lastLibrarySource = .collection(collectionID)
+        XCTAssertEqual(
+            AppSettings(defaults: defaults).lastLibrarySource,
+            .collection(collectionID)
+        )
+
+        defaults.set("collection:not-a-uuid", forKey: "lastLibrarySource")
+        XCTAssertEqual(AppSettings(defaults: defaults).lastLibrarySource, .all)
+    }
 }

@@ -43,6 +43,7 @@
 		F1030095E5FF32766B4C1C8C /* LibraryCollectionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5294525FCF269307315AAFD4 /* LibraryCollectionStoreTests.swift */; };
 		F24CFB0CECD00A02EF38F9D5 /* LibraryDragDropTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06D06AF433F711F03E4F7B6E /* LibraryDragDropTests.swift */; };
 		FB55D8FD66278CC5D4D022D0 /* LibraryTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F7E981F2906D52C08B550DF /* LibraryTableView.swift */; };
+		FD8EB90D647B8C1477B8DD4D /* LibraryManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D64B77A7BD1986CDDE927FE /* LibraryManagementView.swift */; };
 		FE891CFC7127EEB8A4BD6FC7 /* TranslationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACA72A5E79BC8728F19084D /* TranslationController.swift */; };
 /* End PBXBuildFile section */
 
@@ -75,6 +76,7 @@
 		53CF2BD0282B0452978CC108 /* Lurume.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lurume.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6741F46CA962F25B42E43E09 /* LibraryDragDrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDragDrop.swift; sourceTree = "<group>"; };
 		67ED0DE1FEE1DFEEA102642F /* Lurume.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Lurume.entitlements; sourceTree = "<group>"; };
+		6D64B77A7BD1986CDDE927FE /* LibraryManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryManagementView.swift; sourceTree = "<group>"; };
 		6E489A1C10FD4AE7E9A33154 /* LibraryOrganizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryOrganizationTests.swift; sourceTree = "<group>"; };
 		70EE537C1DA409FE0C8BFD5B /* LibraryPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPersistence.swift; sourceTree = "<group>"; };
 		7357965D8D0C423680ACCF0B /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
@@ -129,6 +131,7 @@
 				B8A2CEFED2568E02C16AA36E /* HighlightPersistence.swift */,
 				1DF3744718002E8D40888853 /* HighlightStore.swift */,
 				6741F46CA962F25B42E43E09 /* LibraryDragDrop.swift */,
+				6D64B77A7BD1986CDDE927FE /* LibraryManagementView.swift */,
 				E0325E1A53B306B4E070020D /* LibraryModels.swift */,
 				70EE537C1DA409FE0C8BFD5B /* LibraryPersistence.swift */,
 				9AABCAEA8379FB217EF98010 /* LibrarySchema.swift */,
@@ -287,6 +290,7 @@
 				C844133EBD258AD8321EA43A /* HighlightPersistence.swift in Sources */,
 				97CCFD06759640B719E96A5A /* HighlightStore.swift in Sources */,
 				99242BB5CD65CD65B953B383 /* LibraryDragDrop.swift in Sources */,
+				FD8EB90D647B8C1477B8DD4D /* LibraryManagementView.swift in Sources */,
 				106513FBEC771211CB9DE862 /* LibraryModels.swift in Sources */,
 				D34865219EA3EB4BF932BA66 /* LibraryPersistence.swift in Sources */,
 				32C8FFB0CE9301BED1D8F96D /* LibrarySchema.swift in Sources */,

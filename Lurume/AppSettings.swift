@@ -9,6 +9,7 @@ final class AppSettings: ObservableObject {
         // Keep the existing key so earlier choices become the startup default.
         static let defaultLibrarySortOption = "librarySortOption"
         static let mainWindowMode = "mainWindowMode"
+        static let lastLibrarySource = "lastLibrarySource"
     }
 
     private let defaults: UserDefaults
@@ -41,6 +42,10 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(mainWindowMode.rawValue, forKey: Key.mainWindowMode) }
     }
 
+    @Published var lastLibrarySource: LibrarySource {
+        didSet { defaults.set(lastLibrarySource.id, forKey: Key.lastLibrarySource) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         if defaults.object(forKey: Key.automaticTranslation) == nil {
@@ -60,6 +65,9 @@ final class AppSettings: ObservableObject {
         mainWindowMode = defaults.string(forKey: Key.mainWindowMode)
             .flatMap(MainWindowMode.init(rawValue:))
             ?? .reading
+        lastLibrarySource = defaults.string(forKey: Key.lastLibrarySource)
+            .flatMap(LibrarySource.init(persistedValue:))
+            ?? .all
     }
 
     /// `nil` 表示使用 Natural Language 自动识别；默认固定英语以适配论文阅读。

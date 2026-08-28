@@ -226,7 +226,11 @@ final class LibraryStore: ObservableObject {
     // MARK: - 导入与选择
 
     @discardableResult
-    func importPDF(at url: URL, collectionID: UUID? = nil) throws -> UUID {
+    func importPDF(
+        at url: URL,
+        collectionID: UUID? = nil,
+        selectAfterImport: Bool = true
+    ) throws -> UUID {
         try requireWritableLibrary()
         if let collectionID,
            !collections.contains(where: { $0.id == collectionID }) {
@@ -252,9 +256,9 @@ final class LibraryStore: ObservableObject {
                 try commit(
                     papers: updatedPapers,
                     collections: collections,
-                    selectedPaperID: existingID
+                    selectedPaperID: selectAfterImport ? existingID : selectedPaperID
                 )
-            } else {
+            } else if selectAfterImport {
                 selectPaper(id: existingID)
             }
             return existingID
@@ -266,22 +270,30 @@ final class LibraryStore: ObservableObject {
             bookmarkData: bookmarkData,
             displayName: url.deletingPathExtension().lastPathComponent,
             originalFileName: url.lastPathComponent,
-            lastOpenedAt: Date(),
+            lastOpenedAt: selectAfterImport ? Date() : nil,
             collectionIDs: collectionID.map { [$0] } ?? []
         )
         try commit(
             papers: papers + [record],
             collections: collections,
-            selectedPaperID: record.id
+            selectedPaperID: selectAfterImport ? record.id : selectedPaperID
         )
         scheduleMetadataRead(for: record.id, resolvedURL: nil)
         return record.id
     }
 
-    func importPDFs(at urls: [URL], collectionID: UUID? = nil) {
+    func importPDFs(
+        at urls: [URL],
+        collectionID: UUID? = nil,
+        selectAfterImport: Bool = true
+    ) {
         for url in urls where url.pathExtension.lowercased() == "pdf" {
             do {
-                _ = try importPDF(at: url, collectionID: collectionID)
+                _ = try importPDF(
+                    at: url,
+                    collectionID: collectionID,
+                    selectAfterImport: selectAfterImport
+                )
             } catch {
                 presentedError = "无法导入“\(url.lastPathComponent)”：\(error.localizedDescription)"
             }

@@ -153,4 +153,32 @@ final class LibraryCollectionStoreTests: XCTestCase {
         XCTAssertThrowsError(try store.createCollection(named: "Should Roll Back"))
         XCTAssertTrue(store.collections.isEmpty)
     }
+
+    @MainActor
+    func testImportIntoCollectionAlsoClassifiesExistingDuplicate() throws {
+        let collection = CollectionRecord(name: "Imports")
+        let (store, persistence, directory) = try makeStore(collections: [collection])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let pdfURL = directory.appendingPathComponent("paper.pdf")
+        try Data("%PDF-1.4\n%%EOF".utf8).write(to: pdfURL)
+
+        let firstID = try store.importPDF(
+            at: pdfURL,
+            selectAfterImport: false
+        )
+        let duplicateID = try store.importPDF(
+            at: pdfURL,
+            collectionID: collection.id,
+            selectAfterImport: false
+        )
+
+        XCTAssertEqual(firstID, duplicateID)
+        XCTAssertEqual(store.papers.count, 1)
+        XCTAssertEqual(store.papers.first?.collectionIDs, [collection.id])
+        XCTAssertNil(store.selectedPaperID)
+        XCTAssertEqual(
+            try persistence.load().snapshot.papers.first?.collectionIDs,
+            [collection.id]
+        )
+    }
 }

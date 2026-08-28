@@ -25,6 +25,10 @@ struct ContentView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var inspectorMode: ReaderInspectorMode = .translation
     @State private var pendingPaperRemoval: UUID?
+    @State private var libraryModeSelection: Set<UUID> = []
+    @State private var libraryModeSearchText = ""
+    @State private var libraryModeStatusFilter: ReadingStatusFilter = .all
+    @State private var importTargetCollectionID: UUID?
 
     @State private var searchText = ""
     @State private var sidebarMode: ReaderSidebarMode = .library
@@ -64,6 +68,16 @@ struct ContentView: View {
         highlightStore.presentedError ?? libraryStore.presentedError
     }
 
+    private var readerInspectorPresented: Binding<Bool> {
+        Binding(
+            get: {
+                appSettings.mainWindowMode == .reading
+                    && translationController.isInspectorPresented
+            },
+            set: { translationController.isInspectorPresented = $0 }
+        )
+    }
+
     /// Return 改名快捷键只在没有文本输入进行时生效。
     private var returnShortcutDisabled: Bool {
         libraryStore.persistenceDisabled
@@ -77,14 +91,46 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             NavigationSplitView(columnVisibility: $columnVisibility) {
-                sidebar
+                Group {
+                    if appSettings.mainWindowMode == .reading {
+                        sidebar
+                    } else {
+                        LibrarySourceSidebar(source: $appSettings.lastLibrarySource)
+                    }
+                }
                     .navigationSplitViewColumnWidth(min: 210, ideal: 250, max: 340)
             } detail: {
-                detail
+                if appSettings.mainWindowMode == .reading {
+                    detail
+                } else {
+                    LibraryTablePane(
+                        source: appSettings.lastLibrarySource,
+                        selection: $libraryModeSelection,
+                        searchText: $libraryModeSearchText,
+                        statusFilter: $libraryModeStatusFilter,
+                        importPDFs: presentImporter,
+                        editMetadata: { metadataEditorTarget = $0 },
+                        openPaper: openPaperFromLibrary
+                    )
+                }
             }
             .frame(minWidth: 900, minHeight: 600)
             .toolbar {
-                if libraryStore.selectedPaper != nil {
+                ToolbarItem(placement: .navigation) {
+                    Button(action: toggleMainWindowMode) {
+                        Image(systemName: appSettings.mainWindowMode == .reading
+                            ? "books.vertical"
+                            : "doc.richtext")
+                    }
+                    .help(appSettings.mainWindowMode == .reading ? "文献库" : "返回阅读")
+                    .accessibilityLabel(appSettings.mainWindowMode == .reading ? "进入文献库" : "返回阅读")
+                    .disabled(
+                        appSettings.mainWindowMode == .library
+                            && libraryStore.selectedPaper == nil
+                    )
+                }
+                if appSettings.mainWindowMode == .reading,
+                   libraryStore.selectedPaper != nil {
                     ToolbarItemGroup {
                         PDFToolbar(controller: pdfController)
                     }
@@ -103,7 +149,14 @@ struct ContentView: View {
                     guard !libraryStore.persistenceDisabled else { return }
                     let pdfURLs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
                     guard !pdfURLs.isEmpty else { return }
-                    libraryStore.importPDFs(at: pdfURLs)
+                    let target = appSettings.mainWindowMode == .library
+                        ? collectionID(for: appSettings.lastLibrarySource)
+                        : nil
+                    libraryStore.importPDFs(
+                        at: pdfURLs,
+                        collectionID: target,
+                        selectAfterImport: appSettings.mainWindowMode == .reading
+                    )
                 }
                 .allowsHitTesting(false)
             }
@@ -153,8 +206,23 @@ struct ContentView: View {
                 }
             }
             .task(id: libraryStore.selectedPaperID) {
+                guard appSettings.mainWindowMode == .reading else { return }
                 await Task.yield()
                 openSelectedPaper()
+            }
+            .onAppear {
+                appSettings.lastLibrarySource = libraryStore.validSource(
+                    appSettings.lastLibrarySource
+                )
+                if appSettings.mainWindowMode == .library {
+                    leaveReadingMode()
+                }
+            }
+            .onChange(of: libraryStore.collections) {
+                let validSource = libraryStore.validSource(appSettings.lastLibrarySource)
+                if validSource != appSettings.lastLibrarySource {
+                    appSettings.lastLibrarySource = validSource
+                }
             }
             .onChange(of: appSettings.automaticTranslation) {
                 if !appSettings.automaticTranslation {
@@ -175,7 +243,7 @@ struct ContentView: View {
             .onDisappear {
                 pdfController.closeNoteEditor()
             }
-            .inspector(isPresented: $translationController.isInspectorPresented) {
+            .inspector(isPresented: readerInspectorPresented) {
                 TranslationInspector(
                     controller: translationController,
                     settings: appSettings,
@@ -193,18 +261,20 @@ struct ContentView: View {
                 )
             }
 
-            KeyboardCommandMonitor(
-                focusLibrarySearch: focusLibrarySearch,
-                openPDFSearch: openPDFSearch,
-                closePDFSearch: closePDFSearch,
-                previousPDFSearchResult: pdfController.previousSearchResult,
-                nextPDFSearchResult: pdfController.nextSearchResult,
-                isPDFSearchPresented: isPDFSearchPresented,
-                togglePDFHighlight: toggleCurrentHighlight,
-                beginTitleEdit: beginInlineTitleEdit
-            )
-            .frame(width: 0, height: 0)
-            .allowsHitTesting(false)
+            if appSettings.mainWindowMode == .reading {
+                KeyboardCommandMonitor(
+                    focusLibrarySearch: focusLibrarySearch,
+                    openPDFSearch: openPDFSearch,
+                    closePDFSearch: closePDFSearch,
+                    previousPDFSearchResult: pdfController.previousSearchResult,
+                    nextPDFSearchResult: pdfController.nextSearchResult,
+                    isPDFSearchPresented: isPDFSearchPresented,
+                    togglePDFHighlight: toggleCurrentHighlight,
+                    beginTitleEdit: beginInlineTitleEdit
+                )
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+            }
         }
     }
 
@@ -639,11 +709,55 @@ struct ContentView: View {
 
     // MARK: - 导入与文件处理
 
+    private func toggleMainWindowMode() {
+        switch appSettings.mainWindowMode {
+        case .reading:
+            leaveReadingMode()
+            appSettings.mainWindowMode = .library
+        case .library:
+            guard libraryStore.selectedPaper != nil else { return }
+            appSettings.mainWindowMode = .reading
+            openSelectedPaper()
+        }
+    }
+
+    private func leaveReadingMode() {
+        ReadingSessionBoundary(
+            flushPendingPageSave: libraryStore.flushPendingSave,
+            closeNoteEditor: pdfController.closeNoteEditor,
+            detachReader: pdfController.detach,
+            releaseSecurityScope: {
+                activeAccess = nil
+                activeAccessPaperID = nil
+            }
+        ).leaveReadingMode()
+        closePDFSearch()
+    }
+
+    private func openPaperFromLibrary(_ paperID: UUID) {
+        libraryModeSelection = [paperID]
+        appSettings.mainWindowMode = .reading
+        libraryStore.selectPaper(id: paperID)
+        openSelectedPaper()
+    }
+
+    private func collectionID(for source: LibrarySource) -> UUID? {
+        guard case let .collection(id) = source else { return nil }
+        return libraryStore.collections.contains(where: { $0.id == id }) ? id : nil
+    }
+
     private func handleImport(_ result: Result<[URL], Error>) {
+        let targetCollectionID = importTargetCollectionID
+        importTargetCollectionID = nil
         switch result {
         case let .success(urls):
-            libraryStore.importPDFs(at: urls)
-            openSelectedPaper()
+            let shouldOpen = appSettings.mainWindowMode == .reading
+            libraryStore.importPDFs(
+                at: urls,
+                collectionID: targetCollectionID,
+                selectAfterImport: shouldOpen
+            )
+            if shouldOpen { openSelectedPaper() }
         case let .failure(error):
             if !isUserCancellation(error) {
                 libraryStore.presentedError = error.localizedDescription
@@ -691,6 +805,9 @@ struct ContentView: View {
     }
 
     private func presentImporter() {
+        importTargetCollectionID = appSettings.mainWindowMode == .library
+            ? collectionID(for: appSettings.lastLibrarySource)
+            : nil
         importerPurpose = .importPDFs
         isImporterPresented = true
     }
