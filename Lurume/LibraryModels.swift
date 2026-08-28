@@ -117,6 +117,15 @@ enum LibrarySortOption: String, Hashable, Sendable, CaseIterable, Identifiable {
         case .year: "年份"
         }
     }
+
+    var compactTitle: String {
+        switch self {
+        case .recentlyOpened: "最近"
+        case .dateAdded: "添加"
+        case .title: "标题"
+        case .year: "年份"
+        }
+    }
 }
 
 enum LibraryQuery {

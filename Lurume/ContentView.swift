@@ -269,7 +269,6 @@ struct ContentView: View {
     private var librarySidebar: some View {
         VStack(spacing: 0) {
             librarySearchAndImport
-            libraryOrganizationSummary
             libraryPaperList
         }
     }
@@ -277,6 +276,8 @@ struct ContentView: View {
     private var librarySearchAndImport: some View {
         HStack(spacing: 8) {
             librarySearchField
+
+            libraryOrganizationMenu
 
             Button {
                 presentImporter()
@@ -290,12 +291,12 @@ struct ContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
-        .padding(.bottom, 4)
+        .padding(.bottom, 6)
     }
 
-    private var libraryOrganizationSummary: some View {
-        HStack(spacing: 8) {
-            Menu {
+    private var libraryOrganizationMenu: some View {
+        Menu {
+            Section("阅读状态") {
                 ForEach(ReadingStatusFilter.allCases) { filter in
                     Toggle(
                         filter.title,
@@ -307,18 +308,9 @@ struct ContentView: View {
                         )
                     )
                 }
-            } label: {
-                Label(statusFilter.title, systemImage: "line.3.horizontal.decrease")
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .help("阅读状态：\(statusFilter.title)")
-            .accessibilityLabel("阅读状态筛选")
-            .accessibilityValue(statusFilter.title)
 
-            Spacer(minLength: 8)
-
-            Menu {
+            Section("排序方式") {
                 ForEach(LibrarySortOption.allCases) { option in
                     Toggle(
                         option.title,
@@ -330,23 +322,35 @@ struct ContentView: View {
                         )
                     )
                 }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(appSettings.librarySortOption.title)
-                    Image(systemName: "arrow.up.arrow.down")
-                        .font(.caption2)
-                }
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .help("排序方式：\(appSettings.librarySortOption.title)")
-            .accessibilityLabel("文献排序方式")
-            .accessibilityValue(appSettings.librarySortOption.title)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "line.3.horizontal.decrease")
+                    .font(.caption2.weight(.semibold))
+
+                Text(libraryOrganizationLabel)
+            }
+            .lineLimit(1)
         }
         .font(.caption)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 3)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .layoutPriority(1)
+        .help(
+            "阅读状态：\(statusFilter.title)；排序方式：\(appSettings.librarySortOption.title)"
+        )
+        .accessibilityLabel("文献筛选与排序")
+        .accessibilityValue(
+            "\(statusFilter.title)，\(appSettings.librarySortOption.title)"
+        )
+    }
+
+    private var libraryOrganizationLabel: String {
+        guard statusFilter != .all else {
+            return appSettings.librarySortOption.compactTitle
+        }
+        return "\(statusFilter.title)·\(appSettings.librarySortOption.compactTitle)"
     }
 
     private var libraryPaperList: some View {
@@ -448,9 +452,10 @@ struct ContentView: View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-            TextField("搜索标题、作者或文件名", text: $searchText)
+            TextField("搜索文献", text: $searchText)
                 .textFieldStyle(.plain)
                 .focused($searchFieldFocused)
+                .accessibilityLabel("搜索标题、作者或文件名")
             if !searchText.isEmpty {
                 Button {
                     searchText = ""
