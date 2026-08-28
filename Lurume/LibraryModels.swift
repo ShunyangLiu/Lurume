@@ -42,6 +42,33 @@ enum MetadataField: String, Codable, Hashable, Sendable, CaseIterable {
     case year
 }
 
+struct CollectionRecord: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    var name: String
+    let createdAt: Date
+
+    init(id: UUID = UUID(), name: String, createdAt: Date = Date()) {
+        self.id = id
+        self.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.createdAt = createdAt
+    }
+}
+
+enum CollectionNameRules {
+    static func trimmed(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func comparisonKey(_ name: String) -> String {
+        trimmed(name)
+            .precomposedStringWithCanonicalMapping
+            .folding(
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+                locale: .current
+            )
+    }
+}
+
 enum ReadingStatus: String, Codable, Hashable, Sendable, CaseIterable, Identifiable {
     case unread
     case reading
@@ -264,7 +291,7 @@ enum PaperTitleRules {
     }
 }
 
-/// v3 文献记录。自动元数据只在导入时与存量库惰性补全时各读取一次。
+/// v4 文献记录。自动元数据只在导入时与存量库惰性补全时各读取一次。
 struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     var volumeUUID: String?
@@ -281,6 +308,8 @@ struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
     var lastOpenedAt: Date?
     var lastPageIndex: Int
     var readingStatus: ReadingStatus
+    /// 序列化使用稳定数组，调用方按集合语义读写并保持去重排序。
+    var collectionIDs: [UUID]
 
     var identity: FileIdentity {
         FileIdentity(
@@ -318,7 +347,8 @@ struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
         dateAdded: Date = Date(),
         lastOpenedAt: Date? = nil,
         lastPageIndex: Int = 0,
-        readingStatus: ReadingStatus = .unread
+        readingStatus: ReadingStatus = .unread,
+        collectionIDs: [UUID] = []
     ) {
         self.id = id
         self.volumeUUID = identity.volumeUUID
@@ -335,6 +365,9 @@ struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
         self.lastOpenedAt = lastOpenedAt
         self.lastPageIndex = max(0, lastPageIndex)
         self.readingStatus = readingStatus
+        self.collectionIDs = Array(Set(collectionIDs)).sorted {
+            $0.uuidString < $1.uuidString
+        }
     }
 
     mutating func replaceFileReference(
@@ -408,11 +441,25 @@ struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
 struct LibrarySnapshot: Codable, Equatable, Sendable {
     var schemaVersion: Int
     var papers: [PaperRecord]
+    var collections: [CollectionRecord]
     var selectedPaperID: UUID?
+
+    init(
+        schemaVersion: Int,
+        papers: [PaperRecord],
+        collections: [CollectionRecord] = [],
+        selectedPaperID: UUID?
+    ) {
+        self.schemaVersion = schemaVersion
+        self.papers = papers
+        self.collections = collections
+        self.selectedPaperID = selectedPaperID
+    }
 
     static let empty = LibrarySnapshot(
         schemaVersion: LibrarySchema.currentVersion,
         papers: [],
+        collections: [],
         selectedPaperID: nil
     )
 }

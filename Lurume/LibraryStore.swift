@@ -11,6 +11,7 @@ enum LibraryStoreError: LocalizedError, Equatable {
 @MainActor
 final class LibraryStore: ObservableObject {
     @Published private(set) var papers: [PaperRecord] = []
+    @Published private(set) var collections: [CollectionRecord] = []
     @Published var selectedPaperID: UUID?
     @Published private(set) var unavailablePaperIDs: Set<UUID> = []
     @Published var presentedError: String?
@@ -287,6 +288,7 @@ final class LibraryStore: ObservableObject {
         do {
             let loaded = try persistence.load()
             papers = loaded.snapshot.papers
+            collections = loaded.snapshot.collections
             let repairedCurrentRecords = papers.indices.reduce(into: false) { repaired, index in
                 if papers[index].synchronizeOriginalFileNameWithFallbackPath() {
                     repaired = true
@@ -326,6 +328,7 @@ final class LibraryStore: ObservableObject {
         LibrarySnapshot(
             schemaVersion: LibrarySchema.currentVersion,
             papers: papers,
+            collections: collections,
             selectedPaperID: selectedPaperID
         )
     }

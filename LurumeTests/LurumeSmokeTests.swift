@@ -5,7 +5,7 @@ import XCTest
 
 final class LurumeSmokeTests: XCTestCase {
     func testApplicationTargetLoads() {
-        XCTAssertEqual(LibrarySchema.currentVersion, 3)
+        XCTAssertEqual(LibrarySchema.currentVersion, 4)
     }
 
     @MainActor
