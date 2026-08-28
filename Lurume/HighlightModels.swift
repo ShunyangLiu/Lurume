@@ -2,7 +2,8 @@ import CoreGraphics
 import Foundation
 
 enum HighlightSchema {
-    static let currentVersion = 1
+    static let previousVersion = 1
+    static let currentVersion = 2
 }
 
 struct HighlightRect: Codable, Equatable, Hashable, Sendable {
@@ -88,13 +89,17 @@ struct HighlightRecord: Identifiable, Codable, Equatable, Hashable, Sendable {
     let rawText: String
     let createdAt: Date
     let segments: [HighlightSegment]
+    let noteText: String?
+    let noteModifiedAt: Date?
 
     init?(
         id: UUID = UUID(),
         paperID: UUID,
         rawText: String,
         createdAt: Date = Date(),
-        segments: [HighlightSegment]
+        segments: [HighlightSegment],
+        noteText: String? = nil,
+        noteModifiedAt: Date? = nil
     ) {
         guard !rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !segments.isEmpty else {
@@ -105,6 +110,9 @@ struct HighlightRecord: Identifiable, Codable, Equatable, Hashable, Sendable {
         self.rawText = rawText
         self.createdAt = createdAt
         self.segments = segments
+        let normalizedNote = Self.normalizedNote(noteText)
+        self.noteText = normalizedNote
+        self.noteModifiedAt = normalizedNote == nil ? nil : noteModifiedAt
     }
 
     var startPageIndex: Int {
@@ -127,6 +135,23 @@ struct HighlightRecord: Identifiable, Codable, Equatable, Hashable, Sendable {
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
+    }
+
+    var hasNote: Bool {
+        noteText != nil
+    }
+
+    func updatingNote(_ text: String?, modifiedAt: Date = Date()) -> HighlightRecord {
+        // The current record has already passed validation, so reconstruction is safe.
+        HighlightRecord(
+            id: id,
+            paperID: paperID,
+            rawText: rawText,
+            createdAt: createdAt,
+            segments: segments,
+            noteText: text,
+            noteModifiedAt: modifiedAt
+        )!
     }
 
     func approximatelyMatches(_ other: HighlightRecord, tolerance: Double = 1) -> Bool {
@@ -170,12 +195,16 @@ struct HighlightRecord: Identifiable, Codable, Equatable, Hashable, Sendable {
         let rawText = try values.decode(String.self, forKey: .rawText)
         let createdAt = try values.decode(Date.self, forKey: .createdAt)
         let segments = try values.decode([HighlightSegment].self, forKey: .segments)
+        let noteText = try values.decodeIfPresent(String.self, forKey: .noteText)
+        let noteModifiedAt = try values.decodeIfPresent(Date.self, forKey: .noteModifiedAt)
         guard let validated = HighlightRecord(
             id: id,
             paperID: paperID,
             rawText: rawText,
             createdAt: createdAt,
-            segments: segments
+            segments: segments,
+            noteText: noteText,
+            noteModifiedAt: noteModifiedAt
         ) else {
             throw DecodingError.dataCorruptedError(
                 forKey: .segments,
@@ -184,6 +213,14 @@ struct HighlightRecord: Identifiable, Codable, Equatable, Hashable, Sendable {
             )
         }
         self = validated
+    }
+
+    private static func normalizedNote(_ text: String?) -> String? {
+        guard let text,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return text
     }
 }
 

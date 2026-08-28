@@ -23,6 +23,35 @@ final class HighlightPersistenceTests: XCTestCase {
         XCTAssertEqual(try persistence.load(), .empty)
     }
 
+    func testVersionOneSnapshotMigratesWithoutChangingHighlightIdentity() throws {
+        let fileURL = try temporaryFileURL()
+        let record = try makeRecord()
+        let recordData = try encoder.encode(record)
+        var recordObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: recordData) as? [String: Any]
+        )
+        recordObject.removeValue(forKey: "noteText")
+        recordObject.removeValue(forKey: "noteModifiedAt")
+        let original: [String: Any] = [
+            "schemaVersion": HighlightSchema.previousVersion,
+            "highlights": [recordObject],
+        ]
+        try JSONSerialization.data(withJSONObject: original).write(to: fileURL)
+
+        let loaded = try HighlightPersistence(fileURL: fileURL).load()
+
+        XCTAssertEqual(loaded.snapshot.schemaVersion, HighlightSchema.currentVersion)
+        XCTAssertEqual(loaded.snapshot.highlights.first?.id, record.id)
+        XCTAssertNil(loaded.snapshot.highlights.first?.noteText)
+        let migratedRoot = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any]
+        )
+        XCTAssertEqual(
+            (migratedRoot["schemaVersion"] as? NSNumber)?.intValue,
+            HighlightSchema.currentVersion
+        )
+    }
+
     func testFutureSchemaIsRejectedWithoutOverwritingFile() throws {
         let fileURL = try temporaryFileURL()
         let original = Data(#"{"schemaVersion":99,"highlights":[]}"#.utf8)
@@ -119,6 +148,99 @@ final class HighlightPersistenceTests: XCTestCase {
         XCTAssertNil(store.toggle(try makeRecord(), undoManager: nil))
         XCTAssertTrue(store.highlights.isEmpty)
         XCTAssertNotNil(store.presentedError)
+    }
+
+    @MainActor
+    func testNoteUpdatePersistsAndEmptyTextRemovesNote() throws {
+        let fileURL = try temporaryFileURL()
+        let store = HighlightStore(persistence: HighlightPersistence(fileURL: fileURL))
+        let record = try makeRecord()
+        XCTAssertNotNil(store.toggle(record, undoManager: nil))
+        let modifiedAt = Date(timeIntervalSince1970: 1_710_000_000)
+
+        XCTAssertTrue(store.updateNote(id: record.id, text: "question\nfor later", modifiedAt: modifiedAt))
+        XCTAssertEqual(store.highlight(id: record.id)?.noteText, "question\nfor later")
+        XCTAssertEqual(store.highlight(id: record.id)?.noteModifiedAt, modifiedAt)
+        XCTAssertEqual(
+            try HighlightPersistence(fileURL: fileURL).load().snapshot.highlights.first?.noteText,
+            "question\nfor later"
+        )
+
+        XCTAssertTrue(store.updateNote(id: record.id, text: " \n "))
+        XCTAssertNil(store.highlight(id: record.id)?.noteText)
+        XCTAssertNil(store.highlight(id: record.id)?.noteModifiedAt)
+    }
+
+    @MainActor
+    func testDeletingAndUndoingHighlightRestoresItsNote() throws {
+        let fileURL = try temporaryFileURL()
+        let store = HighlightStore(persistence: HighlightPersistence(fileURL: fileURL))
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        let record = try makeRecord()
+        XCTAssertNotNil(store.toggle(record, undoManager: nil))
+        XCTAssertTrue(store.updateNote(id: record.id, text: "keep this note"))
+
+        undoManager.beginUndoGrouping()
+        XCTAssertTrue(store.remove(id: record.id, undoManager: undoManager))
+        undoManager.endUndoGrouping()
+        XCTAssertTrue(store.highlights.isEmpty)
+
+        undoManager.undo()
+        XCTAssertEqual(store.highlight(id: record.id)?.noteText, "keep this note")
+        undoManager.redo()
+        XCTAssertTrue(store.highlights.isEmpty)
+    }
+
+    @MainActor
+    func testFailedNoteSaveKeepsPublishedRecordAndUsesPopoverErrorOnly() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Lurume-HighlightNoteFailureTests-\(UUID().uuidString)")
+        let directory = root.appendingPathComponent("nested")
+        let fileURL = directory.appendingPathComponent("highlights.json")
+        let store = HighlightStore(persistence: HighlightPersistence(fileURL: fileURL))
+        let record = try makeRecord()
+        XCTAssertNotNil(store.toggle(record, undoManager: nil))
+
+        try FileManager.default.removeItem(at: directory)
+        try Data("not a directory".utf8).write(to: directory)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+
+        XCTAssertFalse(store.updateNote(id: record.id, text: "unsaved draft"))
+        XCTAssertNil(store.highlight(id: record.id)?.noteText)
+        XCTAssertNil(store.presentedError)
+    }
+
+    @MainActor
+    func testNoteDraftFlushNormalizesWhitespaceAndReportsFailure() {
+        var savedValues: [String?] = []
+        var saveSucceededCount = 0
+        let model = HighlightNoteDraftModel(
+            text: "persisted",
+            persistedText: "persisted",
+            readOnly: false,
+            save: { value in
+                savedValues.append(value)
+                return value != "will fail"
+            },
+            onDraftChanged: { _ in },
+            onSaveSucceeded: { saveSucceededCount += 1 }
+        )
+
+        model.text = "updated"
+        model.flush()
+        XCTAssertEqual(savedValues, ["updated"])
+        XCTAssertNil(model.saveError)
+
+        model.text = " \n "
+        model.flush()
+        XCTAssertEqual(savedValues.count, 2)
+        XCTAssertNil(savedValues[1])
+
+        model.text = "will fail"
+        model.flush()
+        XCTAssertNotNil(model.saveError)
+        XCTAssertEqual(saveSucceededCount, 2)
     }
 
     func testInvalidGeometryIsRejected() {

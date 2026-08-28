@@ -169,7 +169,11 @@ struct ContentView: View {
             .onChange(of: scenePhase) {
                 if scenePhase != .active {
                     libraryStore.flushPendingSave()
+                    pdfController.closeNoteEditor()
                 }
+            }
+            .onDisappear {
+                pdfController.closeNoteEditor()
             }
             .inspector(isPresented: $translationController.isInspectorPresented) {
                 TranslationInspector(
@@ -489,6 +493,7 @@ struct ContentView: View {
                     initialPageIndex: paper.lastPageIndex,
                     controller: pdfController,
                     highlights: highlightStore.highlights(for: paper.id),
+                    noteEditingEnabled: !highlightStore.persistenceDisabled,
                     onPageChanged: { pageIndex in
                         libraryStore.updatePageIndex(pageIndex, for: paper.id)
                     },
@@ -507,6 +512,15 @@ struct ContentView: View {
                     },
                     onToggleHighlight: toggleCurrentHighlight,
                     onDeleteHighlight: deleteHighlight,
+                    onOpenHighlightNote: { id in
+                        guard let highlight = highlightStore.highlight(id: id) else { return }
+                        pdfController.presentNoteEditor(
+                            for: highlight,
+                            readOnly: highlightStore.persistenceDisabled
+                        ) { note in
+                            highlightStore.updateNote(id: id, text: note)
+                        }
+                    },
                     onError: { message in
                         documentError = message
                     }

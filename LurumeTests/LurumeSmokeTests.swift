@@ -188,6 +188,102 @@ final class LurumeSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testHighlightSelectionAndNoteMarkersUseTemporaryAnnotations() throws {
+        let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta gamma"))
+        let page = try XCTUnwrap(document.page(at: 0))
+        let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        pdfView.document = document
+        pdfView.layoutSubtreeIfNeeded()
+        let controller = PDFReaderController()
+        controller.attach(pdfView)
+        let selection = try XCTUnwrap(document.findString("beta", withOptions: []).first)
+        pdfView.setCurrentSelection(selection, animate: false)
+        let base = try XCTUnwrap(controller.makeHighlightCandidate(paperID: UUID()))
+        let noted = base.updatingNote("remember this")
+
+        controller.renderHighlights([noted])
+        XCTAssertEqual(
+            page.annotations.filter { $0.type != "Popup" }.count,
+            2,
+            "黄色高亮和一个常驻笔记标志：\(page.annotations.map { $0.type ?? "nil" })"
+        )
+        let markerRect = try XCTUnwrap(controller.noteMarkerAnchorRect(for: noted.id))
+        XCTAssertEqual(
+            controller.noteMarkerID(at: CGPoint(x: markerRect.midX, y: markerRect.midY)),
+            noted.id
+        )
+
+        controller.currentHighlightID = noted.id
+        XCTAssertEqual(
+            page.annotations.filter { $0.type != "Popup" }.count,
+            3,
+            "选择后逐行增加一个虚线轮廓：\(page.annotations.map { $0.type ?? "nil" })"
+        )
+        XCTAssertEqual(page.annotations.filter { $0.border?.style == .dashed }.count, 1)
+
+        controller.renderHighlights([])
+        XCTAssertTrue(page.annotations.isEmpty)
+    }
+
+    @MainActor
+    func testReadOnlyModeHidesTransientAddNoteMarker() throws {
+        let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta gamma"))
+        let page = try XCTUnwrap(document.page(at: 0))
+        let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        pdfView.document = document
+        let controller = PDFReaderController()
+        controller.attach(pdfView)
+        let selection = try XCTUnwrap(document.findString("beta", withOptions: []).first)
+        pdfView.setCurrentSelection(selection, animate: false)
+        let highlight = try XCTUnwrap(controller.makeHighlightCandidate(paperID: UUID()))
+
+        controller.renderHighlights([highlight])
+        controller.currentHighlightID = highlight.id
+        XCTAssertNotNil(controller.noteMarkerAnchorRect(for: highlight.id))
+
+        controller.renderHighlights([highlight], noteEditingEnabled: false)
+        XCTAssertNil(controller.noteMarkerAnchorRect(for: highlight.id))
+        XCTAssertEqual(page.annotations.filter { $0.border?.style == .dashed }.count, 1)
+    }
+
+    @MainActor
+    func testCrossPageNoteMarkerAndNavigationUseFinalFragment() throws {
+        let document = try XCTUnwrap(makeSearchablePDF(pages: ["first target", "final target"]))
+        let firstPage = try XCTUnwrap(document.page(at: 0))
+        let finalPage = try XCTUnwrap(document.page(at: 1))
+        let firstSelection = try XCTUnwrap(document.findString("first", withOptions: []).first)
+        let finalSelection = try XCTUnwrap(document.findString("final", withOptions: []).first)
+        let firstRect = try XCTUnwrap(HighlightRect(cgRect: firstSelection.bounds(for: firstPage)))
+        let finalRect = try XCTUnwrap(HighlightRect(cgRect: finalSelection.bounds(for: finalPage)))
+        let highlight = try XCTUnwrap(HighlightRecord(
+            paperID: UUID(),
+            rawText: "first final",
+            segments: [
+                try XCTUnwrap(HighlightSegment(pageIndex: 0, rects: [firstRect])),
+                try XCTUnwrap(HighlightSegment(pageIndex: 1, rects: [finalRect])),
+            ],
+            noteText: "cross-page note"
+        ))
+        let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        pdfView.document = document
+        pdfView.layoutSubtreeIfNeeded()
+        let controller = PDFReaderController()
+        controller.attach(pdfView)
+
+        controller.renderHighlights([highlight])
+        XCTAssertEqual(firstPage.annotations.count, 1)
+        XCTAssertEqual(
+            finalPage.annotations.filter { $0.type != "Popup" }.count,
+            2,
+            "标志只锚定在最后片段所在页：\(finalPage.annotations.map { $0.type ?? "nil" })"
+        )
+
+        controller.activateHighlight(highlight, translate: false)
+        XCTAssertTrue(pdfView.currentPage === finalPage)
+        XCTAssertNil(pdfView.currentSelection)
+    }
+
+    @MainActor
     func testPDFSearchResultCannotBeSavedAsUserHighlight() throws {
         let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta"))
         let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
@@ -250,6 +346,11 @@ final class LurumeSmokeTests: XCTestCase {
 
     @MainActor
     private func makeSearchablePDF(text: String) -> PDFDocument? {
+        makeSearchablePDF(pages: [text])
+    }
+
+    @MainActor
+    private func makeSearchablePDF(pages: [String]) -> PDFDocument? {
         let data = NSMutableData()
         var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)
         guard let consumer = CGDataConsumer(data: data as CFMutableData),
@@ -257,15 +358,17 @@ final class LurumeSmokeTests: XCTestCase {
             return nil
         }
 
-        context.beginPDFPage(nil)
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
-        (text as NSString).draw(
-            at: NSPoint(x: 72, y: 400),
-            withAttributes: [.font: NSFont.systemFont(ofSize: 14)]
-        )
-        NSGraphicsContext.restoreGraphicsState()
-        context.endPDFPage()
+        for text in pages {
+            context.beginPDFPage(nil)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+            (text as NSString).draw(
+                at: NSPoint(x: 72, y: 400),
+                withAttributes: [.font: NSFont.systemFont(ofSize: 14)]
+            )
+            NSGraphicsContext.restoreGraphicsState()
+            context.endPDFPage()
+        }
         context.closePDF()
 
         return PDFDocument(data: data as Data)

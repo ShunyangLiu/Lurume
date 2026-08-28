@@ -53,6 +53,20 @@ final class HighlightStore: ObservableObject {
     }
 
     @discardableResult
+    func updateNote(id: UUID, text: String?, modifiedAt: Date = Date()) -> Bool {
+        guard !persistenceDisabled,
+              let index = highlights.firstIndex(where: { $0.id == id }) else {
+            return false
+        }
+        let current = highlights[index]
+        let updatedRecord = current.updatingNote(text, modifiedAt: modifiedAt)
+        guard updatedRecord.noteText != current.noteText else { return true }
+        var updated = highlights
+        updated[index] = updatedRecord
+        return saveAndPublish(updated, presentError: false)
+    }
+
+    @discardableResult
     func toggle(_ candidate: HighlightRecord, undoManager: UndoManager?) -> HighlightToggleResult? {
         guard requireWritable() else { return nil }
         if let existing = highlights.first(where: { $0.approximatelyMatches(candidate) }) {
@@ -157,13 +171,18 @@ final class HighlightStore: ObservableObject {
         }
     }
 
-    private func saveAndPublish(_ updated: [HighlightRecord]) -> Bool {
+    private func saveAndPublish(
+        _ updated: [HighlightRecord],
+        presentError: Bool = true
+    ) -> Bool {
         do {
             try persist(updated)
             highlights = updated
             return true
         } catch {
-            presentedError = "无法保存高亮：\(error.localizedDescription)"
+            if presentError {
+                presentedError = "无法保存高亮：\(error.localizedDescription)"
+            }
             return false
         }
     }

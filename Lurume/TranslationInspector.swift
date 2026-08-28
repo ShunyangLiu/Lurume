@@ -292,15 +292,26 @@ private struct HighlightRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(highlight.pageLabel)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text(highlight.pageLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                if highlight.hasNote {
+                    Image(systemName: "note.text")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
+            }
             Text(highlight.previewText)
                 .font(.body)
                 .lineLimit(2)
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(highlight.pageLabel)，\(highlight.previewText)")
+        .accessibilityLabel(
+            "\(highlight.pageLabel)，\(highlight.previewText)\(highlight.hasNote ? "，包含笔记" : "")"
+        )
     }
 }

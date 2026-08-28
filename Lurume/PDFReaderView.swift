@@ -37,7 +37,16 @@ final class PDFReaderController: ObservableObject {
     @Published private(set) var searchResultCount = 0
     @Published private(set) var currentSearchResultIndex: Int?
     @Published private(set) var activeSearchQuery: String?
-    @Published var currentHighlightID: UUID?
+    @Published var currentHighlightID: UUID? {
+        didSet {
+            guard currentHighlightID != oldValue else { return }
+            if let noteEditorSession,
+               noteEditorSession.highlightID != currentHighlightID {
+                noteEditorSession.close()
+            }
+            refreshHighlightAdornments()
+        }
+    }
     @Published private(set) var skippedHighlightFragmentCount = 0
 
     weak var pdfView: PDFView?
@@ -46,6 +55,14 @@ final class PDFReaderController: ObservableObject {
     private weak var renderedHighlightDocument: PDFDocument?
     private var highlightAnnotations: [PDFAnnotation] = []
     private var highlightIDByAnnotation: [ObjectIdentifier: UUID] = [:]
+    private var selectionAnnotations: [PDFAnnotation] = []
+    private var noteMarkerAnnotations: [PDFAnnotation] = []
+    private var noteMarkerIDByAnnotation: [ObjectIdentifier: UUID] = [:]
+    private var hoveredHighlightID: UUID?
+    private var noteEditingEnabled = true
+    private var noteEditorSession: HighlightNoteEditorSession?
+    private var noteEditorInitialViewport: CGRect?
+    private var unsavedNoteDrafts: [UUID: String] = [:]
 
     var pageCountLabel: String {
         guard pageCount > 0 else { return "/ —" }
@@ -77,6 +94,7 @@ final class PDFReaderController: ObservableObject {
     }
 
     func detach() {
+        closeNoteEditor()
         clearSearchResults()
         removeRenderedHighlights()
         pdfView = nil
@@ -231,14 +249,20 @@ final class PDFReaderController: ObservableObject {
         pdfView?.clearSelection()
     }
 
-    func renderHighlights(_ highlights: [HighlightRecord]) {
+    func renderHighlights(
+        _ highlights: [HighlightRecord],
+        noteEditingEnabled: Bool = true
+    ) {
         guard let pdfView, let document = pdfView.document else { return }
-        guard renderedHighlightDocument !== document || renderedHighlights != highlights else {
+        guard renderedHighlightDocument !== document
+                || renderedHighlights != highlights
+                || self.noteEditingEnabled != noteEditingEnabled else {
             return
         }
         removeRenderedHighlights()
         renderedHighlightDocument = document
         renderedHighlights = highlights
+        self.noteEditingEnabled = noteEditingEnabled
         var skippedFragmentCount = 0
 
         for highlight in highlights {
@@ -260,6 +284,7 @@ final class PDFReaderController: ObservableObject {
                         forType: .highlight,
                         withProperties: nil
                     )
+                    annotation.isReadOnly = true
                     annotation.color = .systemYellow.withAlphaComponent(0.45)
                     annotation.quadrilateralPoints = [
                         NSValue(point: NSPoint(x: 0, y: rect.height)),
@@ -273,6 +298,7 @@ final class PDFReaderController: ObservableObject {
                 }
             }
         }
+        refreshHighlightAdornments()
         if skippedHighlightFragmentCount != skippedFragmentCount {
             skippedHighlightFragmentCount = skippedFragmentCount
         }
@@ -281,6 +307,12 @@ final class PDFReaderController: ObservableObject {
            !highlights.contains(where: { $0.id == currentHighlightID }) {
             self.currentHighlightID = nil
         }
+    }
+
+    func setHoveredHighlightID(_ id: UUID?) {
+        guard hoveredHighlightID != id else { return }
+        hoveredHighlightID = id
+        refreshHighlightAdornments()
     }
 
     func highlightID(at viewPoint: CGPoint) -> UUID? {
@@ -298,17 +330,114 @@ final class PDFReaderController: ObservableObject {
         return nil
     }
 
+    func noteMarkerID(at viewPoint: CGPoint) -> UUID? {
+        guard let pdfView,
+              let page = pdfView.page(for: viewPoint, nearest: false) else {
+            return nil
+        }
+        let pagePoint = pdfView.convert(viewPoint, to: page)
+        for annotation in page.annotations.reversed()
+        where annotation.bounds.insetBy(dx: -3, dy: -3).contains(pagePoint) {
+            if let id = noteMarkerIDByAnnotation[ObjectIdentifier(annotation)] {
+                return id
+            }
+        }
+        return nil
+    }
+
+    func interactiveHighlightID(at viewPoint: CGPoint) -> UUID? {
+        noteMarkerID(at: viewPoint) ?? highlightID(at: viewPoint)
+    }
+
+    func noteMarkerAnchorRect(for id: UUID) -> CGRect? {
+        guard let pdfView,
+              let annotation = noteMarkerAnnotations.first(where: {
+                  noteMarkerIDByAnnotation[ObjectIdentifier($0)] == id
+              }),
+              let page = annotation.page else {
+            return nil
+        }
+        return pdfView.convert(annotation.bounds, from: page)
+    }
+
+    func presentNoteEditor(
+        for highlight: HighlightRecord,
+        readOnly: Bool,
+        save: @escaping (String?) -> Bool
+    ) {
+        guard let pdfView,
+              let documentView = pdfView.documentView else {
+            return
+        }
+        currentHighlightID = highlight.id
+        if noteEditorSession?.highlightID == highlight.id,
+           noteEditorSession?.isShown == true {
+            return
+        }
+        closeNoteEditor()
+        guard let pdfViewRect = noteMarkerAnchorRect(for: highlight.id) else { return }
+        let documentRect = pdfView.convert(pdfViewRect, to: documentView)
+        let initialText = unsavedNoteDrafts[highlight.id] ?? highlight.noteText ?? ""
+        let model = HighlightNoteDraftModel(
+            text: initialText,
+            persistedText: highlight.noteText ?? "",
+            readOnly: readOnly,
+            save: { [weak self] text in
+                guard save(text) else { return false }
+                self?.unsavedNoteDrafts.removeValue(forKey: highlight.id)
+                return true
+            },
+            onDraftChanged: { [weak self] text in
+                self?.unsavedNoteDrafts[highlight.id] = text
+            },
+            onSaveSucceeded: { [weak self] in
+                self?.unsavedNoteDrafts.removeValue(forKey: highlight.id)
+            }
+        )
+        let session = HighlightNoteEditorSession(
+            highlightID: highlight.id,
+            anchorRect: documentRect,
+            in: documentView,
+            model: model
+        ) { [weak self] in
+            guard let self,
+                  self.noteEditorSession?.highlightID == highlight.id else { return }
+            self.noteEditorSession = nil
+            self.noteEditorInitialViewport = nil
+        }
+        noteEditorSession = session
+        noteEditorInitialViewport = documentView.enclosingScrollView?.contentView.bounds
+        session.show()
+    }
+
+    func closeNoteEditor() {
+        noteEditorSession?.close()
+    }
+
+    func viewportDidChange() {
+        guard noteEditorSession != nil,
+              let initial = noteEditorInitialViewport,
+              let current = pdfView?.documentView?.enclosingScrollView?.contentView.bounds else {
+            return
+        }
+        if abs(current.minY - initial.minY) >= max(initial.height, 1)
+            || abs(current.minX - initial.minX) >= max(initial.width, 1) {
+            closeNoteEditor()
+        }
+    }
+
     func activateHighlight(_ highlight: HighlightRecord, translate: Bool) {
         guard let pdfView,
-              let selection = selection(for: highlight) else {
+              let selection = selection(for: highlight),
+              let targetSelection = terminalSelection(for: highlight) else {
             return
         }
         currentHighlightID = highlight.id
         if translate {
             pdfView.setCurrentSelection(selection, animate: true)
         }
-        pdfView.go(to: selection)
-        centerSelection(selection, in: pdfView)
+        pdfView.go(to: targetSelection)
+        centerSelection(targetSelection, in: pdfView)
     }
 
     private func moveSearchResult(by offset: Int) {
@@ -361,6 +490,19 @@ final class PDFReaderController: ObservableObject {
         return combined
     }
 
+    private func terminalSelection(for highlight: HighlightRecord) -> PDFSelection? {
+        guard let document = pdfView?.document else { return nil }
+        for segment in highlight.segments.reversed() {
+            guard let page = document.page(at: segment.pageIndex) else { continue }
+            for rect in segment.rects.reversed() {
+                if let selection = page.selection(for: rect.cgRect.insetBy(dx: -0.5, dy: -0.5)) {
+                    return selection
+                }
+            }
+        }
+        return nil
+    }
+
     private func centerSelection(_ selection: PDFSelection, in pdfView: PDFView) {
         guard let page = selection.pages.first,
               let documentView = pdfView.documentView,
@@ -383,11 +525,135 @@ final class PDFReaderController: ObservableObject {
     }
 
     private func removeRenderedHighlights() {
+        removeHighlightAdornments()
         for annotation in highlightAnnotations {
             annotation.page?.removeAnnotation(annotation)
         }
         highlightAnnotations = []
         highlightIDByAnnotation = [:]
+    }
+
+    private func refreshHighlightAdornments() {
+        guard let document = pdfView?.document else { return }
+        removeHighlightAdornments()
+
+        if let currentHighlightID,
+           let current = renderedHighlights.first(where: { $0.id == currentHighlightID }) {
+            for segment in current.segments {
+                guard let page = document.page(at: segment.pageIndex) else { continue }
+                let pageBounds = page.bounds(for: .cropBox)
+                for storedRect in segment.rects {
+                    let rect = storedRect.cgRect.insetBy(dx: -1.5, dy: -1.5)
+                    guard rect.intersects(pageBounds) else { continue }
+                    let outline = PDFAnnotation(
+                        bounds: rect.intersection(pageBounds),
+                        forType: .square,
+                        withProperties: nil
+                    )
+                    outline.isReadOnly = true
+                    let border = PDFBorder()
+                    border.lineWidth = 1.2
+                    border.style = .dashed
+                    border.dashPattern = [3, 2]
+                    outline.border = border
+                    outline.color = .controlAccentColor.withAlphaComponent(0.9)
+                    page.addAnnotation(outline)
+                    selectionAnnotations.append(outline)
+                }
+            }
+        }
+
+        var occupiedByPage: [Int: [CGRect]] = [:]
+        for highlight in renderedHighlights where
+            highlight.hasNote
+                || noteEditingEnabled
+                    && (highlight.id == currentHighlightID
+                        || highlight.id == hoveredHighlightID) {
+            guard let anchor = markerAnchor(for: highlight, document: document) else { continue }
+            let markerRect = markerRect(
+                beside: anchor.rect,
+                pageBounds: anchor.page.bounds(for: .cropBox),
+                occupied: occupiedByPage[anchor.pageIndex, default: []]
+            )
+            occupiedByPage[anchor.pageIndex, default: []].append(markerRect)
+            let marker = PDFAnnotation(
+                bounds: markerRect,
+                forType: highlight.hasNote ? .text : .freeText,
+                withProperties: nil
+            )
+            marker.isReadOnly = true
+            marker.color = highlight.hasNote
+                ? .systemYellow
+                : .controlAccentColor.withAlphaComponent(0.75)
+            if highlight.hasNote {
+                marker.iconType = .comment
+            } else {
+                marker.contents = "+"
+                marker.font = .systemFont(ofSize: 11, weight: .semibold)
+                marker.fontColor = .white
+                marker.alignment = .center
+                marker.interiorColor = .controlAccentColor.withAlphaComponent(0.82)
+                let border = PDFBorder()
+                border.lineWidth = 0
+                marker.border = border
+            }
+            anchor.page.addAnnotation(marker)
+            noteMarkerAnnotations.append(marker)
+            noteMarkerIDByAnnotation[ObjectIdentifier(marker)] = highlight.id
+        }
+    }
+
+    private func removeHighlightAdornments() {
+        for annotation in selectionAnnotations {
+            annotation.page?.removeAnnotation(annotation)
+        }
+        for annotation in noteMarkerAnnotations {
+            annotation.page?.removeAnnotation(annotation)
+        }
+        selectionAnnotations = []
+        noteMarkerAnnotations = []
+        noteMarkerIDByAnnotation = [:]
+    }
+
+    private func markerAnchor(
+        for highlight: HighlightRecord,
+        document: PDFDocument
+    ) -> (page: PDFPage, pageIndex: Int, rect: CGRect)? {
+        for segment in highlight.segments.reversed() {
+            guard let page = document.page(at: segment.pageIndex) else { continue }
+            for rect in segment.rects.reversed() {
+                let pageBounds = page.bounds(for: .cropBox)
+                let candidate = rect.cgRect.intersection(pageBounds)
+                if !candidate.isEmpty {
+                    return (page, segment.pageIndex, candidate)
+                }
+            }
+        }
+        return nil
+    }
+
+    private func markerRect(
+        beside highlightRect: CGRect,
+        pageBounds: CGRect,
+        occupied: [CGRect]
+    ) -> CGRect {
+        let size = CGSize(width: 16, height: 16)
+        let gap: CGFloat = 4
+        var originX = highlightRect.maxX + gap
+        if originX + size.width > pageBounds.maxX {
+            originX = highlightRect.minX - gap - size.width
+        }
+        originX = min(max(originX, pageBounds.minX), pageBounds.maxX - size.width)
+        var originY = min(
+            max(highlightRect.midY - size.height / 2, pageBounds.minY),
+            pageBounds.maxY - size.height
+        )
+        var candidate = CGRect(origin: CGPoint(x: originX, y: originY), size: size)
+        for _ in 0..<8 where occupied.contains(where: { $0.intersects(candidate) }) {
+            originY = min(originY + size.height + 2, pageBounds.maxY - size.height)
+            candidate.origin.y = originY
+        }
+        return candidate
     }
 
     func updatePageState() {
@@ -426,10 +692,12 @@ struct PDFReaderView: NSViewRepresentable {
     let initialPageIndex: Int
     let controller: PDFReaderController
     let highlights: [HighlightRecord]
+    let noteEditingEnabled: Bool
     let onPageChanged: (Int) -> Void
     let onSelectionChanged: (PDFSelectionEvent?) -> Void
     let onToggleHighlight: () -> Void
     let onDeleteHighlight: (UUID) -> Void
+    let onOpenHighlightNote: (UUID) -> Void
     let onError: (String) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -457,7 +725,7 @@ struct PDFReaderView: NSViewRepresentable {
         if context.coordinator.loadedURL != documentURL {
             loadDocument(in: pdfView, coordinator: context.coordinator)
         }
-        controller.renderHighlights(highlights)
+        controller.renderHighlights(highlights, noteEditingEnabled: noteEditingEnabled)
     }
 
     private func configureHighlightActions(on pdfView: PDFView) {
@@ -478,6 +746,23 @@ struct PDFReaderView: NSViewRepresentable {
         }
         highlightView.onToggleHighlight = onToggleHighlight
         highlightView.onDeleteHighlight = onDeleteHighlight
+        highlightView.noteMarkerIDAtEvent = { [weak highlightView, weak controller] event in
+            guard let highlightView else { return nil }
+            let point = highlightView.convert(event.locationInWindow, from: nil)
+            return controller?.noteMarkerID(at: point)
+        }
+        highlightView.interactiveHighlightIDAtEvent = { [weak highlightView, weak controller] event in
+            guard let highlightView else { return nil }
+            let point = highlightView.convert(event.locationInWindow, from: nil)
+            return controller?.interactiveHighlightID(at: point)
+        }
+        highlightView.onSelectHighlight = { [weak controller] id in
+            controller?.currentHighlightID = id
+        }
+        highlightView.onOpenHighlightNote = onOpenHighlightNote
+        highlightView.onHoverHighlight = { [weak controller] id in
+            controller?.setHoveredHighlightID(id)
+        }
     }
 
     private func loadDocument(in pdfView: PDFView, coordinator: Coordinator) {
@@ -498,7 +783,10 @@ struct PDFReaderView: NSViewRepresentable {
         if let page = document.page(at: index) {
             pdfView.go(to: page)
         }
-        controller.renderHighlights(highlights)
+        controller.renderHighlights(highlights, noteEditingEnabled: noteEditingEnabled)
+        // Publish the initial page count synchronously. Import can otherwise race a second
+        // selection update and leave the toolbar showing “/ —” until the first navigation.
+        controller.updatePageState()
         coordinator.scheduleStateUpdate()
     }
 
@@ -515,6 +803,7 @@ struct PDFReaderView: NSViewRepresentable {
             observationTokens.forEach(NotificationCenter.default.removeObserver)
         }
 
+        @MainActor
         func observe(_ pdfView: PDFView) {
             let center = NotificationCenter.default
             observationTokens.append(
@@ -525,6 +814,7 @@ struct PDFReaderView: NSViewRepresentable {
                 ) { [weak self] _ in
                     Task { @MainActor [weak self] in
                         guard let self else { return }
+                        self.parent.controller.closeNoteEditor()
                         self.parent.controller.updatePageState()
                         self.parent.onPageChanged(self.parent.controller.currentPageIndex)
                     }
@@ -545,6 +835,31 @@ struct PDFReaderView: NSViewRepresentable {
                     }
                 }
             )
+            observationTokens.append(
+                center.addObserver(
+                    forName: .PDFViewScaleChanged,
+                    object: pdfView,
+                    queue: .main
+                ) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        self?.parent.controller.closeNoteEditor()
+                    }
+                }
+            )
+            if let clipView = pdfView.documentView?.enclosingScrollView?.contentView {
+                clipView.postsBoundsChangedNotifications = true
+                observationTokens.append(
+                    center.addObserver(
+                        forName: NSView.boundsDidChangeNotification,
+                        object: clipView,
+                        queue: .main
+                    ) { [weak self] _ in
+                        Task { @MainActor [weak self] in
+                            self?.parent.controller.viewportDidChange()
+                        }
+                    }
+                )
+            }
         }
 
         func scheduleStateUpdate(error: String? = nil) {

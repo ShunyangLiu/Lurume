@@ -52,7 +52,8 @@ struct HighlightPersistence: Sendable {
             throw HighlightPersistenceError.invalidTopLevel
         }
         let version = versionNumber.intValue
-        guard version == HighlightSchema.currentVersion else {
+        guard version == HighlightSchema.previousVersion
+                || version == HighlightSchema.currentVersion else {
             throw HighlightPersistenceError.unsupportedSchema(found: version)
         }
 
@@ -66,10 +67,15 @@ struct HighlightPersistence: Sendable {
                 invalidRecordCount += 1
             }
         }
-        return LoadedHighlights(
-            snapshot: HighlightSnapshot(schemaVersion: version, highlights: highlights),
-            invalidRecordCount: invalidRecordCount
+        let snapshot = HighlightSnapshot(
+            schemaVersion: HighlightSchema.currentVersion,
+            highlights: highlights
         )
+        if version == HighlightSchema.previousVersion, invalidRecordCount == 0 {
+            // Migration is published only after the upgraded snapshot is safely on disk.
+            try save(snapshot, fileManager: fileManager)
+        }
+        return LoadedHighlights(snapshot: snapshot, invalidRecordCount: invalidRecordCount)
     }
 
     func save(_ snapshot: HighlightSnapshot, fileManager: FileManager = .default) throws {
