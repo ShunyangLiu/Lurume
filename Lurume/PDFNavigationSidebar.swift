@@ -108,6 +108,7 @@ struct PDFOutlineSidebar: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear(perform: reloadOutline)
         .onChange(of: documentID) {
             selectedNodeID = nil
@@ -135,6 +136,7 @@ struct PDFThumbnailSidebar: View {
                 PDFThumbnailRepresentable(pdfView: controller.pdfView)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

@@ -221,7 +221,9 @@ struct ContentView: View {
             Divider()
 
             sidebarContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .navigationTitle(sidebarMode.title)
     }
 
