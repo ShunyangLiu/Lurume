@@ -65,6 +65,8 @@ struct LibraryTableView: NSViewRepresentable {
         tableView.target = context.coordinator
         tableView.doubleAction = #selector(Coordinator.didDoubleClick(_:))
         tableView.commandHandler = context.coordinator.handleKeyEvent
+        tableView.setDraggingSourceOperationMask(.copy, forLocal: true)
+        tableView.setDraggingSourceOperationMask([], forLocal: false)
 
         for configuration in ColumnConfiguration.allCases {
             let column = NSTableColumn(identifier: configuration.identifier)
@@ -211,6 +213,23 @@ struct LibraryTableView: NSViewRepresentable {
             })
             guard selectedIDs != parent.selection else { return }
             parent.selection = selectedIDs
+        }
+
+        func tableView(
+            _ tableView: NSTableView,
+            pasteboardWriterForRow row: Int
+        ) -> (any NSPasteboardWriting)? {
+            guard parent.papers.indices.contains(row) else { return nil }
+            let draggedIndexes: IndexSet
+            if tableView.selectedRowIndexes.contains(row) {
+                draggedIndexes = tableView.selectedRowIndexes
+            } else {
+                draggedIndexes = IndexSet(integer: row)
+            }
+            let paperIDs = draggedIndexes.compactMap { index in
+                parent.papers.indices.contains(index) ? parent.papers[index].id : nil
+            }
+            return LibraryDragDropCodec.pasteboardItem(paperIDs: paperIDs)
         }
 
         func reload(_ tableView: NSTableView) {
