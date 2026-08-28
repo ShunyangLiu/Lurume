@@ -33,7 +33,7 @@ struct LurumeApp: App {
         }
 
         Settings {
-            TranslationSettingsView()
+            AppSettingsView()
                 .environmentObject(appSettings)
         }
     }

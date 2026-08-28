@@ -17,7 +17,6 @@ enum ReaderInspectorMode: String, CaseIterable, Identifiable {
 
 /// 译文优先的翻译检查器：原文默认完全隐藏，文献与页码在顶部标识来源。
 struct TranslationInspector: View {
-    @Environment(\.openSettings) private var openSettings
     @ObservedObject var controller: TranslationController
     @ObservedObject var settings: AppSettings
     @ObservedObject var highlightStore: HighlightStore
@@ -53,14 +52,6 @@ struct TranslationInspector: View {
                             Label("清空翻译", systemImage: "xmark.circle")
                         }
                             .disabled(controller.selection == nil)
-
-                        Divider()
-
-                        Button {
-                            openSettings()
-                        } label: {
-                            Label("翻译设置…", systemImage: "gearshape")
-                        }
                     case .highlights:
                         Button(role: .destructive) {
                             guard let id = pdfController.currentHighlightID else { return }
@@ -311,30 +302,5 @@ private struct HighlightRow: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(highlight.pageLabel)，\(highlight.previewText)")
-    }
-}
-
-struct TranslationSettingsView: View {
-    @EnvironmentObject private var settings: AppSettings
-
-    var body: some View {
-        Form {
-            Section("翻译") {
-                Toggle("自动翻译选中文字", isOn: $settings.automaticTranslation)
-                Picker("原文语言", selection: $settings.sourceLanguageIdentifier) {
-                    ForEach(TranslationSourceLanguageOption.common) { language in
-                        Text(language.name).tag(language.id)
-                    }
-                }
-                Picker("目标语言", selection: $settings.targetLanguageIdentifier) {
-                    ForEach(TranslationLanguageOption.common) { language in
-                        Text(language.name).tag(language.id)
-                    }
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .frame(width: 420, height: 220)
-        .navigationTitle("翻译")
     }
 }
