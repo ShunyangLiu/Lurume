@@ -1,3 +1,4 @@
+import AppKit
 import PDFKit
 import SwiftUI
 
@@ -126,41 +127,149 @@ struct PDFThumbnailSidebar: View {
 
     var body: some View {
         Group {
-            if controller.document == nil || controller.pdfView == nil {
+            if let document = controller.document, controller.pdfView != nil {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 4) {
+                            ForEach(0..<document.pageCount, id: \.self) { pageIndex in
+                                if let page = document.page(at: pageIndex) {
+                                    PDFPageThumbnailRow(
+                                        page: page,
+                                        pageIndex: pageIndex,
+                                        isCurrent: controller.currentPageIndex == pageIndex
+                                    ) {
+                                        controller.go(toOneBasedPage: pageIndex + 1)
+                                    }
+                                    .id(pageIndex)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 10)
+                    }
+                    .onAppear {
+                        proxy.scrollTo(controller.currentPageIndex, anchor: .center)
+                    }
+                    .onChange(of: controller.currentPageIndex) { _, pageIndex in
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            proxy.scrollTo(pageIndex, anchor: .center)
+                        }
+                    }
+                }
+                .id(ObjectIdentifier(document))
+            } else {
                 ContentUnavailableView(
                     "尚未载入 PDF",
                     systemImage: "rectangle.stack",
                     description: Text("选择并成功打开一篇论文后显示页面。")
                 )
-            } else {
-                PDFThumbnailRepresentable(pdfView: controller.pdfView)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-struct PDFThumbnailRepresentable: NSViewRepresentable {
-    let pdfView: PDFView?
+private struct PDFPageThumbnailRow: View {
+    let page: PDFPage
+    let pageIndex: Int
+    let isCurrent: Bool
+    let action: () -> Void
 
-    func makeNSView(context: Context) -> PDFThumbnailView {
-        let thumbnailView = PDFThumbnailView()
-        configure(thumbnailView)
-        return thumbnailView
-    }
+    @State private var isHovering = false
 
-    func updateNSView(_ thumbnailView: PDFThumbnailView, context: Context) {
-        configure(thumbnailView)
-    }
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 10) {
+                Text("\(pageIndex + 1)")
+                    .font(.callout.monospacedDigit())
+                    .fontWeight(isCurrent ? .semibold : .regular)
+                    .foregroundStyle(isCurrent ? Color.accentColor : .secondary)
+                    .frame(width: 32, alignment: .trailing)
+                    .padding(.top, 4)
 
-    private func configure(_ thumbnailView: PDFThumbnailView) {
-        if thumbnailView.pdfView !== pdfView {
-            thumbnailView.pdfView = pdfView
+                PDFPageThumbnailImage(page: page)
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 7)
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
+            .background {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(rowBackground)
+            }
+            .overlay {
+                if isCurrent {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(Color.accentColor.opacity(0.42), lineWidth: 1)
+                }
+            }
         }
-        thumbnailView.maximumNumberOfColumns = 1
-        thumbnailView.thumbnailSize = NSSize(width: 132, height: 172)
-        thumbnailView.allowsDragging = false
-        thumbnailView.allowsMultipleSelection = false
-        thumbnailView.backgroundColor = .clear
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help("前往第 \(pageIndex + 1) 页")
+        .accessibilityLabel("第 \(pageIndex + 1) 页")
+        .accessibilityValue(isCurrent ? "当前页" : "")
+    }
+
+    private var rowBackground: Color {
+        if isCurrent {
+            return Color.accentColor.opacity(0.13)
+        }
+        return isHovering ? Color.primary.opacity(0.055) : .clear
+    }
+}
+
+private struct PDFPageThumbnailImage: View {
+    let page: PDFPage
+
+    @State private var image: NSImage?
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(.white)
+
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .frame(width: 76, height: 98)
+        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .stroke(Color.black.opacity(0.14), lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.16), radius: 2, y: 1)
+        .task(id: ObjectIdentifier(page)) {
+            image = nil
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            image = PDFPageThumbnailCache.shared.image(for: page)
+        }
+    }
+}
+
+@MainActor
+private final class PDFPageThumbnailCache {
+    static let shared = PDFPageThumbnailCache()
+
+    private let images = NSCache<PDFPage, NSImage>()
+
+    private init() {
+        images.countLimit = 80
+    }
+
+    func image(for page: PDFPage) -> NSImage {
+        if let cached = images.object(forKey: page) {
+            return cached
+        }
+        let image = page.thumbnail(of: NSSize(width: 152, height: 196), for: .cropBox)
+        images.setObject(image, forKey: page)
+        return image
     }
 }

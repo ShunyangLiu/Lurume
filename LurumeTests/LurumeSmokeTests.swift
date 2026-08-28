@@ -40,7 +40,7 @@ final class LurumeSmokeTests: XCTestCase {
     }
 
     @MainActor
-    func testThumbnailViewUsesTheLivePDFViewAndSingleColumn() throws {
+    func testThumbnailNavigationUsesTheLivePDFReaderState() throws {
         let document = PDFDocument()
         let firstPage = PDFPage()
         let secondPage = PDFPage()
@@ -48,21 +48,19 @@ final class LurumeSmokeTests: XCTestCase {
         document.insert(secondPage, at: 1)
         let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
         pdfView.document = document
-        let thumbnailView = PDFThumbnailView()
-        thumbnailView.pdfView = pdfView
-        thumbnailView.maximumNumberOfColumns = 1
-        thumbnailView.allowsDragging = false
-        thumbnailView.allowsMultipleSelection = false
+        let controller = PDFReaderController()
+        controller.attach(pdfView)
+        controller.updatePageState()
 
-        pdfView.go(to: secondPage)
-        pdfView.layoutSubtreeIfNeeded()
-        thumbnailView.layoutSubtreeIfNeeded()
+        XCTAssertTrue(controller.pdfView === pdfView)
+        XCTAssertEqual(controller.pageCount, 2)
+        XCTAssertEqual(controller.currentPageIndex, 0)
 
-        XCTAssertTrue(thumbnailView.pdfView === pdfView)
-        XCTAssertEqual(thumbnailView.maximumNumberOfColumns, 1)
-        XCTAssertFalse(thumbnailView.allowsDragging)
-        XCTAssertFalse(thumbnailView.allowsMultipleSelection)
-        XCTAssertTrue(thumbnailView.selectedPages?.first === secondPage)
+        controller.go(toOneBasedPage: 2)
+        controller.updatePageState()
+
+        XCTAssertTrue(pdfView.currentPage === secondPage)
+        XCTAssertEqual(controller.currentPageIndex, 1)
     }
 
     @MainActor
