@@ -61,3 +61,6 @@ P2 的范围、交互和验收标准详见 [P2 高亮阅读计划](docs/P2-plan.
 使用 Xcode 26.3 或更新版本打开 `Lurume.xcodeproj`，选择 `Lurume` scheme 即可构建运行。
 工程最低支持 macOS 15，不包含运行时第三方依赖。修改 `project.yml` 后需使用 XcodeGen
 重新生成工程。项目以 [MIT 许可证](LICENSE)发布。
+
+Lurume 名称与项目标识不属于 MIT 许可证的授权范围：衍生或二次发布的项目应使用自己的
+名称与标识，避免与原项目混淆。

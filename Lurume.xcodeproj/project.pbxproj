@@ -9,10 +9,10 @@
 /* Begin PBXBuildFile section */
 		106513FBEC771211CB9DE862 /* LibraryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0325E1A53B306B4E070020D /* LibraryModels.swift */; };
 		132643F5DC3DDD1E9EB22813 /* TextNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA1583E513232AC7D0AA7CA0 /* TextNormalizer.swift */; };
+		15EDF2A25C2A3FEAE4972ED4 /* Credits.html in Resources */ = {isa = PBXBuildFile; fileRef = 390A1F1BF533AFA28CCFD10F /* Credits.html */; };
 		15FB3FBDD96F12FD1A097CE0 /* HighlightPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20CE4CB5998833B1454C74E2 /* HighlightPDFView.swift */; };
 		1D1E1300196BD224FE89A00F /* TextNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969EC9C892796AB815567020 /* TextNormalizerTests.swift */; };
 		24F9D19682C67BFEFB015DAC /* TranslationInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */; };
-		4C1B924E298A4A8B891C42ED /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B5E8939AC64FE2A3C11B73 /* SettingsView.swift */; };
 		2845DD09521799EA1249F0AE /* LibraryOrganizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E489A1C10FD4AE7E9A33154 /* LibraryOrganizationTests.swift */; };
 		32C8FFB0CE9301BED1D8F96D /* LibrarySchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AABCAEA8379FB217EF98010 /* LibrarySchema.swift */; };
 		33F14A5B4F2FF059040D2EBC /* LurumeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDCEED45D44F9A78BABF93BC /* LurumeApp.swift */; };
@@ -30,6 +30,7 @@
 		97CCFD06759640B719E96A5A /* HighlightStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DF3744718002E8D40888853 /* HighlightStore.swift */; };
 		A73E9083CB324645CFF43590 /* SecurityScopedFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 451E4AC55AABA630D088790D /* SecurityScopedFile.swift */; };
 		B1AE1C81032365A6F314978A /* HighlightModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFEAA76699D454EB7F711760 /* HighlightModels.swift */; };
+		B96EA3B16617DEA37D0FF4FD /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B43B08E498537804DB3769E8 /* SettingsView.swift */; };
 		C844133EBD258AD8321EA43A /* HighlightPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A2CEFED2568E02C16AA36E /* HighlightPersistence.swift */; };
 		CD6C64A27F724DEB33871DFF /* HighlightPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B84CEE7D84F804319313E2FC /* HighlightPersistenceTests.swift */; };
 		D34865219EA3EB4BF932BA66 /* LibraryPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70EE537C1DA409FE0C8BFD5B /* LibraryPersistence.swift */; };
@@ -53,6 +54,7 @@
 		1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LurumeSmokeTests.swift; sourceTree = "<group>"; };
 		1DF3744718002E8D40888853 /* HighlightStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightStore.swift; sourceTree = "<group>"; };
 		20CE4CB5998833B1454C74E2 /* HighlightPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightPDFView.swift; sourceTree = "<group>"; };
+		390A1F1BF533AFA28CCFD10F /* Credits.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = Credits.html; sourceTree = "<group>"; };
 		3C0C186E21CE73620E1ECB1C /* PDFNavigationSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFNavigationSidebar.swift; sourceTree = "<group>"; };
 		451E4AC55AABA630D088790D /* SecurityScopedFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedFile.swift; sourceTree = "<group>"; };
 		4ACA72A5E79BC8728F19084D /* TranslationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationController.swift; sourceTree = "<group>"; };
@@ -64,10 +66,10 @@
 		7357965D8D0C423680ACCF0B /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
 		813B2765B8739B290712AAD7 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationInspector.swift; sourceTree = "<group>"; };
-		A8B5E8939AC64FE2A3C11B73 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		969EC9C892796AB815567020 /* TextNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextNormalizerTests.swift; sourceTree = "<group>"; };
 		9AABCAEA8379FB217EF98010 /* LibrarySchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySchema.swift; sourceTree = "<group>"; };
 		B332936519E7741B917213C1 /* FileIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIdentityTests.swift; sourceTree = "<group>"; };
+		B43B08E498537804DB3769E8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B84CEE7D84F804319313E2FC /* HighlightPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightPersistenceTests.swift; sourceTree = "<group>"; };
 		B8A2CEFED2568E02C16AA36E /* HighlightPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightPersistence.swift; sourceTree = "<group>"; };
 		BA1583E513232AC7D0AA7CA0 /* TextNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextNormalizer.swift; sourceTree = "<group>"; };
@@ -103,6 +105,7 @@
 			children = (
 				0B52C1CACB063DB3505EEF6C /* AppSettings.swift */,
 				813B2765B8739B290712AAD7 /* ContentView.swift */,
+				390A1F1BF533AFA28CCFD10F /* Credits.html */,
 				EFEAA76699D454EB7F711760 /* HighlightModels.swift */,
 				20CE4CB5998833B1454C74E2 /* HighlightPDFView.swift */,
 				B8A2CEFED2568E02C16AA36E /* HighlightPersistence.swift */,
@@ -116,7 +119,7 @@
 				3C0C186E21CE73620E1ECB1C /* PDFNavigationSidebar.swift */,
 				0A66F42ECD28F65520797F64 /* PDFReaderView.swift */,
 				451E4AC55AABA630D088790D /* SecurityScopedFile.swift */,
-				A8B5E8939AC64FE2A3C11B73 /* SettingsView.swift */,
+				B43B08E498537804DB3769E8 /* SettingsView.swift */,
 				FC49AD84FACDAB3ED5163A55 /* SystemPaperMetadataReader.swift */,
 				BA1583E513232AC7D0AA7CA0 /* TextNormalizer.swift */,
 				4ACA72A5E79BC8728F19084D /* TranslationController.swift */,
@@ -166,6 +169,7 @@
 			buildConfigurationList = 21BEAD6E81475DA701E6D089 /* Build configuration list for PBXNativeTarget "Lurume" */;
 			buildPhases = (
 				BA2ECAB65BA84E48A196DA2B /* Sources */,
+				70E2FA50C1F981F7E7624F37 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -212,6 +216,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		70E2FA50C1F981F7E7624F37 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				15EDF2A25C2A3FEAE4972ED4 /* Credits.html in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		3CC81F4DCEE3D427D78702B8 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -246,7 +261,7 @@
 				5F38DD445676B098B239719D /* PDFNavigationSidebar.swift in Sources */,
 				3C4E8C4AE39330A50E8DB278 /* PDFReaderView.swift in Sources */,
 				A73E9083CB324645CFF43590 /* SecurityScopedFile.swift in Sources */,
-				4C1B924E298A4A8B891C42ED /* SettingsView.swift in Sources */,
+				B96EA3B16617DEA37D0FF4FD /* SettingsView.swift in Sources */,
 				901386E6D513046A375512B4 /* SystemPaperMetadataReader.swift in Sources */,
 				132643F5DC3DDD1E9EB22813 /* TextNormalizer.swift in Sources */,
 				FE891CFC7127EEB8A4BD6FC7 /* TranslationController.swift in Sources */,
@@ -294,6 +309,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Lurume;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 ShunyangLiu. Released under the MIT License.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -374,6 +390,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Lurume;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 ShunyangLiu. Released under the MIT License.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
