@@ -29,7 +29,7 @@ struct ContentView: View {
     @State private var searchText = ""
     @State private var sidebarMode: ReaderSidebarMode = .library
     @State private var statusFilter: ReadingStatusFilter = .all
-    @State private var statusInteractionLocked = false
+    @State private var statusInteractionGuard = ReadingStatusInteractionGuard()
     @FocusState private var searchFieldFocused: Bool
     @State private var isPDFSearchPresented = false
     @FocusState private var pdfSearchFieldFocused: Bool
@@ -335,10 +335,9 @@ struct ContentView: View {
             titleFieldFocused: $inlineTitleFieldFocused,
             commitTitle: commitActiveInlineTitleEdit,
             cancelTitle: cancelInlineTitleEdit,
-            statusInteractionLocked: statusInteractionLocked,
             statusDisabled: libraryStore.persistenceDisabled,
-            cycleReadingStatus: {
-                changeReadingStatus(paper.readingStatus.next, for: paper.id)
+            changeReadingStatus: { status in
+                changeReadingStatus(status, for: paper.id)
             }
         )
         .tag(paper.id)
@@ -698,18 +697,13 @@ struct ContentView: View {
         }
     }
 
-    private func changeReadingStatus(_ status: ReadingStatus, for id: UUID) {
-        guard !statusInteractionLocked else { return }
-        let needsMisclickGuard = statusFilter != .all
-        if needsMisclickGuard {
-            statusInteractionLocked = true
+    @discardableResult
+    private func changeReadingStatus(_ status: ReadingStatus, for id: UUID) -> Bool {
+        guard statusInteractionGuard.shouldAccept(isFiltered: statusFilter != .all) else {
+            return false
         }
         libraryStore.setReadingStatus(status, for: id)
-        guard needsMisclickGuard else { return }
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(350))
-            statusInteractionLocked = false
-        }
+        return true
     }
 
     private func removePaper(_ id: UUID) {
@@ -825,9 +819,10 @@ private struct PaperRow: View {
     var titleFieldFocused: FocusState<Bool>.Binding
     let commitTitle: () -> Void
     let cancelTitle: () -> Void
-    let statusInteractionLocked: Bool
     let statusDisabled: Bool
-    let cycleReadingStatus: () -> Void
+    let changeReadingStatus: (ReadingStatus) -> Bool
+
+    @State private var optimisticReadingStatus: ReadingStatus?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -848,18 +843,17 @@ private struct PaperRow: View {
 
                 Spacer(minLength: 4)
 
-                Button(action: cycleReadingStatus) {
-                    Image(systemName: paper.readingStatus.systemImage)
-                        .foregroundStyle(statusColor)
-                        .contentTransition(.symbolEffect(.replace))
+                Button(action: beginReadingStatusChange) {
+                    Image(systemName: displayedReadingStatus.systemImage)
+                        .foregroundStyle(statusColor(for: displayedReadingStatus))
                 }
                 .buttonStyle(.borderless)
-                .allowsHitTesting(!statusInteractionLocked && !statusDisabled)
+                .disabled(statusDisabled)
                 .help(
-                    "\(paper.readingStatus.title)，点击标记为\(paper.readingStatus.next.title)"
+                    "\(displayedReadingStatus.title)，点击标记为\(displayedReadingStatus.next.title)"
                 )
                 .accessibilityLabel(
-                    "\(paper.readingStatus.title)，点击标记为\(paper.readingStatus.next.title)"
+                    "\(displayedReadingStatus.title)，点击标记为\(displayedReadingStatus.next.title)"
                 )
             }
             secondaryLine
@@ -867,11 +861,26 @@ private struct PaperRow: View {
         .padding(.vertical, 3)
     }
 
-    private var statusColor: Color {
-        switch paper.readingStatus {
+    private var displayedReadingStatus: ReadingStatus {
+        optimisticReadingStatus ?? paper.readingStatus
+    }
+
+    private func statusColor(for status: ReadingStatus) -> Color {
+        switch status {
         case .unread: .secondary
         case .reading: .accentColor
         case .finished: .green
+        }
+    }
+
+    private func beginReadingStatusChange() {
+        let target = displayedReadingStatus.next
+        optimisticReadingStatus = target
+        Task { @MainActor in
+            // 先让图标在当前事件循环结束时完成视觉更新，再执行原子 JSON 写入。
+            await Task.yield()
+            _ = changeReadingStatus(target)
+            optimisticReadingStatus = nil
         }
     }
 
@@ -888,6 +897,22 @@ private struct PaperRow: View {
                 .lineLimit(1)
                 .help(paper.originalFileName)
         }
+    }
+}
+
+@MainActor
+final class ReadingStatusInteractionGuard {
+    private static let filteredClickGuardNanoseconds: UInt64 = 220_000_000
+    private var blockedUntilNanoseconds: UInt64 = 0
+
+    func shouldAccept(
+        isFiltered: Bool,
+        nowNanoseconds: UInt64 = DispatchTime.now().uptimeNanoseconds
+    ) -> Bool {
+        guard isFiltered else { return true }
+        guard nowNanoseconds >= blockedUntilNanoseconds else { return false }
+        blockedUntilNanoseconds = nowNanoseconds + Self.filteredClickGuardNanoseconds
+        return true
     }
 }
 

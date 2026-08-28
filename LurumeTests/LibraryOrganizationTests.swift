@@ -174,4 +174,14 @@ final class LibraryOrganizationTests: XCTestCase {
         XCTAssertEqual(store.papers.first?.readingStatus, .unread)
         XCTAssertNotNil(store.presentedError)
     }
+
+    @MainActor
+    func testFilteredStatusGuardRejectsOnlyTheImmediateFollowUpClick() {
+        let guardState = ReadingStatusInteractionGuard()
+
+        XCTAssertTrue(guardState.shouldAccept(isFiltered: true, nowNanoseconds: 1_000))
+        XCTAssertFalse(guardState.shouldAccept(isFiltered: true, nowNanoseconds: 200_000_000))
+        XCTAssertTrue(guardState.shouldAccept(isFiltered: true, nowNanoseconds: 221_001_000))
+        XCTAssertTrue(guardState.shouldAccept(isFiltered: false, nowNanoseconds: 221_001_001))
+    }
 }
