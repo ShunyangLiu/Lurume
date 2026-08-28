@@ -2,9 +2,24 @@ import Foundation
 
 enum LibraryStoreError: LocalizedError, Equatable {
     case persistenceUnavailable
+    case collectionNotFound
+    case invalidCollectionName
+    case duplicateCollectionName
+    case paperNotFound
 
     var errorDescription: String? {
-        "文献库当前为只读状态。为保护原有数据，无法保存这项操作。"
+        switch self {
+        case .persistenceUnavailable:
+            "文献库当前为只读状态。为保护原有数据，无法保存这项操作。"
+        case .collectionNotFound:
+            "找不到这个文献集。"
+        case .invalidCollectionName:
+            "文献集名称不能为空。"
+        case .duplicateCollectionName:
+            "已有同名文献集。"
+        case .paperNotFound:
+            "部分文献已不在文献库中。"
+        }
     }
 }
 
@@ -56,33 +71,167 @@ final class LibraryStore: ObservableObject {
     // MARK: - 检索
 
     func papers(
+        in source: LibrarySource = .all,
         matching rawQuery: String,
         status: ReadingStatusFilter = .all,
         sortedBy sort: LibrarySortOption? = nil
     ) -> [PaperRecord] {
+        let sourcePapers = papers.filter(source.includes)
         guard let sort else {
             let filtered = LibraryQuery.apply(
-                to: papers,
+                to: sourcePapers,
                 searchText: rawQuery,
                 status: status,
                 sort: .dateAdded
             )
             let ids = Set(filtered.map(\.id))
-            return papers.filter { ids.contains($0.id) }
+            return sourcePapers.filter { ids.contains($0.id) }
         }
         return LibraryQuery.apply(
-            to: papers,
+            to: sourcePapers,
             searchText: rawQuery,
             status: status,
             sort: sort
         )
     }
 
+    func count(in source: LibrarySource) -> Int {
+        papers.lazy.filter(source.includes).count
+    }
+
+    var sortedCollections: [CollectionRecord] {
+        collections.sorted { lhs, rhs in
+            let order = lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+            if order != .orderedSame { return order == .orderedAscending }
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+    }
+
+    func validSource(_ source: LibrarySource) -> LibrarySource {
+        guard case let .collection(id) = source else { return source }
+        return collections.contains(where: { $0.id == id }) ? source : .all
+    }
+
+    // MARK: - 文献集
+
+    @discardableResult
+    func createCollection(
+        named rawName: String,
+        undoManager: UndoManager? = nil,
+        id: UUID = UUID(),
+        createdAt: Date = Date()
+    ) throws -> UUID {
+        let name = try validatedCollectionName(rawName)
+        var updatedCollections = collections
+        updatedCollections.append(CollectionRecord(id: id, name: name, createdAt: createdAt))
+        try applyOrganizationChange(
+            papers: papers,
+            collections: updatedCollections,
+            undoManager: undoManager,
+            actionName: "文献集：新建“\(name)”"
+        )
+        return id
+    }
+
+    func renameCollection(
+        id: UUID,
+        to rawName: String,
+        undoManager: UndoManager? = nil
+    ) throws {
+        guard let index = collections.firstIndex(where: { $0.id == id }) else {
+            throw LibraryStoreError.collectionNotFound
+        }
+        let name = try validatedCollectionName(rawName, excluding: id)
+        guard collections[index].name != name else { return }
+        var updatedCollections = collections
+        updatedCollections[index].name = name
+        try applyOrganizationChange(
+            papers: papers,
+            collections: updatedCollections,
+            undoManager: undoManager,
+            actionName: "文献集：重命名为“\(name)”"
+        )
+    }
+
+    func deleteCollection(id: UUID, undoManager: UndoManager? = nil) throws {
+        guard let collection = collections.first(where: { $0.id == id }) else {
+            throw LibraryStoreError.collectionNotFound
+        }
+        var updatedPapers = papers
+        for index in updatedPapers.indices {
+            updatedPapers[index].collectionIDs.removeAll { $0 == id }
+        }
+        let updatedCollections = collections.filter { $0.id != id }
+        try applyOrganizationChange(
+            papers: updatedPapers,
+            collections: updatedCollections,
+            undoManager: undoManager,
+            actionName: "文献集：删除“\(collection.name)”"
+        )
+    }
+
+    func membershipState(
+        paperIDs: Set<UUID>,
+        collectionID: UUID
+    ) -> CollectionMembershipState {
+        guard !paperIDs.isEmpty else { return .off }
+        let memberCount = papers.lazy.filter {
+            paperIDs.contains($0.id) && $0.collectionIDs.contains(collectionID)
+        }.count
+        if memberCount == 0 { return .off }
+        if memberCount == paperIDs.count { return .on }
+        return .mixed
+    }
+
+    func setMembership(
+        of paperIDs: Set<UUID>,
+        in collectionID: UUID,
+        isMember: Bool,
+        undoManager: UndoManager? = nil
+    ) throws {
+        guard collections.contains(where: { $0.id == collectionID }) else {
+            throw LibraryStoreError.collectionNotFound
+        }
+        guard !paperIDs.isEmpty else { return }
+        let knownPaperIDs = Set(papers.map(\.id))
+        guard paperIDs.isSubset(of: knownPaperIDs) else {
+            throw LibraryStoreError.paperNotFound
+        }
+
+        var updatedPapers = papers
+        var didChange = false
+        for index in updatedPapers.indices where paperIDs.contains(updatedPapers[index].id) {
+            var memberships = Set(updatedPapers[index].collectionIDs)
+            let changed = isMember
+                ? memberships.insert(collectionID).inserted
+                : memberships.remove(collectionID) != nil
+            guard changed else { continue }
+            updatedPapers[index].collectionIDs = memberships.sorted {
+                $0.uuidString < $1.uuidString
+            }
+            didChange = true
+        }
+        guard didChange else { return }
+
+        let verb = isMember ? "加入" : "移出"
+        try applyOrganizationChange(
+            papers: updatedPapers,
+            collections: collections,
+            undoManager: undoManager,
+            actionName: "文献集：\(verb) \(paperIDs.count) 篇"
+        )
+    }
+
     // MARK: - 导入与选择
 
     @discardableResult
-    func importPDF(at url: URL) throws -> UUID {
+    func importPDF(at url: URL, collectionID: UUID? = nil) throws -> UUID {
         try requireWritableLibrary()
+        if let collectionID,
+           !collections.contains(where: { $0.id == collectionID }) {
+            throw LibraryStoreError.collectionNotFound
+        }
         let didStartAccessing = url.startAccessingSecurityScopedResource()
         defer {
             if didStartAccessing {
@@ -91,11 +240,24 @@ final class LibraryStore: ObservableObject {
         }
 
         let identity = try FileIdentity(url: url)
-        if let existing = papers.first(where: {
+        if let existingIndex = papers.firstIndex(where: {
             $0.identity.identifiesSameFile(as: identity)
         }) {
-            selectPaper(id: existing.id)
-            return existing.id
+            let existingID = papers[existingIndex].id
+            if let collectionID,
+               !papers[existingIndex].collectionIDs.contains(collectionID) {
+                var updatedPapers = papers
+                updatedPapers[existingIndex].collectionIDs.append(collectionID)
+                updatedPapers[existingIndex].collectionIDs.sort { $0.uuidString < $1.uuidString }
+                try commit(
+                    papers: updatedPapers,
+                    collections: collections,
+                    selectedPaperID: existingID
+                )
+            } else {
+                selectPaper(id: existingID)
+            }
+            return existingID
         }
 
         let bookmarkData = try SecurityScopedFile.makeBookmark(for: url)
@@ -104,19 +266,22 @@ final class LibraryStore: ObservableObject {
             bookmarkData: bookmarkData,
             displayName: url.deletingPathExtension().lastPathComponent,
             originalFileName: url.lastPathComponent,
-            lastOpenedAt: Date()
+            lastOpenedAt: Date(),
+            collectionIDs: collectionID.map { [$0] } ?? []
         )
-        papers.append(record)
-        selectedPaperID = record.id
-        try saveNow()
+        try commit(
+            papers: papers + [record],
+            collections: collections,
+            selectedPaperID: record.id
+        )
         scheduleMetadataRead(for: record.id, resolvedURL: nil)
         return record.id
     }
 
-    func importPDFs(at urls: [URL]) {
+    func importPDFs(at urls: [URL], collectionID: UUID? = nil) {
         for url in urls where url.pathExtension.lowercased() == "pdf" {
             do {
-                _ = try importPDF(at: url)
+                _ = try importPDF(at: url, collectionID: collectionID)
             } catch {
                 presentedError = "无法导入“\(url.lastPathComponent)”：\(error.localizedDescription)"
             }
@@ -322,6 +487,69 @@ final class LibraryStore: ObservableObject {
     private func saveNow() throws {
         try requireWritableLibrary()
         try persistence.save(snapshot)
+    }
+
+    private func commit(
+        papers updatedPapers: [PaperRecord],
+        collections updatedCollections: [CollectionRecord],
+        selectedPaperID updatedSelectedPaperID: UUID?
+    ) throws {
+        try requireWritableLibrary()
+        let candidate = LibrarySnapshot(
+            schemaVersion: LibrarySchema.currentVersion,
+            papers: updatedPapers,
+            collections: updatedCollections,
+            selectedPaperID: updatedSelectedPaperID
+        )
+        try persistence.save(candidate)
+        papers = updatedPapers
+        collections = updatedCollections
+        selectedPaperID = updatedSelectedPaperID
+        unavailablePaperIDs.formIntersection(Set(updatedPapers.map(\.id)))
+    }
+
+    private func applyOrganizationChange(
+        papers updatedPapers: [PaperRecord],
+        collections updatedCollections: [CollectionRecord],
+        undoManager: UndoManager?,
+        actionName: String
+    ) throws {
+        flushPendingSave()
+        let previousPapers = papers
+        let previousCollections = collections
+        try commit(
+            papers: updatedPapers,
+            collections: updatedCollections,
+            selectedPaperID: selectedPaperID
+        )
+        undoManager?.registerUndo(withTarget: self) { [weak undoManager] store in
+            do {
+                try store.applyOrganizationChange(
+                    papers: previousPapers,
+                    collections: previousCollections,
+                    undoManager: undoManager,
+                    actionName: actionName
+                )
+            } catch {
+                store.presentedError = "无法撤销文献集操作：\(error.localizedDescription)"
+            }
+        }
+        undoManager?.setActionName(actionName)
+    }
+
+    private func validatedCollectionName(
+        _ rawName: String,
+        excluding excludedID: UUID? = nil
+    ) throws -> String {
+        let name = CollectionNameRules.trimmed(rawName)
+        guard !name.isEmpty else { throw LibraryStoreError.invalidCollectionName }
+        let key = CollectionNameRules.comparisonKey(name)
+        guard !collections.contains(where: {
+            $0.id != excludedID && CollectionNameRules.comparisonKey($0.name) == key
+        }) else {
+            throw LibraryStoreError.duplicateCollectionName
+        }
+        return name
     }
 
     private var snapshot: LibrarySnapshot {

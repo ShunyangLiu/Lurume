@@ -69,6 +69,51 @@ enum CollectionNameRules {
     }
 }
 
+enum LibrarySource: Hashable, Sendable, Identifiable {
+    case all
+    case unfiled
+    case collection(UUID)
+
+    var id: String {
+        switch self {
+        case .all: "all"
+        case .unfiled: "unfiled"
+        case let .collection(id): "collection:\(id.uuidString)"
+        }
+    }
+
+    init?(persistedValue: String) {
+        switch persistedValue {
+        case "all": self = .all
+        case "unfiled": self = .unfiled
+        default:
+            let prefix = "collection:"
+            guard persistedValue.hasPrefix(prefix),
+                  let id = UUID(uuidString: String(persistedValue.dropFirst(prefix.count))) else {
+                return nil
+            }
+            self = .collection(id)
+        }
+    }
+
+    func includes(_ paper: PaperRecord) -> Bool {
+        switch self {
+        case .all:
+            true
+        case .unfiled:
+            paper.collectionIDs.isEmpty
+        case let .collection(id):
+            paper.collectionIDs.contains(id)
+        }
+    }
+}
+
+enum CollectionMembershipState: Equatable, Sendable {
+    case off
+    case mixed
+    case on
+}
+
 enum ReadingStatus: String, Codable, Hashable, Sendable, CaseIterable, Identifiable {
     case unread
     case reading

@@ -40,6 +40,7 @@
 		CD6C64A27F724DEB33871DFF /* HighlightPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B84CEE7D84F804319313E2FC /* HighlightPersistenceTests.swift */; };
 		D34865219EA3EB4BF932BA66 /* LibraryPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70EE537C1DA409FE0C8BFD5B /* LibraryPersistence.swift */; };
 		EE1BEB4BABADE6A8044077BD /* MainWindowMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C060B9B8CAE158F8A0B938 /* MainWindowMode.swift */; };
+		F1030095E5FF32766B4C1C8C /* LibraryCollectionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5294525FCF269307315AAFD4 /* LibraryCollectionStoreTests.swift */; };
 		F24CFB0CECD00A02EF38F9D5 /* LibraryDragDropTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06D06AF433F711F03E4F7B6E /* LibraryDragDropTests.swift */; };
 		FB55D8FD66278CC5D4D022D0 /* LibraryTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F7E981F2906D52C08B550DF /* LibraryTableView.swift */; };
 		FE891CFC7127EEB8A4BD6FC7 /* TranslationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACA72A5E79BC8728F19084D /* TranslationController.swift */; };
@@ -70,6 +71,7 @@
 		451E4AC55AABA630D088790D /* SecurityScopedFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedFile.swift; sourceTree = "<group>"; };
 		4ACA72A5E79BC8728F19084D /* TranslationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationController.swift; sourceTree = "<group>"; };
 		50CE51B033570DB20B180628 /* LibraryPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPersistenceTests.swift; sourceTree = "<group>"; };
+		5294525FCF269307315AAFD4 /* LibraryCollectionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCollectionStoreTests.swift; sourceTree = "<group>"; };
 		53CF2BD0282B0452978CC108 /* Lurume.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lurume.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6741F46CA962F25B42E43E09 /* LibraryDragDrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDragDrop.swift; sourceTree = "<group>"; };
 		67ED0DE1FEE1DFEEA102642F /* Lurume.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Lurume.entitlements; sourceTree = "<group>"; };
@@ -154,6 +156,7 @@
 			children = (
 				B332936519E7741B917213C1 /* FileIdentityTests.swift */,
 				B84CEE7D84F804319313E2FC /* HighlightPersistenceTests.swift */,
+				5294525FCF269307315AAFD4 /* LibraryCollectionStoreTests.swift */,
 				06D06AF433F711F03E4F7B6E /* LibraryDragDropTests.swift */,
 				6E489A1C10FD4AE7E9A33154 /* LibraryOrganizationTests.swift */,
 				50CE51B033570DB20B180628 /* LibraryPersistenceTests.swift */,
@@ -260,6 +263,7 @@
 			files = (
 				61A1E8FC19A5F997C16108CE /* FileIdentityTests.swift in Sources */,
 				CD6C64A27F724DEB33871DFF /* HighlightPersistenceTests.swift in Sources */,
+				F1030095E5FF32766B4C1C8C /* LibraryCollectionStoreTests.swift in Sources */,
 				F24CFB0CECD00A02EF38F9D5 /* LibraryDragDropTests.swift in Sources */,
 				2845DD09521799EA1249F0AE /* LibraryOrganizationTests.swift in Sources */,
 				3BA0251DCE1AE33611F16C6E /* LibraryPersistenceTests.swift in Sources */,
