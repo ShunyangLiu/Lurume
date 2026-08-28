@@ -372,11 +372,62 @@ final class LurumeSmokeTests: XCTestCase {
     }
 
     @MainActor
-    func testHighlightActionsExtendSystemContextMenuWithoutCopyingIt() throws {
+    func testPDFContextMenuKeepsOnlySelectionAndHighlightActionsWithoutCopyingIt() throws {
         let pdfView = HighlightPDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta"))
+        pdfView.document = document
+        pdfView.setCurrentSelection(
+            try XCTUnwrap(document.findString("alpha", withOptions: []).first),
+            animate: false
+        )
         pdfView.toggleHighlightTitle = { "添加高亮" }
         let systemMenu = NSMenu()
-        systemMenu.addItem(withTitle: "拷贝", action: nil, keyEquivalent: "")
+        systemMenu.addItem(withTitle: "查询“alpha”", action: nil, keyEquivalent: "")
+        systemMenu.addItem(withTitle: "翻译“alpha”", action: nil, keyEquivalent: "")
+        systemMenu.addItem(withTitle: "用“Google”搜索", action: nil, keyEquivalent: "")
+        systemMenu.addItem(
+            withTitle: "拷贝",
+            action: NSSelectorFromString("copy:"),
+            keyEquivalent: ""
+        )
+        systemMenu.addItem(withTitle: "自动调整大小", action: nil, keyEquivalent: "")
+        systemMenu.addItem(withTitle: "服务", action: nil, keyEquivalent: "")
+        pdfView.layoutSubtreeIfNeeded()
+        let page = try XCTUnwrap(document.page(at: 0))
+        let selection = try XCTUnwrap(pdfView.currentSelection)
+        let selectionPoint = pdfView.convert(
+            CGPoint(
+                x: selection.bounds(for: page).midX,
+                y: selection.bounds(for: page).midY
+            ),
+            from: page
+        )
+        let event = try XCTUnwrap(
+            NSEvent.mouseEvent(
+                with: .rightMouseDown,
+                location: selectionPoint,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                eventNumber: 0,
+                clickCount: 1,
+                pressure: 1
+            )
+        )
+
+        let result = try XCTUnwrap(pdfView.configureContextMenu(systemMenu, for: event))
+
+        XCTAssertTrue(result === systemMenu, "PDFKit 的视图型菜单项不能通过复制来扩展")
+        XCTAssertEqual(
+            result.items.map(\.title),
+            ["拷贝", "翻译所选文字", "查询“alpha”", "", "添加高亮"]
+        )
+    }
+
+    @MainActor
+    func testPDFContextMenuIsHiddenForBlankPageAndShowsDeleteForHighlight() throws {
+        let pdfView = HighlightPDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
         let event = try XCTUnwrap(
             NSEvent.mouseEvent(
                 with: .rightMouseDown,
@@ -391,16 +442,12 @@ final class LurumeSmokeTests: XCTestCase {
             )
         )
 
-        let result = pdfView.appendHighlightItems(to: systemMenu, for: event)
-        let repeatedResult = pdfView.appendHighlightItems(to: systemMenu, for: event)
+        XCTAssertNil(pdfView.configureContextMenu(NSMenu(), for: event))
 
-        XCTAssertTrue(result === systemMenu, "PDFKit 的视图型菜单项不能通过复制来扩展")
-        XCTAssertTrue(repeatedResult === systemMenu)
-        XCTAssertEqual(
-            repeatedResult.items.map(\.title),
-            ["拷贝", "", "添加高亮"],
-            "PDFKit 复用菜单实例时不得重复追加自定义项目"
-        )
+        let highlightID = UUID()
+        pdfView.highlightIDAtEvent = { _ in highlightID }
+        let highlightMenu = try XCTUnwrap(pdfView.configureContextMenu(NSMenu(), for: event))
+        XCTAssertEqual(highlightMenu.items.map(\.title), ["删除高亮"])
     }
 
     @MainActor

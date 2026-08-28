@@ -747,6 +747,7 @@ struct PDFReaderView: NSViewRepresentable {
     let noteEditingEnabled: Bool
     let onPageChanged: (Int) -> Void
     let onSelectionChanged: (PDFSelectionEvent?) -> Void
+    let onTranslateSelection: () -> Void
     let onToggleHighlight: () -> Void
     let onDeleteHighlight: (UUID) -> Void
     let onOpenHighlightNote: (UUID) -> Void
@@ -797,6 +798,7 @@ struct PDFReaderView: NSViewRepresentable {
                 ? "取消高亮"
                 : "添加高亮"
         }
+        highlightView.onTranslateSelection = onTranslateSelection
         highlightView.onToggleHighlight = onToggleHighlight
         highlightView.onDeleteHighlight = onDeleteHighlight
         highlightView.noteMarkerIDAtEvent = { [weak highlightView, weak controller] event in

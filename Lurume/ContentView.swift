@@ -510,6 +510,13 @@ struct ContentView: View {
                             sourceLanguage: appSettings.sourceLanguage
                         )
                     },
+                    onTranslateSelection: {
+                        inspectorMode = .translation
+                        translationController.requestTranslation(
+                            targetLanguage: appSettings.targetLanguage,
+                            sourceLanguage: appSettings.sourceLanguage
+                        )
+                    },
                     onToggleHighlight: toggleCurrentHighlight,
                     onDeleteHighlight: deleteHighlight,
                     onOpenHighlightNote: { id in

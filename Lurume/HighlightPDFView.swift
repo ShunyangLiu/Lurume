@@ -74,14 +74,9 @@ final class HighlightNoteMarkerAnnotation: PDFAnnotation {
 
 @MainActor
 final class HighlightPDFView: PDFView {
-    private static let customMenuItemIdentifiers: Set<NSUserInterfaceItemIdentifier> = [
-        NSUserInterfaceItemIdentifier("Lurume.Highlight.Delete"),
-        NSUserInterfaceItemIdentifier("Lurume.Highlight.Toggle"),
-        NSUserInterfaceItemIdentifier("Lurume.Highlight.Separator"),
-    ]
-
     var highlightIDAtEvent: ((NSEvent) -> UUID?)?
     var toggleHighlightTitle: (() -> String?)?
+    var onTranslateSelection: (() -> Void)?
     var onToggleHighlight: (() -> Void)?
     var onDeleteHighlight: ((UUID) -> Void)?
     var noteMarkerIDAtEvent: ((NSEvent) -> UUID?)?
@@ -189,20 +184,43 @@ final class HighlightPDFView: PDFView {
         // invalid menu hierarchy and crashes while AppKit updates tracking areas.
         // Extend the original menu instance instead.
         let menu = super.menu(for: event) ?? NSMenu()
-        appendHighlightItems(to: menu, for: event)
-        return menu
+        return configureContextMenu(menu, for: event)
     }
 
     @discardableResult
-    func appendHighlightItems(to menu: NSMenu, for event: NSEvent) -> NSMenu {
-        for item in menu.items.reversed()
-        where item.identifier.map(Self.customMenuItemIdentifiers.contains) == true {
-            menu.removeItem(item)
-        }
-        var customItems: [NSMenuItem] = []
-
+    func configureContextMenu(_ menu: NSMenu, for event: NSEvent) -> NSMenu? {
+        let selectedText = currentSelection?.string?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasSelectedText = selectedText?.isEmpty == false && selectionContains(event)
         let highlightID = highlightIDAtEvent?(event)
         let toggleTitle = toggleHighlightTitle?()
+        let copyItem = menu.items.first { $0.action.map(NSStringFromSelector) == "copy:" }
+        let lookupItem = menu.items.first { $0.title.hasPrefix("查询") }
+
+        // Reuse the original menu and its responder-backed Copy/Look Up items,
+        // but remove PDFKit's page layout, zoom, navigation, search, and Services
+        // commands. Those controls already exist in Lurume's reading interface.
+        menu.allowsContextMenuPlugIns = false
+        menu.delegate = nil
+        menu.removeAllItems()
+
+        if hasSelectedText {
+            if let copyItem {
+                menu.addItem(copyItem)
+            }
+            let translate = NSMenuItem(
+                title: "翻译所选文字",
+                action: #selector(translateSelection(_:)),
+                keyEquivalent: ""
+            )
+            translate.target = self
+            menu.addItem(translate)
+            if let lookupItem {
+                menu.addItem(lookupItem)
+            }
+        }
+
+        var highlightItems: [NSMenuItem] = []
 
         if let highlightID {
             let delete = NSMenuItem(
@@ -211,9 +229,8 @@ final class HighlightPDFView: PDFView {
                 keyEquivalent: ""
             )
             delete.target = self
-            delete.identifier = NSUserInterfaceItemIdentifier("Lurume.Highlight.Delete")
             delete.representedObject = highlightID.uuidString
-            customItems.append(delete)
+            highlightItems.append(delete)
         }
 
         if let title = toggleTitle,
@@ -224,18 +241,36 @@ final class HighlightPDFView: PDFView {
                 keyEquivalent: ""
             )
             toggle.target = self
-            toggle.identifier = NSUserInterfaceItemIdentifier("Lurume.Highlight.Toggle")
-            customItems.append(toggle)
+            highlightItems.append(toggle)
         }
 
-        guard !customItems.isEmpty else { return menu }
-        if !menu.items.isEmpty {
-            let separator = NSMenuItem.separator()
-            separator.identifier = NSUserInterfaceItemIdentifier("Lurume.Highlight.Separator")
-            menu.addItem(separator)
+        if !highlightItems.isEmpty {
+            if !menu.items.isEmpty {
+                menu.addItem(.separator())
+            }
+            highlightItems.forEach(menu.addItem)
         }
-        customItems.forEach(menu.addItem)
-        return menu
+
+        return menu.items.isEmpty ? nil : menu
+    }
+
+    private func selectionContains(_ event: NSEvent) -> Bool {
+        guard let selection = currentSelection else { return false }
+        let viewPoint = convert(event.locationInWindow, from: nil)
+        guard let page = page(for: viewPoint, nearest: false) else { return false }
+        let pagePoint = convert(viewPoint, to: page)
+        let lineSelections = selection.selectionsByLine()
+        let fragments = lineSelections.isEmpty ? [selection] : lineSelections
+        return fragments.contains { fragment in
+            fragment.pages.contains { $0 === page }
+                && fragment.bounds(for: page)
+                    .insetBy(dx: -2, dy: -2)
+                    .contains(pagePoint)
+        }
+    }
+
+    @objc private func translateSelection(_ sender: Any?) {
+        onTranslateSelection?()
     }
 
     @objc private func toggleHighlight(_ sender: Any?) {
