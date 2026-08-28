@@ -268,39 +268,16 @@ struct ContentView: View {
 
     private var librarySidebar: some View {
         VStack(spacing: 0) {
-            libraryOrganizationControls
             librarySearchAndImport
             libraryPaperList
         }
     }
 
-    private var libraryOrganizationControls: some View {
-        HStack(spacing: 8) {
-            Picker("阅读状态", selection: $statusFilter) {
-                ForEach(ReadingStatusFilter.allCases) { filter in
-                    Text(filter.title).tag(filter)
-                }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
-
-            Picker("排序", selection: $appSettings.librarySortOption) {
-                ForEach(LibrarySortOption.allCases) { option in
-                    Text(option.title).tag(option)
-                }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
-    }
-
     private var librarySearchAndImport: some View {
         HStack(spacing: 8) {
             librarySearchField
+
+            libraryFilterAndSortMenu
 
             Button {
                 presentImporter()
@@ -314,7 +291,66 @@ struct ContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
-        .padding(.bottom, 4)
+        .padding(.bottom, 6)
+    }
+
+    private var libraryFilterAndSortMenu: some View {
+        Menu {
+            Section("阅读状态") {
+                ForEach(ReadingStatusFilter.allCases) { filter in
+                    Button {
+                        statusFilter = filter
+                    } label: {
+                        menuSelectionLabel(filter.title, selected: statusFilter == filter)
+                    }
+                }
+            }
+
+            Section("排序方式") {
+                ForEach(LibrarySortOption.allCases) { option in
+                    Button {
+                        appSettings.librarySortOption = option
+                    } label: {
+                        menuSelectionLabel(
+                            option.title,
+                            selected: appSettings.librarySortOption == option
+                        )
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "line.3.horizontal.decrease")
+                .foregroundStyle(
+                    hasNondefaultLibraryOrganization ? Color.accentColor : Color.secondary
+                )
+                .overlay(alignment: .topTrailing) {
+                    if hasNondefaultLibraryOrganization {
+                        Circle()
+                            .fill(Color.accentColor)
+                            .frame(width: 5, height: 5)
+                            .offset(x: 3, y: -2)
+                    }
+                }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("\(statusFilter.title) · \(appSettings.librarySortOption.title)")
+        .accessibilityLabel("筛选与排序")
+        .accessibilityValue("\(statusFilter.title)，\(appSettings.librarySortOption.title)")
+    }
+
+    private var hasNondefaultLibraryOrganization: Bool {
+        statusFilter != .all || appSettings.librarySortOption != .recentlyOpened
+    }
+
+    @ViewBuilder
+    private func menuSelectionLabel(_ title: String, selected: Bool) -> some View {
+        if selected {
+            Label(title, systemImage: "checkmark")
+        } else {
+            Text(title)
+        }
     }
 
     private var libraryPaperList: some View {
@@ -827,8 +863,10 @@ private struct PaperRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .top, spacing: 5) {
-                Image(systemName: isUnavailable ? "exclamationmark.triangle" : "doc.richtext")
-                    .foregroundStyle(isUnavailable ? .orange : .secondary)
+                if isUnavailable {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                }
 
                 if isEditingTitle {
                     TextField("标题", text: $titleDraft)
@@ -869,7 +907,7 @@ private struct PaperRow: View {
         switch status {
         case .unread: .secondary
         case .reading: .accentColor
-        case .finished: .green
+        case .finished: .accentColor
         }
     }
 
