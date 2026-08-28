@@ -17,6 +17,7 @@ enum ReaderInspectorMode: String, CaseIterable, Identifiable {
 
 /// 译文优先的翻译检查器：原文默认完全隐藏，文献与页码在顶部标识来源。
 struct TranslationInspector: View {
+    @Environment(\.openSettings) private var openSettings
     @ObservedObject var controller: TranslationController
     @ObservedObject var settings: AppSettings
     @ObservedObject var highlightStore: HighlightStore
@@ -33,7 +34,7 @@ struct TranslationInspector: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
+            HStack(spacing: 10) {
                 Picker("检查器内容", selection: $mode) {
                     ForEach(ReaderInspectorMode.allCases) { item in
                         Text(item.label).tag(item)
@@ -43,18 +44,43 @@ struct TranslationInspector: View {
                 .labelsHidden()
                 .accessibilityLabel("检查器内容")
 
-                Spacer()
-
-                if mode == .translation {
-                    Menu {
-                        Toggle("自动翻译选中文字", isOn: $settings.automaticTranslation)
-                        Button("清空", action: controller.clear)
+                Menu {
+                    switch mode {
+                    case .translation:
+                        Button {
+                            controller.clear()
+                        } label: {
+                            Label("清空翻译", systemImage: "xmark.circle")
+                        }
                             .disabled(controller.selection == nil)
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
+
+                        Divider()
+
+                        Button {
+                            openSettings()
+                        } label: {
+                            Label("翻译设置…", systemImage: "gearshape")
+                        }
+                    case .highlights:
+                        Button(role: .destructive) {
+                            guard let id = pdfController.currentHighlightID else { return }
+                            deleteHighlight(id)
+                        } label: {
+                            Label("删除所选高亮", systemImage: "trash")
+                        }
+                        .disabled(
+                            pdfController.currentHighlightID == nil
+                                || highlightStore.persistenceDisabled
+                        )
                     }
-                    .menuStyle(.borderlessButton)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help(mode == .translation ? "更多翻译操作" : "更多高亮操作")
+                .accessibilityLabel(mode == .translation ? "更多翻译操作" : "更多高亮操作")
             }
             .padding()
 

@@ -29,14 +29,6 @@ struct LurumeApp: App {
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
                 .disabled(translationController.selection == nil)
-
-                Toggle(
-                    "自动翻译选中文字",
-                    isOn: Binding(
-                        get: { appSettings.automaticTranslation },
-                        set: { appSettings.automaticTranslation = $0 }
-                    )
-                )
             }
         }
 
