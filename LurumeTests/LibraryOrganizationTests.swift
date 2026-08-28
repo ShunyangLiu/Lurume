@@ -118,16 +118,22 @@ final class LibraryOrganizationTests: XCTestCase {
     }
 
     @MainActor
-    func testSortPreferenceDefaultsAndPersists() {
+    func testStartupSortDefaultsPersistsWithoutChangingCurrentSession() {
         let suiteName = "LurumeTests.LibrarySort.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let settings = AppSettings(defaults: defaults)
+        XCTAssertEqual(settings.defaultLibrarySortOption, .dateAdded)
         XCTAssertEqual(settings.librarySortOption, .dateAdded)
-        settings.librarySortOption = .year
+        settings.defaultLibrarySortOption = .year
+        XCTAssertEqual(settings.librarySortOption, .dateAdded)
 
-        XCTAssertEqual(AppSettings(defaults: defaults).librarySortOption, .year)
+        settings.librarySortOption = .title
+        let relaunchedSettings = AppSettings(defaults: defaults)
+
+        XCTAssertEqual(relaunchedSettings.defaultLibrarySortOption, .year)
+        XCTAssertEqual(relaunchedSettings.librarySortOption, .year)
     }
 
     @MainActor

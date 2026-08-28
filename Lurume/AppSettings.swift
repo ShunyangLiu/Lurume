@@ -6,7 +6,8 @@ final class AppSettings: ObservableObject {
         static let automaticTranslation = "automaticTranslation"
         static let sourceLanguageIdentifier = "sourceLanguageIdentifier"
         static let targetLanguageIdentifier = "targetLanguageIdentifier"
-        static let librarySortOption = "librarySortOption"
+        // Keep the existing key so earlier choices become the startup default.
+        static let defaultLibrarySortOption = "librarySortOption"
     }
 
     private let defaults: UserDefaults
@@ -23,9 +24,17 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(sourceLanguageIdentifier, forKey: Key.sourceLanguageIdentifier) }
     }
 
-    @Published var librarySortOption: LibrarySortOption {
-        didSet { defaults.set(librarySortOption.rawValue, forKey: Key.librarySortOption) }
+    @Published var defaultLibrarySortOption: LibrarySortOption {
+        didSet {
+            defaults.set(
+                defaultLibrarySortOption.rawValue,
+                forKey: Key.defaultLibrarySortOption
+            )
+        }
     }
+
+    /// Current-session sorting. Sidebar changes intentionally do not persist.
+    @Published var librarySortOption: LibrarySortOption
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -38,9 +47,11 @@ final class AppSettings: ObservableObject {
             ?? TranslationSourceLanguageOption.englishID
         targetLanguageIdentifier = defaults.string(forKey: Key.targetLanguageIdentifier)
             ?? "zh-Hans"
-        librarySortOption = defaults.string(forKey: Key.librarySortOption)
+        let startupSortOption = defaults.string(forKey: Key.defaultLibrarySortOption)
             .flatMap(LibrarySortOption.init(rawValue:))
             ?? .dateAdded
+        defaultLibrarySortOption = startupSortOption
+        librarySortOption = startupSortOption
     }
 
     /// `nil` 表示使用 Natural Language 自动识别；默认固定英语以适配论文阅读。

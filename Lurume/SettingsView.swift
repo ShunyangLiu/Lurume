@@ -23,13 +23,13 @@ private struct GeneralSettingsView: View {
     var body: some View {
         Form {
             Section("文献库") {
-                Picker("文献列表排序", selection: $settings.librarySortOption) {
+                Picker("启动时排序", selection: $settings.defaultLibrarySortOption) {
                     ForEach(LibrarySortOption.allCases) { option in
                         Text(option.title).tag(option)
                     }
                 }
 
-                Text("此选项与文献侧栏中的排序菜单保持同步。")
+                Text("下次启动 Lurume 时使用。侧栏排序只影响当前运行。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
