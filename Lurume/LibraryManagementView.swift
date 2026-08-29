@@ -360,6 +360,7 @@ struct LibraryTablePane: View {
                 )
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .navigationTitle(sourceTitle)
         .overlay {
             LibraryDropTargetView(
