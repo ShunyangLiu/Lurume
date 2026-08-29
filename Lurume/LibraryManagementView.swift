@@ -328,13 +328,19 @@ struct LibraryTablePane: View {
             HStack(spacing: 10) {
                 searchField
                     .frame(maxWidth: 380)
-                organizationMenu
-                Button(action: importPDFs) {
-                    Image(systemName: "plus")
+                HStack(spacing: 6) {
+                    organizationMenu
+                    Button(action: importPDFs) {
+                        Image(systemName: "plus")
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .fixedSize()
+                    .help("导入 PDF")
+                    .accessibilityLabel("导入 PDF")
+                    .disabled(libraryStore.persistenceDisabled)
                 }
-                .help("导入 PDF")
-                .accessibilityLabel("导入 PDF")
-                .disabled(libraryStore.persistenceDisabled)
                 Spacer()
             }
             .padding(12)
@@ -455,6 +461,7 @@ struct LibraryTablePane: View {
             Image(systemName: "line.3.horizontal.decrease")
                 .foregroundStyle(statusFilter == .all ? Color.primary : Color.accentColor)
                 .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
