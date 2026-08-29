@@ -131,6 +131,20 @@ final class ReaderModeTransitionTests: XCTestCase {
         XCTAssertEqual(AppSettings(defaults: defaults).mainWindowMode, .reading)
     }
 
+    func testLibraryModeDoesNotOverwriteReaderInspectorVisibility() {
+        XCTAssertNil(
+            ReaderInspectorPresentationPolicy.persistedValue(false, while: .library)
+        )
+        XCTAssertEqual(
+            ReaderInspectorPresentationPolicy.persistedValue(false, while: .reading),
+            false
+        )
+        XCTAssertEqual(
+            ReaderInspectorPresentationPolicy.persistedValue(true, while: .reading),
+            true
+        )
+    }
+
     @MainActor
     func testLastLibrarySourcePersistsAndMalformedValueFallsBackToAll() {
         let suiteName = "LurumeTests.LibrarySource.\(UUID().uuidString)"

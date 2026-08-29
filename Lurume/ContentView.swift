@@ -77,7 +77,13 @@ struct ContentView: View {
                 appSettings.mainWindowMode == .reading
                     && translationController.isInspectorPresented
             },
-            set: { translationController.isInspectorPresented = $0 }
+            set: { requestedValue in
+                guard let persistedValue = ReaderInspectorPresentationPolicy.persistedValue(
+                    requestedValue,
+                    while: appSettings.mainWindowMode
+                ) else { return }
+                translationController.isInspectorPresented = persistedValue
+            }
         )
     }
 

@@ -14,6 +14,17 @@ enum MainWindowMode: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum ReaderInspectorPresentationPolicy {
+    /// 文献库模式只会临时隐藏检查器，不应覆盖用户在阅读模式中的可见性选择。
+    static func persistedValue(
+        _ requestedValue: Bool,
+        while mode: MainWindowMode
+    ) -> Bool? {
+        guard mode == .reading else { return nil }
+        return requestedValue
+    }
+}
+
 enum ReadingSidebarSourcePolicy {
     static func resolvedSource(
         proposed: LibrarySource,
