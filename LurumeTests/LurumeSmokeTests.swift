@@ -9,6 +9,13 @@ final class LurumeSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testUpdaterControllerCanBeCreatedWithoutStartingUpdateWork() {
+        let controller = UpdaterController(startingUpdater: false)
+
+        XCTAssertNotNil(controller.standardController)
+    }
+
+    @MainActor
     func testOutlineBuildsHierarchyAndRejectsExternalActions() throws {
         let document = PDFDocument()
         let page = PDFPage()

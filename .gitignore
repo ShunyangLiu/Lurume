@@ -10,6 +10,7 @@ xcuserdata/
 .build/
 .swiftpm/
 Package.resolved
+!Lurume.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 # macOS
 .DS_Store

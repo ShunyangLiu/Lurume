@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		093780883DA94598BE5C29AF /* Sparkle-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = EBD276D9AB2C63D7E24FDE04 /* Sparkle-LICENSE.txt */; };
 		106513FBEC771211CB9DE862 /* LibraryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0325E1A53B306B4E070020D /* LibraryModels.swift */; };
 		132643F5DC3DDD1E9EB22813 /* TextNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA1583E513232AC7D0AA7CA0 /* TextNormalizer.swift */; };
 		15EDF2A25C2A3FEAE4972ED4 /* Credits.html in Resources */ = {isa = PBXBuildFile; fileRef = 390A1F1BF533AFA28CCFD10F /* Credits.html */; };
@@ -25,12 +26,14 @@
 		6C93CF0C527FC9C095C471D4 /* PaperMetadataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC5F48DA0E16EBAC5F6646BE /* PaperMetadataTests.swift */; };
 		6E4325F180DCCE01B54F12F0 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7357965D8D0C423680ACCF0B /* LibraryStore.swift */; };
 		7E10AC773AD3045C05059C26 /* TranslationControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AC352337307455A20A17D1A /* TranslationControllerTests.swift */; };
+		8226C9EA96CDAE79A9037711 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 3E5A34989D0B107DE3DBA0F3 /* Sparkle */; };
 		8A612497C2D39BFFBC3CD179 /* LurumeSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */; };
 		901386E6D513046A375512B4 /* SystemPaperMetadataReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC49AD84FACDAB3ED5163A55 /* SystemPaperMetadataReader.swift */; };
 		9048D80279177B1F81AE0790 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B52C1CACB063DB3505EEF6C /* AppSettings.swift */; };
 		95E6621DB260C534F214A262 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 5BDFE7ED94697A4351F79112 /* Localizable.strings */; };
 		97CCFD06759640B719E96A5A /* HighlightStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DF3744718002E8D40888853 /* HighlightStore.swift */; };
 		99242BB5CD65CD65B953B383 /* LibraryDragDrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6741F46CA962F25B42E43E09 /* LibraryDragDrop.swift */; };
+		9B684A85F5989CE8AE65CF95 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = F6926A08DEB7D03C4C95EF04 /* README.md */; };
 		A1B77B1E421B37A01DA3BA39 /* LibraryTableInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF9CA75918F1517CF9434D8D /* LibraryTableInteractionTests.swift */; };
 		A5DE3609DC3C9F2CAD5718E8 /* ReaderModeTransitionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04E0646022AA5A1039AD2D3F /* ReaderModeTransitionTests.swift */; };
 		A73E9083CB324645CFF43590 /* SecurityScopedFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 451E4AC55AABA630D088790D /* SecurityScopedFile.swift */; };
@@ -38,9 +41,12 @@
 		B96EA3B16617DEA37D0FF4FD /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B43B08E498537804DB3769E8 /* SettingsView.swift */; };
 		C844133EBD258AD8321EA43A /* HighlightPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A2CEFED2568E02C16AA36E /* HighlightPersistence.swift */; };
 		CD6C64A27F724DEB33871DFF /* HighlightPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B84CEE7D84F804319313E2FC /* HighlightPersistenceTests.swift */; };
+		D1242E4189B37507D07D2D68 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = DC297768AF2DDEF22B37325D /* Sparkle */; };
 		D34865219EA3EB4BF932BA66 /* LibraryPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70EE537C1DA409FE0C8BFD5B /* LibraryPersistence.swift */; };
 		D89E328BF1F4676E4548EB72 /* PaperRemovalCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF258DB2C0B0F3B21B5A12D /* PaperRemovalCoordinator.swift */; };
 		D9E8C3A77EE0A76B56701542 /* PaperRemovalCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C68C64D3676F502236BD86 /* PaperRemovalCoordinatorTests.swift */; };
+		DD5F3D4DF228FD158D575BB6 /* UpdateTestHostApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E4CE87BA8D875DB1CF932E5 /* UpdateTestHostApp.swift */; };
+		EB7D92CC26B4FE6453148D55 /* UpdaterController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB67A6A41839515674054B2B /* UpdaterController.swift */; };
 		EE1BEB4BABADE6A8044077BD /* MainWindowMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C060B9B8CAE158F8A0B938 /* MainWindowMode.swift */; };
 		F1030095E5FF32766B4C1C8C /* LibraryCollectionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5294525FCF269307315AAFD4 /* LibraryCollectionStoreTests.swift */; };
 		F24CFB0CECD00A02EF38F9D5 /* LibraryDragDropTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06D06AF433F711F03E4F7B6E /* LibraryDragDropTests.swift */; };
@@ -68,6 +74,7 @@
 		1AC352337307455A20A17D1A /* TranslationControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationControllerTests.swift; sourceTree = "<group>"; };
 		1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LurumeSmokeTests.swift; sourceTree = "<group>"; };
 		1DF3744718002E8D40888853 /* HighlightStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightStore.swift; sourceTree = "<group>"; };
+		1E4CE87BA8D875DB1CF932E5 /* UpdateTestHostApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateTestHostApp.swift; sourceTree = "<group>"; };
 		20CE4CB5998833B1454C74E2 /* HighlightPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightPDFView.swift; sourceTree = "<group>"; };
 		2B7B02F087BF7B9A01DDDE31 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		390A1F1BF533AFA28CCFD10F /* Credits.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = Credits.html; sourceTree = "<group>"; };
@@ -78,14 +85,17 @@
 		5294525FCF269307315AAFD4 /* LibraryCollectionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCollectionStoreTests.swift; sourceTree = "<group>"; };
 		53CF2BD0282B0452978CC108 /* Lurume.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lurume.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5AF258DB2C0B0F3B21B5A12D /* PaperRemovalCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaperRemovalCoordinator.swift; sourceTree = "<group>"; };
+		5E1C788C814921FADF9D45E2 /* UpdateTestHost.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UpdateTestHost.entitlements; sourceTree = "<group>"; };
 		6741F46CA962F25B42E43E09 /* LibraryDragDrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDragDrop.swift; sourceTree = "<group>"; };
 		67ED0DE1FEE1DFEEA102642F /* Lurume.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Lurume.entitlements; sourceTree = "<group>"; };
 		6D64B77A7BD1986CDDE927FE /* LibraryManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryManagementView.swift; sourceTree = "<group>"; };
 		6E489A1C10FD4AE7E9A33154 /* LibraryOrganizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryOrganizationTests.swift; sourceTree = "<group>"; };
+		6F541B6F7724A857648FF173 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		70EE537C1DA409FE0C8BFD5B /* LibraryPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPersistence.swift; sourceTree = "<group>"; };
 		7357965D8D0C423680ACCF0B /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
 		813B2765B8739B290712AAD7 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		83C060B9B8CAE158F8A0B938 /* MainWindowMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowMode.swift; sourceTree = "<group>"; };
+		84DFEEEEEFB00E092E4208D9 /* LurumeUpdateTestHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LurumeUpdateTestHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationInspector.swift; sourceTree = "<group>"; };
 		8F7E981F2906D52C08B550DF /* LibraryTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryTableView.swift; sourceTree = "<group>"; };
 		969EC9C892796AB815567020 /* TextNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextNormalizerTests.swift; sourceTree = "<group>"; };
@@ -98,12 +108,35 @@
 		B8A2CEFED2568E02C16AA36E /* HighlightPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightPersistence.swift; sourceTree = "<group>"; };
 		BA1583E513232AC7D0AA7CA0 /* TextNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextNormalizer.swift; sourceTree = "<group>"; };
 		BC5F48DA0E16EBAC5F6646BE /* PaperMetadataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaperMetadataTests.swift; sourceTree = "<group>"; };
+		C16B80008F9AD710A4C45D53 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CF9734898B3282BC4665E433 /* LurumeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LurumeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E0325E1A53B306B4E070020D /* LibraryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryModels.swift; sourceTree = "<group>"; };
+		EB67A6A41839515674054B2B /* UpdaterController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterController.swift; sourceTree = "<group>"; };
+		EBD276D9AB2C63D7E24FDE04 /* Sparkle-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Sparkle-LICENSE.txt"; sourceTree = "<group>"; };
 		EDCEED45D44F9A78BABF93BC /* LurumeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LurumeApp.swift; sourceTree = "<group>"; };
 		EFEAA76699D454EB7F711760 /* HighlightModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightModels.swift; sourceTree = "<group>"; };
+		F6926A08DEB7D03C4C95EF04 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		FC49AD84FACDAB3ED5163A55 /* SystemPaperMetadataReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPaperMetadataReader.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D2C1B190288ADFF45B44786D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8226C9EA96CDAE79A9037711 /* Sparkle in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D55AC83A58996AA45E35F1CD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D1242E4189B37507D07D2D68 /* Sparkle in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		0E20D9A5001B99B680F3CF4A = {
@@ -111,6 +144,7 @@
 			children = (
 				ACCE83C796860BE9C6970E8D /* Lurume */,
 				F3DCD83738E5075D4829D5A4 /* LurumeTests */,
+				ADD18A1239AFEBDD28A7D017 /* UpdateTestHost */,
 				757959D7A08DD5BDF6993CB1 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -120,6 +154,7 @@
 			children = (
 				53CF2BD0282B0452978CC108 /* Lurume.app */,
 				CF9734898B3282BC4665E433 /* LurumeTests.xctest */,
+				84DFEEEEEFB00E092E4208D9 /* LurumeUpdateTestHost.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -134,6 +169,7 @@
 				20CE4CB5998833B1454C74E2 /* HighlightPDFView.swift */,
 				B8A2CEFED2568E02C16AA36E /* HighlightPersistence.swift */,
 				1DF3744718002E8D40888853 /* HighlightStore.swift */,
+				6F541B6F7724A857648FF173 /* Info.plist */,
 				6741F46CA962F25B42E43E09 /* LibraryDragDrop.swift */,
 				6D64B77A7BD1986CDDE927FE /* LibraryManagementView.swift */,
 				E0325E1A53B306B4E070020D /* LibraryModels.swift */,
@@ -149,14 +185,28 @@
 				0A66F42ECD28F65520797F64 /* PDFReaderView.swift */,
 				451E4AC55AABA630D088790D /* SecurityScopedFile.swift */,
 				B43B08E498537804DB3769E8 /* SettingsView.swift */,
+				EBD276D9AB2C63D7E24FDE04 /* Sparkle-LICENSE.txt */,
 				FC49AD84FACDAB3ED5163A55 /* SystemPaperMetadataReader.swift */,
 				BA1583E513232AC7D0AA7CA0 /* TextNormalizer.swift */,
 				4ACA72A5E79BC8728F19084D /* TranslationController.swift */,
 				87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */,
+				EB67A6A41839515674054B2B /* UpdaterController.swift */,
 				002933A34CD2A16535238505 /* InfoPlist.strings */,
 				5BDFE7ED94697A4351F79112 /* Localizable.strings */,
 			);
 			path = Lurume;
+			sourceTree = "<group>";
+		};
+		ADD18A1239AFEBDD28A7D017 /* UpdateTestHost */ = {
+			isa = PBXGroup;
+			children = (
+				C16B80008F9AD710A4C45D53 /* Info.plist */,
+				F6926A08DEB7D03C4C95EF04 /* README.md */,
+				5E1C788C814921FADF9D45E2 /* UpdateTestHost.entitlements */,
+				1E4CE87BA8D875DB1CF932E5 /* UpdateTestHostApp.swift */,
+			);
+			name = UpdateTestHost;
+			path = Tests/UpdateTestHost;
 			sourceTree = "<group>";
 		};
 		F3DCD83738E5075D4829D5A4 /* LurumeTests */ = {
@@ -200,12 +250,33 @@
 			productReference = CF9734898B3282BC4665E433 /* LurumeTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		6103760779185FF8770CD6FE /* LurumeUpdateTestHost */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DF8A62DDCD3E075A705B3413 /* Build configuration list for PBXNativeTarget "LurumeUpdateTestHost" */;
+			buildPhases = (
+				6FC74C0E0A795058C06274DD /* Sources */,
+				B086C3D087FCB1A63B82DF35 /* Resources */,
+				D2C1B190288ADFF45B44786D /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LurumeUpdateTestHost;
+			packageProductDependencies = (
+				3E5A34989D0B107DE3DBA0F3 /* Sparkle */,
+			);
+			productName = LurumeUpdateTestHost;
+			productReference = 84DFEEEEEFB00E092E4208D9 /* LurumeUpdateTestHost.app */;
+			productType = "com.apple.product-type.application";
+		};
 		779F1ED0E93272ED9E741B01 /* Lurume */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 21BEAD6E81475DA701E6D089 /* Build configuration list for PBXNativeTarget "Lurume" */;
 			buildPhases = (
 				BA2ECAB65BA84E48A196DA2B /* Sources */,
 				70E2FA50C1F981F7E7624F37 /* Resources */,
+				D55AC83A58996AA45E35F1CD /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -213,6 +284,7 @@
 			);
 			name = Lurume;
 			packageProductDependencies = (
+				DC297768AF2DDEF22B37325D /* Sparkle */,
 			);
 			productName = Lurume;
 			productReference = 53CF2BD0282B0452978CC108 /* Lurume.app */;
@@ -227,6 +299,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
+					6103760779185FF8770CD6FE = {
+						ProvisioningStyle = Automatic;
+					};
 					779F1ED0E93272ED9E741B01 = {
 						ProvisioningStyle = Automatic;
 					};
@@ -241,6 +316,9 @@
 			);
 			mainGroup = 0E20D9A5001B99B680F3CF4A;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D7D20F7960AE9ECDEF33D972 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 757959D7A08DD5BDF6993CB1 /* Products */;
 			projectDirPath = "";
@@ -248,6 +326,7 @@
 			targets = (
 				779F1ED0E93272ED9E741B01 /* Lurume */,
 				4816BA9FF9B1BA0FFE06808D /* LurumeTests */,
+				6103760779185FF8770CD6FE /* LurumeUpdateTestHost */,
 			);
 		};
 /* End PBXProject section */
@@ -260,6 +339,15 @@
 				15EDF2A25C2A3FEAE4972ED4 /* Credits.html in Resources */,
 				2D0ED8285C80930DD3959F6C /* InfoPlist.strings in Resources */,
 				95E6621DB260C534F214A262 /* Localizable.strings in Resources */,
+				093780883DA94598BE5C29AF /* Sparkle-LICENSE.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B086C3D087FCB1A63B82DF35 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9B684A85F5989CE8AE65CF95 /* README.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -283,6 +371,14 @@
 				A5DE3609DC3C9F2CAD5718E8 /* ReaderModeTransitionTests.swift in Sources */,
 				1D1E1300196BD224FE89A00F /* TextNormalizerTests.swift in Sources */,
 				7E10AC773AD3045C05059C26 /* TranslationControllerTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6FC74C0E0A795058C06274DD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DD5F3D4DF228FD158D575BB6 /* UpdateTestHostApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -314,6 +410,7 @@
 				132643F5DC3DDD1E9EB22813 /* TextNormalizer.swift in Sources */,
 				FE891CFC7127EEB8A4BD6FC7 /* TranslationController.swift in Sources */,
 				24F9D19682C67BFEFB015DAC /* TranslationInspector.swift in Sources */,
+				EB7D92CC26B4FE6453148D55 /* UpdaterController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -364,6 +461,27 @@
 			};
 			name = Release;
 		};
+		13AB6D12D6B31BB7E751F39D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Tests/UpdateTestHost/UpdateTestHost.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = Tests/UpdateTestHost/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.lurume.UpdateTestHost;
+				PRODUCT_NAME = "Lurume Update Test";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
 		39207F0EB863E51E3E7CECA7 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -373,10 +491,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 2;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Lurume;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 ShunyangLiu. Released under the MIT License.";
+				INFOPLIST_FILE = Lurume/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -421,6 +536,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -454,10 +570,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 2;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Lurume;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 ShunyangLiu. Released under the MIT License.";
+				INFOPLIST_FILE = Lurume/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -465,6 +578,27 @@
 				MARKETING_VERSION = 0.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = app.lurume.Lurume;
 				PRODUCT_NAME = Lurume;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		65B38B76030093FD9EC37D99 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Tests/UpdateTestHost/UpdateTestHost.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = Tests/UpdateTestHost/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.lurume.UpdateTestHost;
+				PRODUCT_NAME = "Lurume Update Test";
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -571,6 +705,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		DF8A62DDCD3E075A705B3413 /* Build configuration list for PBXNativeTarget "LurumeUpdateTestHost" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				13AB6D12D6B31BB7E751F39D /* Debug */,
+				65B38B76030093FD9EC37D99 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		FD59C48A7B07799C8297AFB2 /* Build configuration list for PBXNativeTarget "LurumeTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -581,6 +724,30 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D7D20F7960AE9ECDEF33D972 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.9.6;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		3E5A34989D0B107DE3DBA0F3 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D7D20F7960AE9ECDEF33D972 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+		DC297768AF2DDEF22B37325D /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D7D20F7960AE9ECDEF33D972 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 8ACF5AB7F475D09A84C9659A /* Project object */;
 }

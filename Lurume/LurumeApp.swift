@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct LurumeApp: App {
+    private let updaterController = UpdaterController()
     @StateObject private var libraryStore = LibraryStore()
     @StateObject private var appSettings = AppSettings()
     @StateObject private var translationController = TranslationController()

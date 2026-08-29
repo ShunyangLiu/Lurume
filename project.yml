@@ -12,6 +12,14 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     MACOSX_DEPLOYMENT_TARGET: "15.0"
+  configs:
+    Release:
+      CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.9.6
 
 targets:
   Lurume:
@@ -19,19 +27,31 @@ targets:
     platform: macOS
     sources:
       - path: Lurume
+    info:
+      path: Lurume/Info.plist
+      properties:
+        CFBundleDisplayName: Lurume
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSHumanReadableCopyright: "Copyright © 2026 ShunyangLiu. Released under the MIT License."
+        SUEnableDownloaderService: true
+        SUEnableInstallerLauncherService: true
     entitlements:
       path: Lurume/Lurume.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.files.user-selected.read-only: true
+        com.apple.security.temporary-exception.mach-lookup.global-name:
+          - $(PRODUCT_BUNDLE_IDENTIFIER)-spks
+          - $(PRODUCT_BUNDLE_IDENTIFIER)-spki
+    dependencies:
+      - package: Sparkle
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.lurume.Lurume
         PRODUCT_NAME: Lurume
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Lurume
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
-        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 ShunyangLiu. Released under the MIT License."
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "-"
         CURRENT_PROJECT_VERSION: 2
@@ -49,6 +69,46 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.lurume.LurumeTests
         GENERATE_INFOPLIST_FILE: YES
 
+  LurumeUpdateTestHost:
+    type: application
+    platform: macOS
+    sources:
+      - path: Tests/UpdateTestHost
+    info:
+      path: Tests/UpdateTestHost/Info.plist
+      properties:
+        CFBundleDisplayName: Lurume 更新测试
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        SUAllowsAutomaticUpdates: false
+        SUEnableAutomaticChecks: false
+        SUEnableDownloaderService: true
+        SUEnableInstallerLauncherService: true
+        SUEnableSystemProfiling: false
+        SUFeedURL: $(LURUME_TEST_FEED_URL)
+        SUPublicEDKey: $(LURUME_TEST_PUBLIC_ED_KEY)
+        SURequireSignedFeed: true
+        SUSignedFeedFailureExpirationInterval: 0
+        SUVerifyUpdateBeforeExtraction: true
+    entitlements:
+      path: Tests/UpdateTestHost/UpdateTestHost.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.temporary-exception.mach-lookup.global-name:
+          - $(PRODUCT_BUNDLE_IDENTIFIER)-spks
+          - $(PRODUCT_BUNDLE_IDENTIFIER)-spki
+    dependencies:
+      - package: Sparkle
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.lurume.UpdateTestHost
+        PRODUCT_NAME: Lurume Update Test
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 1.0.0
+
 schemes:
   Lurume:
     build:
@@ -60,5 +120,14 @@ schemes:
         - LurumeTests
     run:
       config: Debug
+    archive:
+      config: Release
+
+  LurumeUpdateTestHost:
+    build:
+      targets:
+        LurumeUpdateTestHost: all
+    run:
+      config: Release
     archive:
       config: Release
