@@ -149,4 +149,70 @@ final class ReaderModeTransitionTests: XCTestCase {
         defaults.set("collection:not-a-uuid", forKey: "lastLibrarySource")
         XCTAssertEqual(AppSettings(defaults: defaults).lastLibrarySource, .all)
     }
+
+    func testReadingSidebarInheritsOnlyAValidSourceContainingTheOpenedPaper() {
+        let collection = CollectionRecord(name: "课题")
+        let paper = PaperRecord(
+            identity: FileIdentity(
+                volumeUUID: "volume",
+                documentIdentifier: nil,
+                fallbackPath: "/tmp/paper.pdf"
+            ),
+            bookmarkData: Data(),
+            displayName: "Paper",
+            collectionIDs: [collection.id]
+        )
+
+        XCTAssertEqual(
+            ReadingSidebarSourcePolicy.resolvedSource(
+                proposed: .collection(collection.id),
+                selectedPaperID: paper.id,
+                papers: [paper],
+                collections: [collection]
+            ),
+            .collection(collection.id)
+        )
+        XCTAssertEqual(
+            ReadingSidebarSourcePolicy.resolvedSource(
+                proposed: .unfiled,
+                selectedPaperID: paper.id,
+                papers: [paper],
+                collections: [collection]
+            ),
+            .all
+        )
+        XCTAssertEqual(
+            ReadingSidebarSourcePolicy.resolvedSource(
+                proposed: .collection(collection.id),
+                selectedPaperID: paper.id,
+                papers: [paper],
+                collections: []
+            ),
+            .all
+        )
+    }
+
+    func testReadingSidebarImportTargetsOnlyAValidUserCollection() {
+        let collection = CollectionRecord(name: "课题")
+
+        XCTAssertEqual(
+            ReadingSidebarSourcePolicy.importCollectionID(
+                for: .collection(collection.id),
+                collections: [collection]
+            ),
+            collection.id
+        )
+        XCTAssertNil(
+            ReadingSidebarSourcePolicy.importCollectionID(
+                for: .all,
+                collections: [collection]
+            )
+        )
+        XCTAssertNil(
+            ReadingSidebarSourcePolicy.importCollectionID(
+                for: .collection(collection.id),
+                collections: []
+            )
+        )
+    }
 }

@@ -14,6 +14,41 @@ enum MainWindowMode: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum ReadingSidebarSourcePolicy {
+    static func resolvedSource(
+        proposed: LibrarySource,
+        selectedPaperID: UUID?,
+        papers: [PaperRecord],
+        collections: [CollectionRecord]
+    ) -> LibrarySource {
+        let validSource: LibrarySource
+        if case let .collection(id) = proposed,
+           !collections.contains(where: { $0.id == id }) {
+            validSource = .all
+        } else {
+            validSource = proposed
+        }
+
+        guard let selectedPaperID,
+              let selectedPaper = papers.first(where: { $0.id == selectedPaperID }),
+              validSource.includes(selectedPaper) else {
+            return .all
+        }
+        return validSource
+    }
+
+    static func importCollectionID(
+        for source: LibrarySource,
+        collections: [CollectionRecord]
+    ) -> UUID? {
+        guard case let .collection(id) = source,
+              collections.contains(where: { $0.id == id }) else {
+            return nil
+        }
+        return id
+    }
+}
+
 /// 离开阅读模式时的单一保存边界。执行顺序不可交换：先保存状态，再释放 PDF 资源。
 @MainActor
 struct ReadingSessionBoundary {

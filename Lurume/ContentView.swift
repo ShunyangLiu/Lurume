@@ -30,6 +30,7 @@ struct ContentView: View {
     @State private var libraryModeSearchText = ""
     @State private var libraryModeStatusFilter: ReadingStatusFilter = .all
     @State private var importTargetCollectionID: UUID?
+    @State private var readingLibrarySource: LibrarySource = .all
 
     @State private var searchText = ""
     @State private var sidebarMode: ReaderSidebarMode = .library
@@ -59,6 +60,7 @@ struct ContentView: View {
 
     private var filteredPapers: [PaperRecord] {
         libraryStore.papers(
+            in: readingLibrarySource,
             matching: searchText,
             status: statusFilter,
             sortedBy: appSettings.librarySortOption
@@ -77,6 +79,21 @@ struct ContentView: View {
             },
             set: { translationController.isInspectorPresented = $0 }
         )
+    }
+
+    private var readingLibrarySearchPrompt: String {
+        switch readingLibrarySource {
+        case .all:
+            "搜索文献"
+        case .unfiled:
+            "搜索未分类文献"
+        case let .collection(id):
+            if let name = libraryStore.collections.first(where: { $0.id == id })?.name {
+                "搜索“\(name)”"
+            } else {
+                "搜索文献"
+            }
+        }
     }
 
     /// Return 改名快捷键只在没有文本输入进行时生效。
@@ -152,7 +169,13 @@ struct ContentView: View {
                         guard !libraryStore.persistenceDisabled else { return }
                         let pdfURLs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
                         guard !pdfURLs.isEmpty else { return }
-                        libraryStore.importPDFs(at: pdfURLs)
+                        libraryStore.importPDFs(
+                            at: pdfURLs,
+                            collectionID: ReadingSidebarSourcePolicy.importCollectionID(
+                                for: readingLibrarySource,
+                                collections: libraryStore.collections
+                            )
+                        )
                     }
                     .allowsHitTesting(false)
                 }
@@ -232,6 +255,13 @@ struct ContentView: View {
                 )
                 if appSettings.mainWindowMode == .library {
                     leaveReadingMode()
+                } else {
+                    readingLibrarySource = ReadingSidebarSourcePolicy.resolvedSource(
+                        proposed: appSettings.lastLibrarySource,
+                        selectedPaperID: libraryStore.selectedPaperID,
+                        papers: libraryStore.papers,
+                        collections: libraryStore.collections
+                    )
                 }
             }
             .onChange(of: libraryStore.collections) {
@@ -239,6 +269,12 @@ struct ContentView: View {
                 if validSource != appSettings.lastLibrarySource {
                     appSettings.lastLibrarySource = validSource
                 }
+                readingLibrarySource = ReadingSidebarSourcePolicy.resolvedSource(
+                    proposed: readingLibrarySource,
+                    selectedPaperID: libraryStore.selectedPaperID,
+                    papers: libraryStore.papers,
+                    collections: libraryStore.collections
+                )
             }
             .onChange(of: appSettings.automaticTranslation) {
                 if !appSettings.automaticTranslation {
@@ -544,7 +580,7 @@ struct ContentView: View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-            TextField("搜索文献", text: $searchText)
+            TextField(readingLibrarySearchPrompt, text: $searchText)
                 .textFieldStyle(.plain)
                 .focused($searchFieldFocused)
                 .accessibilityLabel("搜索标题、作者或文件名")
@@ -752,6 +788,12 @@ struct ContentView: View {
 
     private func openPaperFromLibrary(_ paperID: UUID) {
         libraryModeSelection = [paperID]
+        readingLibrarySource = ReadingSidebarSourcePolicy.resolvedSource(
+            proposed: appSettings.lastLibrarySource,
+            selectedPaperID: paperID,
+            papers: libraryStore.papers,
+            collections: libraryStore.collections
+        )
         appSettings.mainWindowMode = .reading
         libraryStore.selectPaper(id: paperID)
         openSelectedPaper()
@@ -821,9 +863,10 @@ struct ContentView: View {
     }
 
     private func presentImporter() {
-        importTargetCollectionID = appSettings.mainWindowMode == .library
-            ? collectionID(for: appSettings.lastLibrarySource)
-            : nil
+        let source = appSettings.mainWindowMode == .library
+            ? appSettings.lastLibrarySource
+            : readingLibrarySource
+        importTargetCollectionID = collectionID(for: source)
         importerPurpose = .importPDFs
         isImporterPresented = true
     }
