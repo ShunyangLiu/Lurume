@@ -72,7 +72,9 @@ P4 的高亮选择、页面笔记标志、浮动卡片和数据迁移规则详�
 P5 的文献集、独立文献库模式、批量整理和删除语义详见
 [P5 文献管理计划](docs/P5-plan.md)。P6 的安全更新、签名和本地发布边界详见
 [P6 应用内更新计划](docs/P6-plan.md)，最终发布、升级和性能证据见
-[P6 检查点四实现记录](docs/P6-checkpoint4.md)。
+[P6 检查点四实现记录](docs/P6-checkpoint4.md)。下一阶段拟增加由专用网络 XPC 隔离的
+OpenAI-compatible 原生大模型划词翻译，已确认范围见
+[P7 原生大模型翻译计划](docs/P7-plan.md)。
 
 使用 Xcode 26.3 或更新版本打开 `Lurume.xcodeproj`，选择 `Lurume` scheme 即可构建运行。
 工程最低支持 macOS 15；运行时第三方依赖仅有系统框架无法替代的 Sparkle 更新基础设施。
