@@ -15,6 +15,7 @@ struct ContentView: View {
     @EnvironmentObject private var appSettings: AppSettings
     @EnvironmentObject private var translationController: TranslationController
     @EnvironmentObject private var highlightStore: HighlightStore
+    @EnvironmentObject private var updaterController: UpdaterController
     @StateObject private var pdfController = PDFReaderController()
     @State private var isImporterPresented = false
     @State private var importerPurpose: FileImporterPurpose?
@@ -256,6 +257,7 @@ struct ContentView: View {
                 openSelectedPaper()
             }
             .onAppear {
+                configureUpdateInstallationBoundary()
                 appSettings.lastLibrarySource = libraryStore.validSource(
                     appSettings.lastLibrarySource
                 )
@@ -299,6 +301,7 @@ struct ContentView: View {
                 }
             }
             .onDisappear {
+                updaterController.prepareForInstallation = nil
                 pdfController.closeNoteEditor()
             }
             .inspector(isPresented: readerInspectorPresented) {
@@ -790,6 +793,16 @@ struct ContentView: View {
             }
         ).leaveReadingMode()
         closePDFSearch()
+    }
+
+    private func configureUpdateInstallationBoundary() {
+        updaterController.prepareForInstallation = { [weak libraryStore, weak pdfController] in
+            guard let libraryStore, let pdfController else { return }
+            UpdateInstallationSaveBoundary(
+                flushPendingLibrarySave: libraryStore.flushPendingSave,
+                closeNoteEditor: pdfController.closeNoteEditor
+            ).prepareForInstallation()
+        }
     }
 
     private func openPaperFromLibrary(_ paperID: UUID) {

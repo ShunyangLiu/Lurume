@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct LurumeApp: App {
-    private let updaterController = UpdaterController()
+    @StateObject private var updaterController = UpdaterController()
     @StateObject private var libraryStore = LibraryStore()
     @StateObject private var appSettings = AppSettings()
     @StateObject private var translationController = TranslationController()
@@ -15,12 +15,20 @@ struct LurumeApp: App {
                 .environmentObject(appSettings)
                 .environmentObject(translationController)
                 .environmentObject(highlightStore)
+                .environmentObject(updaterController)
                 .onDisappear {
                     libraryStore.flushPendingSave()
                 }
         }
         .defaultSize(width: 1_180, height: 760)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("检查更新…") {
+                    updaterController.checkForUpdates()
+                }
+                .disabled(!updaterController.canCheckForUpdates)
+            }
+
             CommandMenu("翻译") {
                 Button("翻译当前选区") {
                     translationController.requestTranslation(
@@ -36,6 +44,7 @@ struct LurumeApp: App {
         Settings {
             AppSettingsView()
                 .environmentObject(appSettings)
+                .environmentObject(updaterController)
         }
     }
 }

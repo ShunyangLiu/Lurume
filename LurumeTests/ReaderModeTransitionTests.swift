@@ -96,6 +96,19 @@ final class ReaderModeTransitionTests: XCTestCase {
     }
 
     @MainActor
+    func testUpdateInstallationFlushesLibraryAndNoteBeforeRelaunch() {
+        var events: [String] = []
+        let boundary = UpdateInstallationSaveBoundary(
+            flushPendingLibrarySave: { events.append("library") },
+            closeNoteEditor: { events.append("note") }
+        )
+
+        boundary.prepareForInstallation()
+
+        XCTAssertEqual(events, ["library", "note"])
+    }
+
+    @MainActor
     func testSecurityScopedAccessStopsExactlyOnceAfterRelease() {
         let startCount = LockedCounter()
         let stopCount = LockedCounter()

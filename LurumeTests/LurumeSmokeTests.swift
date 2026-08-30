@@ -21,6 +21,10 @@ final class LurumeSmokeTests: XCTestCase {
         XCTAssertEqual(info["SUScheduledCheckInterval"] as? Int, 86_400)
         XCTAssertEqual(info["SUEnableDownloaderService"] as? Bool, true)
         XCTAssertEqual(info["SUEnableInstallerLauncherService"] as? Bool, true)
+        XCTAssertNil(
+            info["SUEnableAutomaticChecks"],
+            "保留 Sparkle 默认的第二次启动许可询问，不能在 Info.plist 中预设答案"
+        )
     }
 
     @MainActor
@@ -28,6 +32,38 @@ final class LurumeSmokeTests: XCTestCase {
         let controller = UpdaterController(startingUpdater: false)
 
         XCTAssertNotNil(controller.standardController)
+    }
+
+    @MainActor
+    func testUpdaterMenuAndSettingsUseTheSameSparkleState() {
+        let engine = UpdateEngineStub(
+            canCheckForUpdates: true,
+            automaticallyChecksForUpdates: false
+        )
+        let controller = UpdaterController(engine: engine)
+
+        XCTAssertTrue(controller.canCheckForUpdates)
+        XCTAssertFalse(controller.automaticallyChecksForUpdates)
+
+        controller.checkForUpdates()
+        XCTAssertEqual(engine.manualCheckCount, 1)
+
+        controller.setAutomaticallyChecksForUpdates(true)
+        XCTAssertTrue(engine.automaticallyChecksForUpdates)
+        XCTAssertTrue(controller.automaticallyChecksForUpdates)
+    }
+
+    @MainActor
+    func testDisabledUpdaterDoesNotStartManualCheck() {
+        let engine = UpdateEngineStub(
+            canCheckForUpdates: false,
+            automaticallyChecksForUpdates: false
+        )
+        let controller = UpdaterController(engine: engine)
+
+        controller.checkForUpdates()
+
+        XCTAssertEqual(engine.manualCheckCount, 0)
     }
 
     @MainActor
@@ -570,5 +606,21 @@ final class LurumeSmokeTests: XCTestCase {
             document.insert(page, at: index)
         }
         return document
+    }
+}
+
+@MainActor
+private final class UpdateEngineStub: UpdateEngine {
+    var canCheckForUpdates: Bool
+    var automaticallyChecksForUpdates: Bool
+    private(set) var manualCheckCount = 0
+
+    init(canCheckForUpdates: Bool, automaticallyChecksForUpdates: Bool) {
+        self.canCheckForUpdates = canCheckForUpdates
+        self.automaticallyChecksForUpdates = automaticallyChecksForUpdates
+    }
+
+    func checkForUpdates() {
+        manualCheckCount += 1
     }
 }

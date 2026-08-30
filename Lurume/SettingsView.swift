@@ -13,15 +13,33 @@ struct AppSettingsView: View {
                     Label("翻译", systemImage: "translate")
                 }
         }
-        .frame(width: 460, height: 240)
+        .frame(width: 460, height: 300)
     }
 }
 
 private struct GeneralSettingsView: View {
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var updaterController: UpdaterController
 
     var body: some View {
         Form {
+            Section("软件更新") {
+                Toggle(
+                    "自动检查更新",
+                    isOn: Binding(
+                        get: { updaterController.automaticallyChecksForUpdates },
+                        set: { updaterController.setAutomaticallyChecksForUpdates($0) }
+                    )
+                )
+                .accessibilityValue(
+                    updaterController.automaticallyChecksForUpdates ? "已开启" : "已关闭"
+                )
+
+                Text("开启后每 24 小时检查一次。发现新版本时会询问，不会自动下载或安装。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("文献库") {
                 Picker("启动时排序", selection: $settings.defaultLibrarySortOption) {
                     ForEach(LibrarySortOption.allCases) { option in
