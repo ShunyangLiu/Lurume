@@ -1,0 +1,292 @@
+#!/bin/zsh
+
+set -euo pipefail
+setopt NO_NOMATCH
+
+lurume_script_dir="${0:A:h}"
+lurume_repo_root="${lurume_script_dir:h}"
+source "$lurume_script_dir/lib/release-common.zsh"
+
+lurume_usage() {
+    print -u2 '用法：Scripts/prepare-release <版本 x.y.z> <递增构建号> [--preflight-only]'
+}
+
+if (( $# < 2 || $# > 3 )); then
+    lurume_usage
+    exit 2
+fi
+
+lurume_version="$1"
+lurume_build="$2"
+lurume_mode="${3:-}"
+[[ -z "$lurume_mode" || "$lurume_mode" == '--preflight-only' ]] || {
+    lurume_usage
+    exit 2
+}
+
+lurume_require_semver "$lurume_version"
+lurume_require_build_number "$lurume_build"
+
+cd "$lurume_repo_root"
+
+[[ -z "$(git status --porcelain --untracked-files=normal)" ]] || {
+    lurume_release_error 'Git 工作区必须完全干净'
+    exit 3
+}
+
+lurume_notes_source="$lurume_repo_root/release-notes/v$lurume_version.md"
+[[ -f "$lurume_notes_source" ]] || {
+    lurume_release_error "缺少更新说明：release-notes/v$lurume_version.md"
+    exit 3
+}
+lurume_verify_release_notes_heading "$lurume_notes_source" "$lurume_version"
+
+lurume_resolved="$lurume_repo_root/Lurume.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+[[ -f "$lurume_resolved" ]] || {
+    lurume_release_error '缺少受版本控制的 Package.resolved'
+    exit 3
+}
+[[ "$(jq -r '.pins[] | select(.identity == "sparkle") | .state.version' "$lurume_resolved")" == '2.9.6' ]] || {
+    lurume_release_error 'Sparkle 必须精确锁定为 2.9.6'
+    exit 3
+}
+
+lurume_source_version="$(awk '
+    /^  Lurume:$/ { in_target = 1; next }
+    in_target && /^  [^ ]+:/ { exit }
+    in_target && /MARKETING_VERSION:/ { print $2; exit }
+' project.yml)"
+lurume_source_build="$(awk '
+    /^  Lurume:$/ { in_target = 1; next }
+    in_target && /^  [^ ]+:/ { exit }
+    in_target && /CURRENT_PROJECT_VERSION:/ { print $2; exit }
+' project.yml)"
+[[ "$lurume_source_version" == "$lurume_version" ]] || {
+    lurume_release_error "project.yml 版本为 $lurume_source_version，不是 $lurume_version"
+    exit 3
+}
+[[ "$lurume_source_build" == "$lurume_build" ]] || {
+    lurume_release_error "project.yml 构建号为 $lurume_source_build，不是 $lurume_build"
+    exit 3
+}
+
+lurume_latest_tag="$(git tag --list 'v[0-9]*' --sort=-version:refname | head -1)"
+if [[ -n "$lurume_latest_tag" ]]; then
+    lurume_latest_version="${lurume_latest_tag#v}"
+    lurume_highest_version="$(/usr/bin/printf '%s\n%s\n' "$lurume_latest_version" "$lurume_version" | sort -V | tail -1)"
+    [[ "$lurume_highest_version" == "$lurume_version" && "$lurume_version" != "$lurume_latest_version" ]] || {
+        lurume_release_error "版本 $lurume_version 必须高于现有标签 $lurume_latest_tag"
+        exit 3
+    }
+
+    lurume_previous_build="$(git show "$lurume_latest_tag:project.yml" | awk '
+        /^  Lurume:$/ { in_target = 1; next }
+        in_target && /^  [^ ]+:/ { exit }
+        in_target && /CURRENT_PROJECT_VERSION:/ { print $2; exit }
+    ')"
+    [[ -z "$lurume_previous_build" || "$lurume_build" -gt "$lurume_previous_build" ]] || {
+        lurume_release_error "构建号 $lurume_build 必须高于 $lurume_latest_tag 的 $lurume_previous_build"
+        exit 3
+    }
+fi
+
+if [[ "$lurume_mode" == '--preflight-only' ]]; then
+    print "预检通过：v$lurume_version ($lurume_build)"
+    exit 0
+fi
+
+command -v xcodegen >/dev/null || {
+    lurume_release_error '找不到 xcodegen'
+    exit 4
+}
+
+xcodegen generate >/dev/null
+git diff --quiet -- Lurume.xcodeproj Lurume/Info.plist || {
+    lurume_release_error '生成的 Xcode 工程与仓库不一致，请先提交 project.yml 生成结果'
+    exit 4
+}
+
+mkdir -p "$lurume_repo_root/build" "$lurume_repo_root/build/releases"
+lurume_work_dir="$(mktemp -d "$lurume_repo_root/build/lurume-release-$lurume_version.XXXXXX")"
+lurume_final_dir="$lurume_repo_root/build/releases/v$lurume_version"
+
+lurume_cleanup_prepare() {
+    if [[ -n "${lurume_dmg_mount:-}" ]] && /sbin/mount | grep -Fq " on $lurume_dmg_mount "; then
+        hdiutil detach "$lurume_dmg_mount" -quiet || true
+    fi
+    case "$lurume_work_dir" in
+        "$lurume_repo_root"/build/lurume-release-*)
+            chmod -R u+w "$lurume_work_dir" 2>/dev/null || true
+            rm -rf -- "$lurume_work_dir"
+            ;;
+        *)
+            print -u2 "拒绝清理意外目录：$lurume_work_dir"
+            ;;
+    esac
+}
+trap lurume_cleanup_prepare EXIT INT TERM
+
+[[ ! -e "$lurume_final_dir" ]] || {
+    lurume_release_error "发布目录已经存在，禁止覆盖：$lurume_final_dir"
+    exit 4
+}
+
+lurume_derived_data="$lurume_work_dir/DerivedData"
+lurume_xcode_common=(
+    -project Lurume.xcodeproj
+    -scheme Lurume
+    -derivedDataPath "$lurume_derived_data"
+    -disableAutomaticPackageResolution
+    -onlyUsePackageVersionsFromResolvedFile
+)
+
+print '运行全量测试…'
+if ! xcodebuild test "${lurume_xcode_common[@]}" -destination 'platform=macOS' >"$lurume_work_dir/tests.log" 2>&1; then
+    tail -80 "$lurume_work_dir/tests.log" >&2
+    lurume_release_error '全量测试失败'
+    exit 5
+fi
+
+print '构建 Universal Release…'
+if ! xcodebuild build "${lurume_xcode_common[@]}" \
+    -configuration Release \
+    -destination 'generic/platform=macOS' \
+    ARCHS='x86_64 arm64' \
+    ONLY_ACTIVE_ARCH=NO >"$lurume_work_dir/release-build.log" 2>&1; then
+    tail -80 "$lurume_work_dir/release-build.log" >&2
+    lurume_release_error 'Universal Release 构建失败'
+    exit 5
+fi
+
+lurume_app="$lurume_derived_data/Build/Products/Release/Lurume.app"
+[[ -d "$lurume_app" ]] || {
+    lurume_release_error 'Release App 未生成'
+    exit 5
+}
+
+codesign --verify --deep --strict --verbose=2 "$lurume_app" >/dev/null
+lurume_archs="$(lipo -archs "$lurume_app/Contents/MacOS/Lurume")"
+[[ "$lurume_archs" == *arm64* && "$lurume_archs" == *x86_64* ]] || {
+    lurume_release_error "Release 不是 Universal：$lurume_archs"
+    exit 5
+}
+
+lurume_info="$lurume_app/Contents/Info.plist"
+[[ "$(plutil -extract CFBundleShortVersionString raw "$lurume_info")" == "$lurume_version" ]] || lurume_release_error 'App 展示版本不一致' || exit 5
+[[ "$(plutil -extract CFBundleVersion raw "$lurume_info")" == "$lurume_build" ]] || lurume_release_error 'App 构建号不一致' || exit 5
+[[ "$(plutil -extract LSMinimumSystemVersion raw "$lurume_info")" == '15.0' ]] || lurume_release_error 'App 最低系统版本不一致' || exit 5
+[[ "$(plutil -extract SUPublicEDKey raw "$lurume_info")" == '/5cS7YkTp8GbUq0Vt88J/+pRD/rl5yO1zxCvVRatGes=' ]] || lurume_release_error 'App 更新公钥不一致' || exit 5
+
+lurume_entitlements="$(codesign -d --entitlements - "$lurume_app" 2>&1)"
+[[ "$lurume_entitlements" == *'com.apple.security.app-sandbox'* ]] || lurume_release_error '缺少 App Sandbox entitlement' || exit 5
+[[ "$lurume_entitlements" == *'app.lurume.Lurume-spks'* && "$lurume_entitlements" == *'app.lurume.Lurume-spki'* ]] || lurume_release_error '缺少 Sparkle 安装 entitlement' || exit 5
+[[ "$lurume_entitlements" != *'com.apple.security.network.client'* ]] || lurume_release_error '主 App 不得拥有通用网络权限' || exit 5
+
+lurume_archive_dir="$lurume_work_dir/archive"
+lurume_dmg_root="$lurume_work_dir/dmg-root"
+mkdir -p "$lurume_archive_dir" "$lurume_dmg_root"
+ditto "$lurume_app" "$lurume_dmg_root/Lurume.app"
+ln -s /Applications "$lurume_dmg_root/Applications"
+
+lurume_dmg_name="Lurume-$lurume_version.dmg"
+lurume_dmg="$lurume_archive_dir/$lurume_dmg_name"
+print '创建并验证 DMG…'
+hdiutil create -quiet -fs HFS+ -format UDZO -volname "Lurume $lurume_version" -srcfolder "$lurume_dmg_root" "$lurume_dmg"
+hdiutil verify "$lurume_dmg" >/dev/null
+
+lurume_dmg_mount="$lurume_work_dir/dmg-mount"
+mkdir -p "$lurume_dmg_mount"
+hdiutil attach -quiet -readonly -nobrowse -mountpoint "$lurume_dmg_mount" "$lurume_dmg"
+codesign --verify --deep --strict "$lurume_dmg_mount/Lurume.app"
+[[ "$(plutil -extract CFBundleShortVersionString raw "$lurume_dmg_mount/Lurume.app/Contents/Info.plist")" == "$lurume_version" ]] || lurume_release_error 'DMG 内 App 版本不一致' || exit 5
+[[ "$(lipo -archs "$lurume_dmg_mount/Lurume.app/Contents/MacOS/Lurume")" == *arm64* && "$(lipo -archs "$lurume_dmg_mount/Lurume.app/Contents/MacOS/Lurume")" == *x86_64* ]] || lurume_release_error 'DMG 内 App 不是 Universal' || exit 5
+hdiutil detach "$lurume_dmg_mount" -quiet
+lurume_dmg_mount=''
+
+lurume_notes_name="Lurume-$lurume_version.md"
+cp "$lurume_notes_source" "$lurume_archive_dir/$lurume_notes_name"
+
+lurume_generate_appcast="$(lurume_find_sparkle_tool "$lurume_derived_data" generate_appcast)"
+lurume_sign_update="$(lurume_find_sparkle_tool "$lurume_derived_data" sign_update)"
+lurume_account="${LURUME_SPARKLE_ACCOUNT:-ShunyangLiu}"
+lurume_download_prefix="https://github.com/ShunyangLiu/Lurume/releases/download/v$lurume_version/"
+lurume_notes_prefix='https://shunyangliu.github.io/Lurume/release-notes/'
+
+print '使用钥匙串中的正式密钥签名归档、appcast 与更新说明…'
+if ! "$lurume_generate_appcast" \
+    --account "$lurume_account" \
+    --download-url-prefix "$lurume_download_prefix" \
+    --release-notes-url-prefix "$lurume_notes_prefix" \
+    --maximum-versions 0 \
+    --maximum-deltas 0 \
+    --disable-signing-warning \
+    -o "$lurume_archive_dir/appcast.xml" \
+    "$lurume_archive_dir" >"$lurume_work_dir/generate-appcast.log" 2>&1; then
+    tail -40 "$lurume_work_dir/generate-appcast.log" >&2
+    lurume_release_error 'Sparkle appcast 生成失败'
+    exit 6
+fi
+
+lurume_stage="$lurume_work_dir/final"
+mkdir -p "$lurume_stage/release-notes"
+cp "$lurume_dmg" "$lurume_stage/$lurume_dmg_name"
+cp "$lurume_archive_dir/appcast.xml" "$lurume_stage/appcast.xml"
+cp "$lurume_archive_dir/$lurume_notes_name" "$lurume_stage/release-notes/$lurume_notes_name"
+cmp "$lurume_notes_source" "$lurume_stage/release-notes/$lurume_notes_name" >/dev/null || {
+    lurume_release_error '签名过程意外改写了更新说明内容'
+    exit 6
+}
+
+lurume_git_sha="$(git rev-parse HEAD)"
+lurume_created_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+lurume_download_url="$lurume_download_prefix$lurume_dmg_name"
+lurume_notes_url="$lurume_notes_prefix$lurume_notes_name"
+lurume_dmg_hash="$(lurume_sha256 "$lurume_stage/$lurume_dmg_name")"
+lurume_appcast_hash="$(lurume_sha256 "$lurume_stage/appcast.xml")"
+lurume_notes_hash="$(lurume_sha256 "$lurume_stage/release-notes/$lurume_notes_name")"
+
+jq -n \
+    --arg version "$lurume_version" \
+    --argjson build "$lurume_build" \
+    --arg tag "v$lurume_version" \
+    --arg git_sha "$lurume_git_sha" \
+    --arg created_at "$lurume_created_at" \
+    --arg download_url "$lurume_download_url" \
+    --arg release_notes_url "$lurume_notes_url" \
+    --arg dmg_path "$lurume_dmg_name" \
+    --arg dmg_sha "$lurume_dmg_hash" \
+    --argjson dmg_length "$(lurume_file_size "$lurume_stage/$lurume_dmg_name")" \
+    --arg appcast_sha "$lurume_appcast_hash" \
+    --argjson appcast_length "$(lurume_file_size "$lurume_stage/appcast.xml")" \
+    --arg notes_path "release-notes/$lurume_notes_name" \
+    --arg notes_sha "$lurume_notes_hash" \
+    --argjson notes_length "$(lurume_file_size "$lurume_stage/release-notes/$lurume_notes_name")" \
+    '{
+        schema_version: 1,
+        repository: "ShunyangLiu/Lurume",
+        version: $version,
+        build: $build,
+        tag: $tag,
+        git_sha: $git_sha,
+        created_at: $created_at,
+        sparkle_version: "2.9.6",
+        sparkle_key_account: "ShunyangLiu",
+        minimum_system_version: "15.0",
+        architectures: ["x86_64", "arm64"],
+        download_url: $download_url,
+        release_notes_url: $release_notes_url,
+        files: {
+            dmg: {path: $dmg_path, sha256: $dmg_sha, length: $dmg_length},
+            appcast: {path: "appcast.xml", sha256: $appcast_sha, length: $appcast_length},
+            release_notes: {path: $notes_path, sha256: $notes_sha, length: $notes_length}
+        }
+    }' > "$lurume_stage/manifest.json"
+
+lurume_verify_manifest_files "$lurume_stage"
+lurume_verify_appcast "$lurume_stage" "$lurume_account" "$lurume_sign_update"
+
+mv "$lurume_stage" "$lurume_final_dir"
+chmod -R a-w "$lurume_final_dir"
+
+print "本地发布准备完成：$lurume_final_dir"
+print '未创建标签、Release，也未修改 GitHub Pages。'

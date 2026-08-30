@@ -1,0 +1,206 @@
+#!/bin/zsh
+
+set -euo pipefail
+setopt NO_NOMATCH
+
+lurume_script_dir="${0:A:h}"
+lurume_repo_root="${lurume_script_dir:h}"
+source "$lurume_script_dir/lib/release-common.zsh"
+
+lurume_usage() {
+    print -u2 '用法：Scripts/publish-release <版本 x.y.z> [--dry-run]'
+}
+
+if (( $# < 1 || $# > 2 )); then
+    lurume_usage
+    exit 2
+fi
+
+lurume_version="$1"
+lurume_mode="${2:-}"
+[[ -z "$lurume_mode" || "$lurume_mode" == '--dry-run' ]] || {
+    lurume_usage
+    exit 2
+}
+lurume_require_semver "$lurume_version"
+
+cd "$lurume_repo_root"
+[[ -z "$(git status --porcelain --untracked-files=normal)" ]] || {
+    lurume_release_error 'Git 工作区必须完全干净'
+    exit 3
+}
+
+lurume_artifact_dir="$lurume_repo_root/build/releases/v$lurume_version"
+lurume_manifest="$lurume_artifact_dir/manifest.json"
+lurume_verify_manifest_files "$lurume_artifact_dir"
+
+[[ "$(lurume_manifest_value "$lurume_manifest" '.version')" == "$lurume_version" ]] || lurume_release_error '参数版本与清单不一致' || exit 3
+[[ "$(lurume_manifest_value "$lurume_manifest" '.tag')" == "v$lurume_version" ]] || lurume_release_error '清单标签不一致' || exit 3
+[[ "$(lurume_manifest_value "$lurume_manifest" '.git_sha')" == "$(git rev-parse HEAD)" ]] || lurume_release_error '当前提交与发布清单不一致' || exit 3
+
+lurume_notes_source="$lurume_repo_root/release-notes/v$lurume_version.md"
+lurume_notes_relative="$(lurume_manifest_value "$lurume_manifest" '.files.release_notes.path')"
+cmp "$lurume_notes_source" "$lurume_artifact_dir/$lurume_notes_relative" >/dev/null || lurume_release_error '仓库更新说明与签名发布说明不一致' || exit 3
+
+lurume_derived_data_candidates=(
+    "$lurume_repo_root"/build/lurume-release-*/DerivedData
+    "${HOME}/Library/Developer/Xcode/DerivedData"/Lurume-*
+)
+lurume_sign_update=''
+for lurume_candidate in "${lurume_derived_data_candidates[@]}"; do
+    lurume_candidate_tool="$lurume_candidate/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update"
+    if [[ -x "$lurume_candidate_tool" ]]; then
+        lurume_sign_update="$lurume_candidate_tool"
+        break
+    fi
+done
+[[ -n "$lurume_sign_update" ]] || lurume_release_error '找不到固定 Sparkle 的 sign_update' || exit 3
+
+lurume_account="${LURUME_SPARKLE_ACCOUNT:-ShunyangLiu}"
+lurume_verify_appcast "$lurume_artifact_dir" "$lurume_account" "$lurume_sign_update"
+
+lurume_tag="v$lurume_version"
+lurume_dmg_relative="$(lurume_manifest_value "$lurume_manifest" '.files.dmg.path')"
+lurume_dmg="$lurume_artifact_dir/$lurume_dmg_relative"
+lurume_expected_dmg_hash="$(lurume_manifest_value "$lurume_manifest" '.files.dmg.sha256')"
+lurume_repository="$(lurume_manifest_value "$lurume_manifest" '.repository')"
+lurume_git_sha="$(lurume_manifest_value "$lurume_manifest" '.git_sha')"
+lurume_feed_url='https://shunyangliu.github.io/Lurume/appcast.xml'
+
+if [[ "$lurume_mode" == '--dry-run' ]]; then
+    print "干运行通过：$lurume_tag"
+    print '实际发布顺序：精确标签 → Release 草稿与 DMG → 公开并匿名校验 → gh-pages appcast 与更新说明。'
+    print '没有改变 Git、GitHub Release 或 GitHub Pages。'
+    exit 0
+fi
+
+command -v gh >/dev/null || lurume_release_error '找不到 GitHub CLI' || exit 4
+gh auth status -h github.com >/dev/null || lurume_release_error 'GitHub CLI 尚未登录，请先运行 gh auth login' || exit 4
+
+if lurume_pages_source="$(gh api "repos/$lurume_repository/pages" --jq '[.source.branch, .source.path] | @tsv' 2>/dev/null)"; then
+    [[ "$lurume_pages_source" == $'gh-pages\t/' ]] || {
+        lurume_release_error "GitHub Pages 当前不是 gh-pages 根目录：$lurume_pages_source"
+        exit 4
+    }
+fi
+
+lurume_redirect="$(curl -sS -o /dev/null -w '%{redirect_url}' --max-redirs 0 "$lurume_feed_url" || true)"
+if [[ -n "$lurume_redirect" && "$lurume_redirect" != https://shunyangliu.github.io/* ]]; then
+    lurume_release_error "Pages 地址仍被旧自定义域名重定向：$lurume_redirect"
+    print -u2 '请先处理账户级 Pages 的旧 CNAME，再重新发布；当前未创建标签或 Release。'
+    exit 4
+fi
+
+print "这会公开 $lurume_tag、GitHub Release、DMG、appcast 和更新说明。"
+print -n "请输入「发布 $lurume_tag」继续："
+read -r lurume_confirmation
+[[ "$lurume_confirmation" == "发布 $lurume_tag" ]] || {
+    lurume_release_error '确认文字不匹配，未执行发布'
+    exit 4
+}
+
+lurume_remote_tag_sha="$(git ls-remote origin "refs/tags/$lurume_tag" | awk '{ print $1 }')"
+if [[ -n "$lurume_remote_tag_sha" ]]; then
+    [[ "$lurume_remote_tag_sha" == "$lurume_git_sha" ]] || lurume_release_error '远端同名标签指向不同提交，禁止覆盖' || exit 5
+else
+    if git rev-parse -q --verify "refs/tags/$lurume_tag" >/dev/null; then
+        [[ "$(git rev-list -n 1 "$lurume_tag")" == "$lurume_git_sha" ]] || lurume_release_error '本地同名标签指向不同提交' || exit 5
+    else
+        git tag "$lurume_tag" "$lurume_git_sha"
+    fi
+    git push origin "refs/tags/$lurume_tag"
+fi
+
+if gh release view "$lurume_tag" --repo "$lurume_repository" >/dev/null 2>&1; then
+    lurume_release_draft="$(gh release view "$lurume_tag" --repo "$lurume_repository" --json isDraft --jq '.isDraft')"
+    lurume_existing_body="$(gh release view "$lurume_tag" --repo "$lurume_repository" --json body --jq '.body')"
+    lurume_expected_body="$(<"$lurume_notes_source")"
+    [[ "$lurume_existing_body" == "$lurume_expected_body" ]] || lurume_release_error '已有 Release 正文与唯一更新说明不一致，禁止继续' || exit 5
+else
+    gh release create "$lurume_tag" \
+        --repo "$lurume_repository" \
+        --verify-tag \
+        --draft \
+        --title "Lurume $lurume_version" \
+        --notes-file "$lurume_notes_source" \
+        "$lurume_dmg"
+    lurume_release_draft='true'
+fi
+
+lurume_download_tmp="$(mktemp -d "${TMPDIR:-/tmp}/lurume-release-download.XXXXXX")"
+lurume_pages_tmp="$(mktemp -d "${TMPDIR:-/tmp}/lurume-pages.XXXXXX")"
+lurume_cleanup_publish() {
+    case "$lurume_download_tmp" in
+        "${TMPDIR:-/tmp}"/lurume-release-download.*) rm -rf -- "$lurume_download_tmp" ;;
+    esac
+    case "$lurume_pages_tmp" in
+        "${TMPDIR:-/tmp}"/lurume-pages.*) rm -rf -- "$lurume_pages_tmp" ;;
+    esac
+}
+trap lurume_cleanup_publish EXIT INT TERM
+
+gh release download "$lurume_tag" --repo "$lurume_repository" --pattern "$lurume_dmg_relative" --dir "$lurume_download_tmp"
+[[ "$(lurume_sha256 "$lurume_download_tmp/$lurume_dmg_relative")" == "$lurume_expected_dmg_hash" ]] || lurume_release_error 'Release 草稿中的 DMG 哈希不一致' || exit 5
+
+if [[ "$lurume_release_draft" == 'true' ]]; then
+    gh release edit "$lurume_tag" --repo "$lurume_repository" --draft=false
+fi
+
+curl -fL --retry 3 --retry-all-errors \
+    "$(lurume_manifest_value "$lurume_manifest" '.download_url')" \
+    -o "$lurume_download_tmp/public-$lurume_dmg_relative"
+[[ "$(lurume_sha256 "$lurume_download_tmp/public-$lurume_dmg_relative")" == "$lurume_expected_dmg_hash" ]] || lurume_release_error '公开 DMG 哈希不一致' || exit 5
+
+if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+    git clone --quiet --branch gh-pages --single-branch "$(git remote get-url origin)" "$lurume_pages_tmp/site"
+else
+    mkdir -p "$lurume_pages_tmp/site"
+    git -C "$lurume_pages_tmp/site" init -q -b gh-pages
+    git -C "$lurume_pages_tmp/site" remote add origin "$(git remote get-url origin)"
+fi
+
+lurume_site="$lurume_pages_tmp/site"
+if [[ -s "$lurume_site/CNAME" ]]; then
+    lurume_release_error 'gh-pages 分支包含 CNAME，禁止把更新源重定向到自定义域名'
+    exit 6
+fi
+mkdir -p "$lurume_site/release-notes"
+if [[ -f "$lurume_site/appcast.xml" ]] && rg -q "<sparkle:shortVersionString>$lurume_version</sparkle:shortVersionString>" "$lurume_site/appcast.xml"; then
+    cmp "$lurume_site/appcast.xml" "$lurume_artifact_dir/appcast.xml" >/dev/null || lurume_release_error 'Pages 已有同版本但内容不同，禁止覆盖' || exit 6
+else
+    cp "$lurume_artifact_dir/appcast.xml" "$lurume_site/appcast.xml"
+fi
+cp "$lurume_artifact_dir/$lurume_notes_relative" "$lurume_site/$lurume_notes_relative"
+touch "$lurume_site/.nojekyll"
+
+git -C "$lurume_site" add appcast.xml release-notes .nojekyll
+if ! git -C "$lurume_site" diff --cached --quiet; then
+    git -C "$lurume_site" commit -q -m "Publish Lurume $lurume_version update feed"
+    git -C "$lurume_site" push origin gh-pages
+fi
+
+if ! gh api "repos/$lurume_repository/pages" >/dev/null 2>&1; then
+    gh api --method POST "repos/$lurume_repository/pages" \
+        -f 'source[branch]=gh-pages' \
+        -f 'source[path]=/' >/dev/null
+fi
+
+print 'Pages 已提交。部署可能需要片刻；请在稍后重新运行脚本完成公开文件校验。'
+lurume_public_appcast="$lurume_download_tmp/public-appcast.xml"
+if ! curl -fL --retry 3 --retry-all-errors "$lurume_feed_url" -o "$lurume_public_appcast"; then
+    lurume_release_error 'Pages 尚未完成部署；Release 已安全公开，请稍后重试同一命令完成校验'
+    exit 7
+fi
+[[ "$(lurume_sha256 "$lurume_public_appcast")" == "$(lurume_manifest_value "$lurume_manifest" '.files.appcast.sha256')" ]] || lurume_release_error '公开 appcast 与发布清单不一致' || exit 6
+
+lurume_public_notes="$lurume_download_tmp/public-release-notes.md"
+if ! curl -fL --retry 3 --retry-all-errors \
+    "$(lurume_manifest_value "$lurume_manifest" '.release_notes_url')" \
+    -o "$lurume_public_notes"; then
+    lurume_release_error '公开更新说明尚不可用，请稍后重试同一命令完成校验'
+    exit 7
+fi
+[[ "$(lurume_sha256 "$lurume_public_notes")" == "$(lurume_manifest_value "$lurume_manifest" '.files.release_notes.sha256')" ]] || lurume_release_error '公开更新说明与发布清单不一致' || exit 6
+
+print "发布完成：https://github.com/$lurume_repository/releases/tag/$lurume_tag"
+print "更新源：$lurume_feed_url"
