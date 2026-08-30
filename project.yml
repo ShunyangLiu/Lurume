@@ -36,8 +36,16 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSHumanReadableCopyright: "Copyright © 2026 ShunyangLiu. Released under the MIT License."
+        SUAllowsAutomaticUpdates: false
         SUEnableDownloaderService: true
         SUEnableInstallerLauncherService: true
+        SUEnableSystemProfiling: false
+        SUFeedURL: https://shunyangliu.github.io/Lurume/appcast.xml
+        SUPublicEDKey: /5cS7YkTp8GbUq0Vt88J/+pRD/rl5yO1zxCvVRatGes=
+        SURequireSignedFeed: true
+        SUScheduledCheckInterval: 86400
+        SUSignedFeedFailureExpirationInterval: 0
+        SUVerifyUpdateBeforeExtraction: true
     entitlements:
       path: Lurume/Lurume.entitlements
       properties:

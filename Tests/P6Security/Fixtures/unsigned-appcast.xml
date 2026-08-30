@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Lurume P6 隔离签名测试</title>
+    <item>
+      <title>Lurume 9.0.1</title>
+      <pubDate>Sun, 30 Aug 2026 00:00:00 +0800</pubDate>
+      <sparkle:version>9001</sparkle:version>
+      <sparkle:shortVersionString>9.0.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <releaseNotesLink
+        sparkle:edSignature="__NOTES_SIGNATURE__"
+        length="__NOTES_LENGTH__">http://127.0.0.1:8765/sample-release-notes.html</releaseNotesLink>
+      <enclosure
+        url="http://127.0.0.1:8765/sample-update.dmg"
+        sparkle:edSignature="__ARCHIVE_SIGNATURE__"
+        length="__ARCHIVE_LENGTH__"
+        type="application/octet-stream" />
+    </item>
+  </channel>
+</rss>
+

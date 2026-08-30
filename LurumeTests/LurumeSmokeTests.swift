@@ -8,6 +8,21 @@ final class LurumeSmokeTests: XCTestCase {
         XCTAssertEqual(LibrarySchema.currentVersion, 4)
     }
 
+    func testProductionSparkleSecurityConfiguration() throws {
+        let info = try XCTUnwrap(Bundle.main.infoDictionary)
+
+        XCTAssertEqual(info["SUFeedURL"] as? String, "https://shunyangliu.github.io/Lurume/appcast.xml")
+        XCTAssertEqual(info["SUPublicEDKey"] as? String, "/5cS7YkTp8GbUq0Vt88J/+pRD/rl5yO1zxCvVRatGes=")
+        XCTAssertEqual(info["SUVerifyUpdateBeforeExtraction"] as? Bool, true)
+        XCTAssertEqual(info["SURequireSignedFeed"] as? Bool, true)
+        XCTAssertEqual(info["SUSignedFeedFailureExpirationInterval"] as? Int, 0)
+        XCTAssertEqual(info["SUAllowsAutomaticUpdates"] as? Bool, false)
+        XCTAssertEqual(info["SUEnableSystemProfiling"] as? Bool, false)
+        XCTAssertEqual(info["SUScheduledCheckInterval"] as? Int, 86_400)
+        XCTAssertEqual(info["SUEnableDownloaderService"] as? Bool, true)
+        XCTAssertEqual(info["SUEnableInstallerLauncherService"] as? Bool, true)
+    }
+
     @MainActor
     func testUpdaterControllerCanBeCreatedWithoutStartingUpdateWork() {
         let controller = UpdaterController(startingUpdater: false)

@@ -1,0 +1,3 @@
+Lurume P6 deterministic archive-signing fixture.
+This is intentionally not an installable disk image; it exercises byte-level EdDSA signing and rejection only.
+
