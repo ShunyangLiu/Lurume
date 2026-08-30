@@ -19,6 +19,15 @@ lurume_require_build_number() {
         lurume_release_error "构建号必须是正整数：$lurume_build"
 }
 
+lurume_main_refspec() {
+    local lurume_sha="$1"
+    [[ "$lurume_sha" =~ '^[0-9a-f]{40}$' ]] || {
+        lurume_release_error "Git SHA 必须是 40 位小写十六进制：$lurume_sha"
+        return 1
+    }
+    print -r -- "${lurume_sha}:refs/heads/main"
+}
+
 lurume_sha256() {
     /usr/bin/shasum -a 256 "$1" | /usr/bin/awk '{ print $1 }'
 }

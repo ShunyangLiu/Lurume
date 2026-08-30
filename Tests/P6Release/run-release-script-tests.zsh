@@ -29,6 +29,9 @@ lurume_require_semver '1.2.3'
 lurume_require_build_number '42'
 expect_failure '非法语义版本' lurume_require_semver '1.2'
 expect_failure '非递增整数构建号' lurume_require_build_number '0'
+[[ "$(lurume_main_refspec '0123456789abcdef0123456789abcdef01234567')" == \
+    '0123456789abcdef0123456789abcdef01234567:refs/heads/main' ]]
+expect_failure '非法 Git SHA refspec' lurume_main_refspec '6518ba0'
 
 print '# Lurume v1.2.3' > "$lurume_work_dir/notes.md"
 lurume_verify_release_notes_heading "$lurume_work_dir/notes.md" '1.2.3'

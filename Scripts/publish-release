@@ -76,7 +76,7 @@ lurume_feed_url='https://shunyangliu.github.io/Lurume/appcast.xml'
 
 if [[ "$lurume_mode" == '--dry-run' ]]; then
     print "干运行通过：$lurume_tag"
-    print '实际发布顺序：精确标签 → Release 草稿与 DMG → 公开并匿名校验 → gh-pages appcast 与更新说明。'
+    print '实际发布顺序：远端 main → 精确标签 → Release 草稿与 DMG → 公开并匿名校验 → gh-pages appcast 与更新说明。'
     print '没有改变 Git、GitHub Release 或 GitHub Pages。'
     exit 0
 fi
@@ -113,7 +113,7 @@ read -r lurume_confirmation
     exit 4
 }
 
-git push origin "$lurume_git_sha:refs/heads/main"
+git push origin "$(lurume_main_refspec "$lurume_git_sha")"
 
 lurume_remote_tag_sha="$(git ls-remote origin "refs/tags/$lurume_tag" | awk '{ print $1 }')"
 if [[ -n "$lurume_remote_tag_sha" ]]; then
