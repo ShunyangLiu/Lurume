@@ -283,7 +283,10 @@ jq -n \
     }' > "$lurume_stage/manifest.json"
 
 lurume_verify_manifest_files "$lurume_stage"
-lurume_verify_appcast "$lurume_stage" "$lurume_account" "$lurume_sign_update"
+if ! lurume_verify_appcast "$lurume_stage" "$lurume_account" "$lurume_sign_update"; then
+    lurume_release_error '本地签名产物复核失败'
+    exit 6
+fi
 
 mv "$lurume_stage" "$lurume_final_dir"
 chmod -R a-w "$lurume_final_dir"

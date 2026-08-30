@@ -29,6 +29,10 @@ cd "$lurume_repo_root"
     lurume_release_error 'Git 工作区必须完全干净'
     exit 3
 }
+[[ "$(git branch --show-current)" == 'main' ]] || {
+    lurume_release_error '正式发布必须从 main 分支执行'
+    exit 3
+}
 
 lurume_artifact_dir="$lurume_repo_root/build/releases/v$lurume_version"
 lurume_manifest="$lurume_artifact_dir/manifest.json"
@@ -57,7 +61,10 @@ done
 [[ -n "$lurume_sign_update" ]] || lurume_release_error '找不到固定 Sparkle 的 sign_update' || exit 3
 
 lurume_account="${LURUME_SPARKLE_ACCOUNT:-ShunyangLiu}"
-lurume_verify_appcast "$lurume_artifact_dir" "$lurume_account" "$lurume_sign_update"
+if ! lurume_verify_appcast "$lurume_artifact_dir" "$lurume_account" "$lurume_sign_update"; then
+    lurume_release_error '本地签名产物复核失败'
+    exit 3
+fi
 
 lurume_tag="v$lurume_version"
 lurume_dmg_relative="$(lurume_manifest_value "$lurume_manifest" '.files.dmg.path')"
@@ -77,6 +84,13 @@ fi
 command -v gh >/dev/null || lurume_release_error '找不到 GitHub CLI' || exit 4
 gh auth status -h github.com >/dev/null || lurume_release_error 'GitHub CLI 尚未登录，请先运行 gh auth login' || exit 4
 
+git fetch --quiet origin main
+lurume_remote_main_sha="$(git rev-parse origin/main)"
+git merge-base --is-ancestor "$lurume_remote_main_sha" "$lurume_git_sha" || {
+    lurume_release_error '本地发布提交不能从远端 main 快速前进，禁止自动合并或强制推送'
+    exit 4
+}
+
 if lurume_pages_source="$(gh api "repos/$lurume_repository/pages" --jq '[.source.branch, .source.path] | @tsv' 2>/dev/null)"; then
     [[ "$lurume_pages_source" == $'gh-pages\t/' ]] || {
         lurume_release_error "GitHub Pages 当前不是 gh-pages 根目录：$lurume_pages_source"
@@ -91,13 +105,15 @@ if [[ -n "$lurume_redirect" && "$lurume_redirect" != https://shunyangliu.github.
     exit 4
 fi
 
-print "这会公开 $lurume_tag、GitHub Release、DMG、appcast 和更新说明。"
+print "这会把发布提交推送到 main，并公开 $lurume_tag、GitHub Release、DMG、appcast 和更新说明。"
 print -n "请输入「发布 $lurume_tag」继续："
 read -r lurume_confirmation
 [[ "$lurume_confirmation" == "发布 $lurume_tag" ]] || {
     lurume_release_error '确认文字不匹配，未执行发布'
     exit 4
 }
+
+git push origin "$lurume_git_sha:refs/heads/main"
 
 lurume_remote_tag_sha="$(git ls-remote origin "refs/tags/$lurume_tag" | awk '{ print $1 }')"
 if [[ -n "$lurume_remote_tag_sha" ]]; then

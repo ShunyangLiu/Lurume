@@ -35,12 +35,13 @@ The real command requires `gh auth login` and an exact interactive confirmation:
 Scripts/publish-release 0.0.3
 ```
 
-It publishes in this order: exact Git tag, draft Release and verified DMG,
-public Release and anonymous DMG verification, then one `gh-pages` commit with
-the signed appcast and release notes. Re-running the same command is safe after
-a partial failure only when the existing tag, Release body, asset and files
-still match the immutable manifest. Existing same-version content is never
-overwritten when it differs.
+It publishes in this order: fast-forward the prepared commit to remote `main`,
+create the exact Git tag, create a draft Release and verify its DMG, make the
+Release public and verify it anonymously, then create one `gh-pages` commit
+with the signed appcast and release notes. Re-running the same command is safe
+after a partial failure only when the existing branch, tag, Release body, asset
+and files still match the immutable manifest. Existing same-version content is
+never overwritten when it differs.
 
 The publisher deliberately stops before any mutation if the project Pages URL
 still redirects through an old account-level custom domain.
