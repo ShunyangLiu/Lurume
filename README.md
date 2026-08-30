@@ -23,7 +23,7 @@ Lurume 是一款面向 Apple 平台的开源、轻量、原生学术论文阅读
 
 ## 下载安装
 
-前往 [Releases 页面](https://github.com/ShunyangLiu/Lurume/releases/latest) 下载最新的 `Lurume.dmg`：
+前往 [Releases 页面](https://github.com/ShunyangLiu/Lurume/releases/latest) 下载最新的 `Lurume-<版本>.dmg`：
 
 1. 打开 DMG，把 Lurume 拖入 Applications 文件夹；
 2. 首次打开时 macOS 会提示“无法验证开发者”。此时不要点“移到废纸篓”，打开
@@ -38,8 +38,8 @@ Lurume 是一款面向 Apple 平台的开源、轻量、原生学术论文阅读
 
 ### 应用内更新
 
-`v0.0.3` 是首个包含安全应用内更新能力的引导版本，因此需要按上面的步骤手动安装。
-安装后可从 **Lurume → 检查更新…** 主动检查；第二次启动时，Lurume 会询问是否允许每
+`v0.0.3` 是首个包含安全应用内更新能力的引导版本；`v0.0.4` 已完成首次真实应用内升级
+验证。安装后可从 **Lurume → 检查更新…** 主动检查；第二次启动时，Lurume 会询问是否允许每
 24 小时自动检查。自动检查只提示可用版本，不会静默下载、安装或重启，也不会发送文献
 数据或系统配置档案。该能力由固定版本的官方 Sparkle 提供。
 
@@ -56,11 +56,12 @@ Lurume 是一款面向 Apple 平台的开源、轻量、原生学术论文阅读
 
 ## 当前状态
 
-macOS 原型已经完成 P1–P5：当前版本包含本地 PDF 引用、PDFKit 阅读器、阅读位置恢复、
+macOS 原型已经完成 P1–P6：当前版本包含本地 PDF 引用、PDFKit 阅读器、阅读位置恢复、
 划词翻译、PDF 属性元数据与手动编辑、黄色文字高亮、高亮列表与浮动纯文本笔记、PDF
 自带目录、页面缩略图、三态阅读状态，以及 Zotero 风格的文献集、未分类视图、表格文献
 库、多选和拖放整理。翻译默认使用英语原文和简体中文目标语言，可在设置中将原文语言
-切换为自动识别。P6 正在加入 Sparkle 应用内更新和可重复的本地签名发布链路。
+切换为自动识别。P6 已完成 Sparkle 应用内更新、正式 EdDSA 信任根和可重复的本地两阶段
+发布链路，并通过 `v0.0.3 → v0.0.4` 的真实安装重启与数据恢复验收。
 详见 [P0 原型规格](docs/P0-prototype.md)、[P1 讨论记录](docs/P1-plan.md)、
 [P1 实现计划](docs/P1-implementation-plan.md)与 [P1 验收记录](docs/P1-acceptance.md)。
 P2 的范围、交互和验收标准详见 [P2 高亮阅读计划](docs/P2-plan.md)。P3 的基础目录、
@@ -70,7 +71,8 @@ P4 的高亮选择、页面笔记标志、浮动卡片和数据迁移规则详�
 [P4 高亮笔记计划](docs/P4-plan.md)。
 P5 的文献集、独立文献库模式、批量整理和删除语义详见
 [P5 文献管理计划](docs/P5-plan.md)。P6 的安全更新、签名和本地发布边界详见
-[P6 应用内更新计划](docs/P6-plan.md)。
+[P6 应用内更新计划](docs/P6-plan.md)，最终发布、升级和性能证据见
+[P6 检查点四实现记录](docs/P6-checkpoint4.md)。
 
 使用 Xcode 26.3 或更新版本打开 `Lurume.xcodeproj`，选择 `Lurume` scheme 即可构建运行。
 工程最低支持 macOS 15；运行时第三方依赖仅有系统框架无法替代的 Sparkle 更新基础设施。
