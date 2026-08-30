@@ -3,6 +3,10 @@
 P6 releases are built and signed on the developer Mac. GitHub Actions does not
 build, sign or publish Lurume releases.
 
+Both scripts require `jq` on `PATH`; preparing additionally requires
+`xcodegen`. The scripts check for these tools up front and stop with a clear
+error instead of failing halfway.
+
 ## Prepare locally
 
 After committing the target version, build number and

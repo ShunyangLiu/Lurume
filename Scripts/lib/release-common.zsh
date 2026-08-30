@@ -39,7 +39,7 @@ lurume_file_size() {
 lurume_manifest_value() {
     local lurume_manifest="$1"
     local lurume_filter="$2"
-    /usr/bin/jq -er "$lurume_filter" "$lurume_manifest"
+    jq -er "$lurume_filter" "$lurume_manifest"
 }
 
 lurume_safe_relative_path() {

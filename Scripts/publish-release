@@ -34,6 +34,11 @@ cd "$lurume_repo_root"
     exit 3
 }
 
+command -v jq >/dev/null || {
+    lurume_release_error '找不到 jq'
+    exit 4
+}
+
 lurume_artifact_dir="$lurume_repo_root/build/releases/v$lurume_version"
 lurume_manifest="$lurume_artifact_dir/manifest.json"
 lurume_verify_manifest_files "$lurume_artifact_dir"
@@ -181,7 +186,7 @@ if [[ -s "$lurume_site/CNAME" ]]; then
     exit 6
 fi
 mkdir -p "$lurume_site/release-notes"
-if [[ -f "$lurume_site/appcast.xml" ]] && rg -q "<sparkle:shortVersionString>$lurume_version</sparkle:shortVersionString>" "$lurume_site/appcast.xml"; then
+if [[ -f "$lurume_site/appcast.xml" ]] && grep -qF "<sparkle:shortVersionString>$lurume_version</sparkle:shortVersionString>" "$lurume_site/appcast.xml"; then
     cmp "$lurume_site/appcast.xml" "$lurume_artifact_dir/appcast.xml" >/dev/null || lurume_release_error 'Pages 已有同版本但内容不同，禁止覆盖' || exit 6
 else
     cp "$lurume_artifact_dir/appcast.xml" "$lurume_site/appcast.xml"

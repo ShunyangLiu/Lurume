@@ -101,4 +101,27 @@ expect_failure \
     '准备版本与工程版本不一致' \
     "$lurume_work_dir/preflight/Scripts/prepare-release" 0.0.4 4 --preflight-only
 
+cat > "$lurume_work_dir/preflight/project.yml" <<'EOF'
+targets:
+  Lurume:
+    settings:
+      base:
+        CURRENT_PROJECT_VERSION: not-a-number
+        MARKETING_VERSION: 0.0.9
+EOF
+print '# Lurume v0.0.9' > "$lurume_work_dir/preflight/release-notes/v0.0.9.md"
+git -C "$lurume_work_dir/preflight" add project.yml release-notes/v0.0.9.md
+git -C "$lurume_work_dir/preflight" commit -q -m corrupt-build
+git -C "$lurume_work_dir/preflight" tag v0.0.9
+
+sed -i '' 's/CURRENT_PROJECT_VERSION: not-a-number/CURRENT_PROJECT_VERSION: 10/' "$lurume_work_dir/preflight/project.yml"
+sed -i '' 's/MARKETING_VERSION: 0.0.9/MARKETING_VERSION: 0.0.10/' "$lurume_work_dir/preflight/project.yml"
+print '# Lurume v0.0.10' > "$lurume_work_dir/preflight/release-notes/v0.0.10.md"
+git -C "$lurume_work_dir/preflight" add project.yml release-notes/v0.0.10.md
+git -C "$lurume_work_dir/preflight" commit -q -m after-corrupt-build
+
+expect_failure \
+    '历史标签构建号无效' \
+    "$lurume_work_dir/preflight/Scripts/prepare-release" 0.0.10 10 --preflight-only
+
 print 'P6 发布脚本输入、哈希与路径边界测试通过。'

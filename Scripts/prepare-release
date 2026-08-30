@@ -41,6 +41,11 @@ lurume_notes_source="$lurume_repo_root/release-notes/v$lurume_version.md"
 }
 lurume_verify_release_notes_heading "$lurume_notes_source" "$lurume_version"
 
+command -v jq >/dev/null || {
+    lurume_release_error '找不到 jq'
+    exit 4
+}
+
 lurume_resolved="$lurume_repo_root/Lurume.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 [[ -f "$lurume_resolved" ]] || {
     lurume_release_error '缺少受版本控制的 Package.resolved'
@@ -84,10 +89,16 @@ if [[ -n "$lurume_latest_tag" ]]; then
         in_target && /^  [^ ]+:/ { exit }
         in_target && /CURRENT_PROJECT_VERSION:/ { print $2; exit }
     ')"
-    [[ -z "$lurume_previous_build" || "$lurume_build" -gt "$lurume_previous_build" ]] || {
-        lurume_release_error "构建号 $lurume_build 必须高于 $lurume_latest_tag 的 $lurume_previous_build"
-        exit 3
-    }
+    if [[ -n "$lurume_previous_build" ]]; then
+        [[ "$lurume_previous_build" =~ '^[1-9][0-9]*$' ]] || {
+            lurume_release_error "标签 $lurume_latest_tag 的构建号无效：$lurume_previous_build"
+            exit 3
+        }
+        [[ "$lurume_build" -gt "$lurume_previous_build" ]] || {
+            lurume_release_error "构建号 $lurume_build 必须高于 $lurume_latest_tag 的 $lurume_previous_build"
+            exit 3
+        }
+    fi
 fi
 
 if [[ "$lurume_mode" == '--preflight-only' ]]; then
