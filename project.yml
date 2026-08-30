@@ -62,8 +62,8 @@ targets:
         PRODUCT_NAME: Lurume
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "-"
-        CURRENT_PROJECT_VERSION: 3
-        MARKETING_VERSION: 0.0.3
+        CURRENT_PROJECT_VERSION: 4
+        MARKETING_VERSION: 0.0.4
 
   LurumeTests:
     type: bundle.unit-test
