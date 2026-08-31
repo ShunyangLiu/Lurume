@@ -642,7 +642,7 @@ struct ContentView: View {
                         translationController.receiveSelection(
                             event,
                             paperID: paper.id,
-                            paperName: paper.title,
+                            paperName: paper.displayTitle,
                             automaticTranslation: appSettings.automaticTranslation,
                             preferences: appSettings.translationRequestPreferences
                         )
@@ -689,7 +689,7 @@ struct ContentView: View {
                 }
                 .animation(.easeOut(duration: 0.15), value: isPDFSearchPresented)
             } else if activeAccessPaperID == paper.id {
-                UnavailablePaperView(paperName: paper.title) {
+                UnavailablePaperView(paperName: paper.displayTitle) {
                     presentRelinker(for: paper.id)
                 }
             } else {
@@ -1108,7 +1108,7 @@ private struct PaperRow: View {
                         .onSubmit(commitTitle)
                         .onExitCommand(perform: cancelTitle)
                 } else {
-                    Text(paper.title)
+                    Text(paper.displayTitle)
                         .lineLimit(2, reservesSpace: false)
                 }
 

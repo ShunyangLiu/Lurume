@@ -47,7 +47,7 @@ final class ReaderModeTransitionTests: XCTestCase {
                 fallbackPath: "/tmp/page.pdf"
             ),
             bookmarkData: Data(),
-            displayName: "Page"
+            initialTitle: "Page"
         )
         try persistence.save(LibrarySnapshot(
             schemaVersion: LibrarySchema.currentVersion,
@@ -186,7 +186,7 @@ final class ReaderModeTransitionTests: XCTestCase {
                 fallbackPath: "/tmp/paper.pdf"
             ),
             bookmarkData: Data(),
-            displayName: "Paper",
+            initialTitle: "Paper",
             collectionIDs: [collection.id]
         )
 

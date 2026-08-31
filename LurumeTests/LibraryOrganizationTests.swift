@@ -20,7 +20,7 @@ final class LibraryOrganizationTests: XCTestCase {
                 fallbackPath: "/tmp/\(id.uuidString).pdf"
             ),
             bookmarkData: Data(),
-            displayName: title,
+            initialTitle: title,
             originalFileName: "\(title)-source.pdf",
             dateAdded: Date(timeIntervalSince1970: dateAdded),
             lastOpenedAt: lastOpenedAt.map(Date.init(timeIntervalSince1970:)),

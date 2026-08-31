@@ -309,7 +309,7 @@ final class LibraryStore: ObservableObject {
             let record = PaperRecord(
                 identity: identity,
                 bookmarkData: bookmarkData,
-                displayName: url.deletingPathExtension().lastPathComponent,
+                initialTitle: url.deletingPathExtension().lastPathComponent,
                 originalFileName: url.lastPathComponent,
                 lastOpenedAt: selectAfterImport ? openedAt : nil,
                 collectionIDs: collectionID.map { [$0] } ?? []

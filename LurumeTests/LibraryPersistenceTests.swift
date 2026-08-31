@@ -63,7 +63,7 @@ final class LibraryPersistenceTests: XCTestCase {
                         fallbackPath: "/tmp/paper.pdf"
                     ),
                     bookmarkData: Data([0, 1, 2]),
-                    displayName: "Paper",
+                    initialTitle: "Paper",
                     dateAdded: Date(timeIntervalSince1970: 1_700_000_000),
                     lastOpenedAt: Date(timeIntervalSince1970: 1_700_000_100),
                     lastPageIndex: 17,
@@ -167,7 +167,7 @@ final class LibraryPersistenceTests: XCTestCase {
         XCTAssertEqual(migrated.title, "V2 Title")
         XCTAssertEqual(migrated.authors, "Ada, Lin")
         XCTAssertEqual(migrated.year, 2025)
-        XCTAssertEqual(migrated.manuallyEditedFields, [.title, .year])
+        XCTAssertEqual(migrated.manuallyEditedFields, [.title, .issuedDate])
         XCTAssertTrue(migrated.didReadAutoMetadata)
         XCTAssertEqual(migrated.lastPageIndex, 23)
         XCTAssertEqual(migrated.readingStatus, .unread)
@@ -220,7 +220,7 @@ final class LibraryPersistenceTests: XCTestCase {
         XCTAssertEqual(migrated.title, "V3 Title")
         XCTAssertEqual(migrated.authors, "Lin, Ada")
         XCTAssertEqual(migrated.year, 2026)
-        XCTAssertEqual(migrated.manuallyEditedFields, [.authors])
+        XCTAssertEqual(migrated.manuallyEditedFields, [.creators])
         XCTAssertTrue(migrated.didReadAutoMetadata)
         XCTAssertEqual(migrated.dateAdded, legacy.papers[0].dateAdded)
         XCTAssertEqual(migrated.lastOpenedAt, legacy.papers[0].lastOpenedAt)
@@ -229,7 +229,7 @@ final class LibraryPersistenceTests: XCTestCase {
         XCTAssertTrue(migrated.collectionIDs.isEmpty)
     }
 
-    func testVersionFourRejectsUnknownCollectionReference() throws {
+    func testVersionFiveRejectsUnknownCollectionReference() throws {
         let fileURL = makeTempFileURL("library.json")
         defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
         let paper = PaperRecord(
@@ -239,7 +239,7 @@ final class LibraryPersistenceTests: XCTestCase {
                 fallbackPath: "/tmp/unknown.pdf"
             ),
             bookmarkData: Data(),
-            displayName: "Unknown Collection",
+            initialTitle: "Unknown Collection",
             collectionIDs: [UUID()]
         )
         let invalid = LibrarySnapshot(
@@ -257,7 +257,7 @@ final class LibraryPersistenceTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
     }
 
-    func testVersionFourRejectsDuplicateNormalizedCollectionNames() throws {
+    func testVersionFiveRejectsDuplicateNormalizedSiblingCollectionNames() throws {
         let fileURL = makeTempFileURL("library.json")
         defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
         let invalid = LibrarySnapshot(
@@ -293,7 +293,7 @@ final class LibraryPersistenceTests: XCTestCase {
                 fallbackPath: "/tmp/project-a.pdf"
             ),
             bookmarkData: Data(),
-            displayName: "Project A",
+            initialTitle: "Project A",
             collectionIDs: [collection.id]
         )
         let persistence = LibraryPersistence(fileURL: fileURL)

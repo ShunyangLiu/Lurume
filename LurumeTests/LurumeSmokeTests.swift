@@ -5,7 +5,7 @@ import XCTest
 
 final class LurumeSmokeTests: XCTestCase {
     func testApplicationTargetLoads() {
-        XCTAssertEqual(LibrarySchema.currentVersion, 4)
+        XCTAssertEqual(LibrarySchema.currentVersion, 5)
     }
 
     func testProductionSparkleSecurityConfiguration() throws {

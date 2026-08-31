@@ -7,7 +7,7 @@ enum LibraryPersistenceError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case let .unsupportedSchema(found):
-            "文献库格式版本为 \(found)，当前应用只支持版本 1–3 的自动升级和版本 \(LibrarySchema.currentVersion)。"
+            "文献库格式版本为 \(found)，当前应用只支持版本 1–4 的自动升级和版本 \(LibrarySchema.currentVersion)。"
         case let .invalidSnapshot(reason):
             "文献库数据不一致：\(reason)"
         }
@@ -82,6 +82,39 @@ struct LibrarySnapshotV3: Codable, Equatable, Sendable {
     var selectedPaperID: UUID?
 }
 
+/// v4 快照原样保留：P8 迁移结构化书目字段并把扁平文献集放到顶层。
+struct PaperRecordV4: Codable, Equatable, Sendable {
+    let id: UUID
+    var volumeUUID: String?
+    var documentIdentifier: Int?
+    var bookmarkData: Data
+    var fallbackPath: String
+    var originalFileName: String
+    var title: String
+    var authors: String?
+    var year: Int?
+    var manuallyEditedFields: Set<MetadataField>
+    var didReadAutoMetadata: Bool
+    let dateAdded: Date
+    var lastOpenedAt: Date?
+    var lastPageIndex: Int
+    var readingStatus: ReadingStatus
+    var collectionIDs: [UUID]
+}
+
+struct CollectionRecordV4: Codable, Equatable, Sendable {
+    let id: UUID
+    var name: String
+    let createdAt: Date
+}
+
+struct LibrarySnapshotV4: Codable, Equatable, Sendable {
+    var schemaVersion: Int
+    var papers: [PaperRecordV4]
+    var collections: [CollectionRecordV4]
+    var selectedPaperID: UUID?
+}
+
 /// 载入结果。migratedFromLegacy 为真时调用方应尽快落盘，保证升级尽早持久化。
 struct LoadedLibrary: Equatable, Sendable {
     let snapshot: LibrarySnapshot
@@ -103,7 +136,7 @@ enum LibraryMigrations {
                         fallbackPath: paper.fallbackPath
                     ),
                     bookmarkData: paper.bookmarkData,
-                    displayName: paper.displayName,
+                    initialTitle: paper.displayName,
                     originalFileName: Self.originalFileName(for: paper),
                     dateAdded: paper.dateAdded,
                     lastOpenedAt: paper.lastOpenedAt,
@@ -126,7 +159,7 @@ enum LibraryMigrations {
                         fallbackPath: paper.fallbackPath
                     ),
                     bookmarkData: paper.bookmarkData,
-                    displayName: paper.title,
+                    initialTitle: paper.title,
                     originalFileName: paper.originalFileName,
                     dateAdded: paper.dateAdded,
                     lastOpenedAt: paper.lastOpenedAt,
@@ -136,7 +169,7 @@ enum LibraryMigrations {
                 migrated.title = paper.title
                 migrated.authors = paper.authors
                 migrated.year = paper.year
-                migrated.manuallyEditedFields = paper.manuallyEditedFields
+                migrated.manuallyEditedFields = migratedManualFields(paper.manuallyEditedFields)
                 migrated.didReadAutoMetadata = paper.didReadAutoMetadata
                 return migrated
             },
@@ -156,7 +189,7 @@ enum LibraryMigrations {
                         fallbackPath: paper.fallbackPath
                     ),
                     bookmarkData: paper.bookmarkData,
-                    displayName: paper.title,
+                    initialTitle: paper.title,
                     originalFileName: paper.originalFileName,
                     dateAdded: paper.dateAdded,
                     lastOpenedAt: paper.lastOpenedAt,
@@ -166,7 +199,7 @@ enum LibraryMigrations {
                 migrated.title = paper.title
                 migrated.authors = paper.authors
                 migrated.year = paper.year
-                migrated.manuallyEditedFields = paper.manuallyEditedFields
+                migrated.manuallyEditedFields = migratedManualFields(paper.manuallyEditedFields)
                 migrated.didReadAutoMetadata = paper.didReadAutoMetadata
                 return migrated
             },
@@ -175,9 +208,56 @@ enum LibraryMigrations {
         )
     }
 
+    static func migrate(_ legacy: LibrarySnapshotV4) -> LibrarySnapshot {
+        LibrarySnapshot(
+            schemaVersion: LibrarySchema.currentVersion,
+            papers: legacy.papers.map { paper in
+                var metadata = BibliographicMetadata(title: paper.title)
+                metadata.setLegacyAuthors(paper.authors)
+                if let year = paper.year {
+                    metadata.issuedDate = BibliographicDate(year: year)
+                }
+                var migrated = PaperRecord(
+                    id: paper.id,
+                    identity: FileIdentity(
+                        volumeUUID: paper.volumeUUID,
+                        documentIdentifier: paper.documentIdentifier,
+                        fallbackPath: paper.fallbackPath
+                    ),
+                    bookmarkData: paper.bookmarkData,
+                    initialTitle: paper.title,
+                    originalFileName: paper.originalFileName,
+                    dateAdded: paper.dateAdded,
+                    lastOpenedAt: paper.lastOpenedAt,
+                    lastPageIndex: paper.lastPageIndex,
+                    readingStatus: paper.readingStatus,
+                    collectionIDs: paper.collectionIDs,
+                    metadata: metadata
+                )
+                migrated.manuallyEditedFields = migratedManualFields(paper.manuallyEditedFields)
+                migrated.didReadAutoMetadata = paper.didReadAutoMetadata
+                return migrated
+            },
+            collections: legacy.collections.map {
+                CollectionRecord(id: $0.id, name: $0.name, createdAt: $0.createdAt)
+            },
+            selectedPaperID: legacy.selectedPaperID
+        )
+    }
+
     private static func originalFileName(for paper: PaperRecordV1) -> String {
         let pathName = (paper.fallbackPath as NSString).lastPathComponent
         return pathName.isEmpty ? paper.displayName : pathName
+    }
+
+    private static func migratedManualFields(_ fields: Set<MetadataField>) -> Set<MetadataField> {
+        Set(fields.map { field in
+            switch field {
+            case .authors: .creators
+            case .year: .issuedDate
+            default: field
+            }
+        })
     }
 }
 
@@ -227,6 +307,11 @@ struct LibraryPersistence: Sendable {
             let snapshot = try Self.decoder.decode(LibrarySnapshot.self, from: data)
             try Self.validate(snapshot)
             return LoadedLibrary(snapshot: snapshot, migratedFromLegacy: false)
+        case 4:
+            let legacy = try Self.decoder.decode(LibrarySnapshotV4.self, from: data)
+            let snapshot = LibraryMigrations.migrate(legacy)
+            try Self.validate(snapshot)
+            return LoadedLibrary(snapshot: snapshot, migratedFromLegacy: true)
         case 3:
             let legacy = try Self.decoder.decode(LibrarySnapshotV3.self, from: data)
             let snapshot = LibraryMigrations.migrate(legacy)
@@ -277,29 +362,70 @@ struct LibraryPersistence: Sendable {
             throw LibraryPersistenceError.invalidSnapshot(reason: "存在重复的文献集 ID。")
         }
 
-        var nameKeys: Set<String> = []
         for collection in snapshot.collections {
             let trimmedName = CollectionNameRules.trimmed(collection.name)
             guard !trimmedName.isEmpty else {
                 throw LibraryPersistenceError.invalidSnapshot(reason: "存在空名称文献集。")
             }
-            let key = CollectionNameRules.comparisonKey(trimmedName)
-            guard nameKeys.insert(key).inserted else {
-                throw LibraryPersistenceError.invalidSnapshot(reason: "存在重复的文献集名称。")
+            guard Set(collection.importSources).count == collection.importSources.count else {
+                throw LibraryPersistenceError.invalidSnapshot(reason: "文献集“\(collection.name)”包含重复来源。")
             }
+            guard collection.importSources == collection.importSources.sorted(by: ImportSourceOrdering.less) else {
+                throw LibraryPersistenceError.invalidSnapshot(reason: "文献集“\(collection.name)”的来源顺序不稳定。")
+            }
+            guard collection.importSources.allSatisfy(ImportSourceRules.isValid) else {
+                throw LibraryPersistenceError.invalidSnapshot(reason: "文献集“\(collection.name)”包含无效来源标识。")
+            }
+        }
+
+        if let issue = CollectionHierarchy.validationIssue(in: snapshot.collections) {
+            let reason: String
+            switch issue {
+            case .missingParent:
+                reason = "文献集引用了不存在的父文献集。"
+            case .cycle:
+                reason = "文献集层级存在循环。"
+            case .duplicateSiblingName:
+                reason = "同一层级存在重复的文献集名称。"
+            }
+            throw LibraryPersistenceError.invalidSnapshot(reason: reason)
         }
 
         let validCollectionIDs = Set(collectionIDs)
         for paper in snapshot.papers {
             guard Set(paper.collectionIDs).count == paper.collectionIDs.count else {
                 throw LibraryPersistenceError.invalidSnapshot(
-                    reason: "论文“\(paper.title)”包含重复的文献集归属。"
+                    reason: "论文“\(paper.displayTitle)”包含重复的文献集归属。"
                 )
             }
             guard paper.collectionIDs.allSatisfy(validCollectionIDs.contains) else {
                 throw LibraryPersistenceError.invalidSnapshot(
-                    reason: "论文“\(paper.title)”引用了不存在的文献集。"
+                    reason: "论文“\(paper.displayTitle)”引用了不存在的文献集。"
                 )
+            }
+            guard Set(paper.importSources).count == paper.importSources.count else {
+                throw LibraryPersistenceError.invalidSnapshot(
+                    reason: "论文“\(paper.displayTitle)”包含重复导入来源。"
+                )
+            }
+            guard paper.importSources == paper.importSources.sorted(by: ImportSourceOrdering.less) else {
+                throw LibraryPersistenceError.invalidSnapshot(
+                    reason: "论文“\(paper.displayTitle)”的导入来源顺序不稳定。"
+                )
+            }
+            guard paper.importSources.allSatisfy(ImportSourceRules.isValid) else {
+                throw LibraryPersistenceError.invalidSnapshot(
+                    reason: "论文“\(paper.displayTitle)”包含无效导入来源。"
+                )
+            }
+            if let fingerprint = paper.contentFingerprint {
+                let isSHA256 = fingerprint.sha256.count == 64
+                    && fingerprint.sha256.allSatisfy { $0.isHexDigit }
+                guard isSHA256, fingerprint.byteCount >= 0 else {
+                    throw LibraryPersistenceError.invalidSnapshot(
+                        reason: "论文“\(paper.displayTitle)”包含无效内容哈希。"
+                    )
+                }
             }
         }
     }

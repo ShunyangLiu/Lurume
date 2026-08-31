@@ -59,7 +59,7 @@ final class PaperMetadataTests: XCTestCase {
                 fallbackPath: "/tmp/paper.pdf"
             ),
             bookmarkData: Data(),
-            displayName: "paper"
+            initialTitle: "paper"
         )
         record.title = title
         record.authors = authors
@@ -80,7 +80,7 @@ final class PaperMetadataTests: XCTestCase {
     }
 
     func testAutoMetadataRespectsManualEdits() {
-        var record = makeRecord(manuallyEditedFields: [.title, .authors])
+        var record = makeRecord(manuallyEditedFields: [.title, .creators])
         record.applyAutoMetadata(
             PaperMetadata(title: "Property Title", authors: "Someone")
         )
@@ -132,7 +132,7 @@ final class PaperMetadataTests: XCTestCase {
         record.applyAutoMetadata(nil)
         XCTAssertTrue(record.didReadAutoMetadata, "读到空属性属于已读，不再重试")
 
-        var untouched = makeRecord()
+        let untouched = makeRecord()
         // 文件不可用走 inaccessible 分支：不调用 applyAutoMetadata。
         _ = untouched
         XCTAssertFalse(untouched.didReadAutoMetadata)
@@ -272,7 +272,7 @@ final class PaperMetadataTests: XCTestCase {
                 fallbackPath: harness.directory.appendingPathComponent("legacy-v2.pdf").path
             ),
             bookmarkData: Data(),
-            displayName: "legacy-v2"
+            initialTitle: "legacy-v2"
         )
         record.originalFileName = "legacy-v2"
         try harness.persistence.save(LibrarySnapshot(

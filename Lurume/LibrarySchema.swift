@@ -1,4 +1,4 @@
 enum LibrarySchema: Sendable {
-    /// v4：新增扁平文献集和论文的多重归属。v1–v3 在载入时自动迁移。
-    static let currentVersion = 4
+    /// v5：新增结构化引用元数据、导入来源/哈希和嵌套文献集。v1–v4 显式迁移。
+    static let currentVersion = 5
 }

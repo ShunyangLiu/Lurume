@@ -12,7 +12,7 @@ final class PaperRemovalCoordinatorTests: XCTestCase {
                 fallbackPath: "/tmp/\(id.uuidString).pdf"
             ),
             bookmarkData: Data(),
-            displayName: "Paper",
+            initialTitle: "Paper",
             originalFileName: "\(id.uuidString).pdf"
         )
     }

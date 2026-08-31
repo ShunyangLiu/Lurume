@@ -16,7 +16,7 @@ final class LibraryCollectionStoreTests: XCTestCase {
                 fallbackPath: "/tmp/\(id.uuidString).pdf"
             ),
             bookmarkData: Data(),
-            displayName: title,
+            initialTitle: title,
             originalFileName: "\(id.uuidString).pdf",
             collectionIDs: collectionIDs
         )

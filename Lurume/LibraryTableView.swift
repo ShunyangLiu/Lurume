@@ -192,7 +192,7 @@ struct LibraryTableView: NSViewRepresentable {
                 return statusButton(for: paper, tableView: tableView)
             case .title:
                 return textCell(
-                    paper.title,
+                    paper.displayTitle,
                     identifier: configuration.identifier,
                     tooltip: paper.originalFileName,
                     isUnavailable: parent.unavailablePaperIDs.contains(paper.id)
