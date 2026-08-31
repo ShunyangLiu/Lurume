@@ -22,6 +22,17 @@ struct LurumeApp: App {
         }
         .defaultSize(width: 1_180, height: 760)
         .commands {
+            CommandGroup(after: .newItem) {
+                Button("导入 PDF…") {
+                    NotificationCenter.default.post(name: .lurumeImportPDF, object: nil)
+                }
+                .keyboardShortcut("o", modifiers: [.command])
+                Button("导入文件夹…") {
+                    NotificationCenter.default.post(name: .lurumeImportFolder, object: nil)
+                }
+                Divider()
+            }
+
             CommandGroup(after: .appInfo) {
                 Button("检查更新…") {
                     updaterController.checkForUpdates()

@@ -497,6 +497,7 @@ struct LibraryTablePane: View {
     @Binding var searchText: String
     @Binding var statusFilter: ReadingStatusFilter
     let importPDFs: () -> Void
+    let importFolder: () -> Void
     let editMetadata: (UUID) -> Void
     let openPaper: (UUID) -> Void
     let removeFromLibrary: (Set<UUID>) -> Void
@@ -536,6 +537,16 @@ struct LibraryTablePane: View {
                     .fixedSize()
                     .help("导入 PDF")
                     .accessibilityLabel("导入 PDF")
+                    .disabled(libraryStore.persistenceDisabled)
+                    Button(action: importFolder) {
+                        Image(systemName: "folder.badge.plus")
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .fixedSize()
+                    .help("导入文件夹")
+                    .accessibilityLabel("导入文件夹")
                     .disabled(libraryStore.persistenceDisabled)
                 }
                 Spacer()

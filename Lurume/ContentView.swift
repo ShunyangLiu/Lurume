@@ -6,6 +6,7 @@ import AppKit
 struct ContentView: View {
     private enum FileImporterPurpose {
         case importPDFs
+        case importFolder
         case relinkPaper
     }
 
@@ -17,8 +18,11 @@ struct ContentView: View {
     @EnvironmentObject private var highlightStore: HighlightStore
     @EnvironmentObject private var updaterController: UpdaterController
     @StateObject private var pdfController = PDFReaderController()
+    @StateObject private var folderImportCoordinator = FolderImportCoordinator()
     @State private var isImporterPresented = false
     @State private var importerPurpose: FileImporterPurpose?
+    @State private var importerAllowedContentTypes: [UTType] = [.pdf]
+    @State private var importerAllowsMultipleSelection = true
     @State private var relinkingPaperID: UUID?
     @State private var activeAccess: SecurityScopedAccess?
     @State private var activeAccessPaperID: UUID?
@@ -116,78 +120,7 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                Group {
-                    if appSettings.mainWindowMode == .reading {
-                        sidebar
-                    } else {
-                        LibrarySourceSidebar(source: $appSettings.lastLibrarySource)
-                    }
-                }
-                    .navigationSplitViewColumnWidth(min: 210, ideal: 250, max: 340)
-            } detail: {
-                if appSettings.mainWindowMode == .reading {
-                    detail
-                } else {
-                    LibraryTablePane(
-                        source: appSettings.lastLibrarySource,
-                        selection: $libraryModeSelection,
-                        searchText: $libraryModeSearchText,
-                        statusFilter: $libraryModeStatusFilter,
-                        importPDFs: presentImporter,
-                        editMetadata: { metadataEditorTarget = $0 },
-                        openPaper: openPaperFromLibrary,
-                        removeFromLibrary: requestBatchPaperRemoval
-                    )
-                }
-            }
-            .frame(minWidth: 900, minHeight: 600)
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    Button(action: toggleMainWindowMode) {
-                        Image(systemName: appSettings.mainWindowMode == .reading
-                            ? "books.vertical"
-                            : "doc.richtext")
-                    }
-                    .help(appSettings.mainWindowMode == .reading ? "文献库" : "返回阅读")
-                    .accessibilityLabel(appSettings.mainWindowMode == .reading ? "进入文献库" : "返回阅读")
-                    .disabled(
-                        appSettings.mainWindowMode == .library
-                            && libraryStore.selectedPaper == nil
-                    )
-                }
-                if appSettings.mainWindowMode == .reading,
-                   libraryStore.selectedPaper != nil {
-                    ToolbarItemGroup {
-                        PDFToolbar(controller: pdfController)
-                    }
-                }
-            }
-            .fileImporter(
-                isPresented: $isImporterPresented,
-                allowedContentTypes: [.pdf],
-                // Keep the panel configuration stable while its dismissal animation runs.
-                // Relinking still consumes only the first selected URL.
-                allowsMultipleSelection: true,
-                onCompletion: handleFileImporter
-            )
-            .overlay {
-                if appSettings.mainWindowMode == .reading {
-                    FileDropReceiver { urls in
-                        guard !libraryStore.persistenceDisabled else { return }
-                        let pdfURLs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
-                        guard !pdfURLs.isEmpty else { return }
-                        libraryStore.importPDFs(
-                            at: pdfURLs,
-                            collectionID: ReadingSidebarSourcePolicy.importCollectionID(
-                                for: readingLibrarySource,
-                                collections: libraryStore.collections
-                            )
-                        )
-                    }
-                    .allowsHitTesting(false)
-                }
-            }
+            importConfiguredContent
             .sheet(isPresented: Binding(
                 get: { metadataEditorTarget != nil },
                 set: { if !$0 { metadataEditorTarget = nil } }
@@ -198,6 +131,12 @@ struct ContentView: View {
                         metadataEditorTarget = nil
                     }
                 }
+            }
+            .sheet(isPresented: Binding(
+                get: { folderImportCoordinator.isPresented },
+                set: { if !$0 { folderImportCoordinator.dismiss() } }
+            )) {
+                FolderImportWizardView(coordinator: folderImportCoordinator)
             }
             .alert(
                 "Lurume",
@@ -347,6 +286,94 @@ struct ContentView: View {
         }
     }
 
+    private var importConfiguredContent: some View {
+        navigationContent
+            .fileImporter(
+                isPresented: $isImporterPresented,
+                allowedContentTypes: importerAllowedContentTypes,
+                // Keep the panel configuration stable while its dismissal animation runs.
+                // Relinking still consumes only the first selected URL.
+                allowsMultipleSelection: importerAllowsMultipleSelection,
+                onCompletion: handleFileImporter
+            )
+            .onReceive(NotificationCenter.default.publisher(for: .lurumeImportPDF)) { _ in
+                guard !libraryStore.persistenceDisabled else { return }
+                presentImporter()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .lurumeImportFolder)) { _ in
+                guard !libraryStore.persistenceDisabled else { return }
+                presentFolderImporter()
+            }
+            .overlay {
+                if appSettings.mainWindowMode == .reading {
+                    FileDropReceiver { urls in
+                        guard !libraryStore.persistenceDisabled else { return }
+                        let pdfURLs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
+                        guard !pdfURLs.isEmpty else { return }
+                        libraryStore.importPDFs(
+                            at: pdfURLs,
+                            collectionID: ReadingSidebarSourcePolicy.importCollectionID(
+                                for: readingLibrarySource,
+                                collections: libraryStore.collections
+                            )
+                        )
+                    }
+                    .allowsHitTesting(false)
+                }
+            }
+    }
+
+    private var navigationContent: some View {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            Group {
+                if appSettings.mainWindowMode == .reading {
+                    sidebar
+                } else {
+                    LibrarySourceSidebar(source: $appSettings.lastLibrarySource)
+                }
+            }
+            .navigationSplitViewColumnWidth(min: 210, ideal: 250, max: 340)
+        } detail: {
+            if appSettings.mainWindowMode == .reading {
+                detail
+            } else {
+                LibraryTablePane(
+                    source: appSettings.lastLibrarySource,
+                    selection: $libraryModeSelection,
+                    searchText: $libraryModeSearchText,
+                    statusFilter: $libraryModeStatusFilter,
+                    importPDFs: presentImporter,
+                    importFolder: presentFolderImporter,
+                    editMetadata: { metadataEditorTarget = $0 },
+                    openPaper: openPaperFromLibrary,
+                    removeFromLibrary: requestBatchPaperRemoval
+                )
+            }
+        }
+        .frame(minWidth: 900, minHeight: 600)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button(action: toggleMainWindowMode) {
+                    Image(systemName: appSettings.mainWindowMode == .reading
+                        ? "books.vertical"
+                        : "doc.richtext")
+                }
+                .help(appSettings.mainWindowMode == .reading ? "文献库" : "返回阅读")
+                .accessibilityLabel(appSettings.mainWindowMode == .reading ? "进入文献库" : "返回阅读")
+                .disabled(
+                    appSettings.mainWindowMode == .library
+                        && libraryStore.selectedPaper == nil
+                )
+            }
+            if appSettings.mainWindowMode == .reading,
+               libraryStore.selectedPaper != nil {
+                ToolbarItemGroup {
+                    PDFToolbar(controller: pdfController)
+                }
+            }
+        }
+    }
+
     // MARK: - 左侧栏
 
     private var sidebar: some View {
@@ -430,6 +457,16 @@ struct ContentView: View {
             .buttonStyle(.borderless)
             .help("导入 PDF")
             .accessibilityLabel("导入 PDF")
+            .disabled(libraryStore.persistenceDisabled)
+
+            Button {
+                presentFolderImporter()
+            } label: {
+                Image(systemName: "folder.badge.plus")
+            }
+            .buttonStyle(.borderless)
+            .help("导入文件夹")
+            .accessibilityLabel("导入文件夹")
             .disabled(libraryStore.persistenceDisabled)
         }
         .padding(.horizontal, 12)
@@ -840,7 +877,6 @@ struct ContentView: View {
                 collectionID: targetCollectionID,
                 selectAfterImport: shouldOpen
             )
-            if shouldOpen { openSelectedPaper() }
         case let .failure(error):
             if !isUserCancellation(error) {
                 libraryStore.presentedError = error.localizedDescription
@@ -855,6 +891,8 @@ struct ContentView: View {
         switch purpose {
         case .importPDFs:
             handleImport(result)
+        case .importFolder:
+            handleFolderImport(result)
         case .relinkPaper:
             handleRelink(result)
         case nil:
@@ -884,6 +922,8 @@ struct ContentView: View {
     private func presentRelinker(for paperID: UUID) {
         relinkingPaperID = paperID
         importerPurpose = .relinkPaper
+        importerAllowedContentTypes = [.pdf]
+        importerAllowsMultipleSelection = false
         isImporterPresented = true
     }
 
@@ -893,7 +933,37 @@ struct ContentView: View {
             : readingLibrarySource
         importTargetCollectionID = collectionID(for: source)
         importerPurpose = .importPDFs
+        importerAllowedContentTypes = [.pdf]
+        importerAllowsMultipleSelection = true
         isImporterPresented = true
+    }
+
+    private func presentFolderImporter() {
+        let source = appSettings.mainWindowMode == .library
+            ? appSettings.lastLibrarySource
+            : readingLibrarySource
+        importTargetCollectionID = collectionID(for: source)
+        importerPurpose = .importFolder
+        importerAllowedContentTypes = [.folder]
+        importerAllowsMultipleSelection = false
+        isImporterPresented = true
+    }
+
+    private func handleFolderImport(_ result: Result<[URL], Error>) {
+        defer { importTargetCollectionID = nil }
+        switch result {
+        case let .success(urls):
+            guard let rootURL = urls.first else { return }
+            folderImportCoordinator.begin(
+                rootURL: rootURL,
+                targetParentID: importTargetCollectionID,
+                store: libraryStore
+            )
+        case let .failure(error):
+            if !isUserCancellation(error) {
+                libraryStore.presentedError = error.localizedDescription
+            }
+        }
     }
 
     private func isUserCancellation(_ error: Error) -> Bool {

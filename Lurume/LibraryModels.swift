@@ -243,6 +243,32 @@ struct FolderImportSource: Codable, Equatable, Hashable, Sendable {
     var rootVolumeUUID: String?
     var rootDocumentIdentifier: Int?
     var relativePath: String
+    /// 只在根目录来源（relativePath 为空）保存；不参与来源身份比较。
+    var rootBookmarkData: Data?
+
+    init(
+        rootVolumeUUID: String?,
+        rootDocumentIdentifier: Int?,
+        relativePath: String,
+        rootBookmarkData: Data? = nil
+    ) {
+        self.rootVolumeUUID = rootVolumeUUID
+        self.rootDocumentIdentifier = rootDocumentIdentifier
+        self.relativePath = relativePath
+        self.rootBookmarkData = rootBookmarkData
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.rootVolumeUUID == rhs.rootVolumeUUID
+            && lhs.rootDocumentIdentifier == rhs.rootDocumentIdentifier
+            && lhs.relativePath == rhs.relativePath
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(rootVolumeUUID)
+        hasher.combine(rootDocumentIdentifier)
+        hasher.combine(relativePath)
+    }
 }
 
 struct ZoteroLibraryIdentity: Codable, Equatable, Hashable, Sendable {
@@ -324,7 +350,9 @@ enum ImportSourceRules {
         case let .folder(folder):
             let path = folder.relativePath
             guard !(path as NSString).isAbsolutePath else { return false }
+            if let bookmark = folder.rootBookmarkData, bookmark.isEmpty { return false }
             if path.isEmpty { return true }
+            guard folder.rootBookmarkData == nil else { return false }
             let components = path.split(separator: "/", omittingEmptySubsequences: false)
             return components.allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }
         case let .zoteroCollection(library, collectionKey, _):

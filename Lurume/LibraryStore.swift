@@ -51,6 +51,8 @@ final class LibraryStore: ObservableObject {
     private let persistence: LibraryPersistence
     private let metadataReader: any PaperMetadataReading
     private var pageSaveTask: Task<Void, Never>?
+    private var pdfImportTask: Task<Void, Never>?
+    private var pdfImportRequestID = UUID()
 
     init(
         persistence: LibraryPersistence,
@@ -74,6 +76,7 @@ final class LibraryStore: ObservableObject {
 
     deinit {
         pageSaveTask?.cancel()
+        pdfImportTask?.cancel()
     }
 
     var selectedPaper: PaperRecord? {
@@ -398,14 +401,107 @@ final class LibraryStore: ObservableObject {
         collectionID: UUID? = nil,
         selectAfterImport: Bool = true
     ) {
-        do {
-            _ = try importPDFBatch(
-                at: urls,
-                collectionID: collectionID,
-                selectAfterImport: selectAfterImport
+        guard !persistenceDisabled else {
+            presentedError = LibraryStoreError.persistenceUnavailable.localizedDescription
+            return
+        }
+        if let collectionID,
+           !collections.contains(where: { $0.id == collectionID }) {
+            presentedError = LibraryStoreError.collectionNotFound.localizedDescription
+            return
+        }
+        let pdfURLs = urls.filter { $0.pathExtension.localizedCaseInsensitiveCompare("pdf") == .orderedSame }
+        guard !pdfURLs.isEmpty else { return }
+        pdfImportTask?.cancel()
+        let currentRequestID = UUID()
+        pdfImportRequestID = currentRequestID
+        let basePapers = papers
+        let baseCollections = collections
+        let scanner = FolderImportScanner(metadataReader: metadataReader)
+        pdfImportTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let scanned = try await scanner.scanStandalonePDFs(at: pdfURLs)
+                try Task.checkCancellation()
+                guard pdfImportRequestID == currentRequestID else { return }
+                guard papers == basePapers, collections == baseCollections else {
+                    throw FolderImportError.libraryChanged
+                }
+                try commitStandalonePDFImport(
+                    scanned,
+                    collectionID: collectionID,
+                    selectAfterImport: selectAfterImport
+                )
+            } catch is CancellationError {
+                // A newer explicit import superseded this request.
+            } catch {
+                if pdfImportRequestID == currentRequestID {
+                    presentedError = "无法导入 PDF：\(error.localizedDescription)"
+                }
+            }
+            if pdfImportRequestID == currentRequestID { pdfImportTask = nil }
+        }
+    }
+
+    private func commitStandalonePDFImport(
+        _ scanned: [ScannedStandalonePDF],
+        collectionID: UUID?,
+        selectAfterImport: Bool
+    ) throws {
+        try requireWritableLibrary()
+        var updatedPapers = papers
+        var importedIDs: [UUID] = []
+        let openedAt = Date()
+        for file in scanned {
+            let duplicateIndex = updatedPapers.firstIndex {
+                $0.identity.identifiesSameFile(as: file.identity)
+                    || $0.contentFingerprint?.sha256 == file.fingerprint.sha256
+            }
+            if let index = duplicateIndex {
+                if let collectionID,
+                   !updatedPapers[index].collectionIDs.contains(collectionID) {
+                    updatedPapers[index].collectionIDs.append(collectionID)
+                    updatedPapers[index].collectionIDs.sort { $0.uuidString < $1.uuidString }
+                }
+                if updatedPapers[index].contentFingerprint == nil {
+                    updatedPapers[index].contentFingerprint = file.fingerprint
+                }
+                let merge = MetadataImportMerger.preview(
+                    current: updatedPapers[index].metadata,
+                    imported: file.metadata,
+                    manuallyEditedFields: updatedPapers[index].manuallyEditedFields
+                )
+                updatedPapers[index].metadata = merge.proposedMetadata
+                updatedPapers[index].lastImportedMetadata = file.metadata
+                updatedPapers[index].didReadAutoMetadata = true
+                if selectAfterImport { updatedPapers[index].lastOpenedAt = openedAt }
+                importedIDs.append(updatedPapers[index].id)
+                continue
+            }
+            var record = PaperRecord(
+                identity: file.identity,
+                bookmarkData: file.bookmarkData,
+                initialTitle: file.metadata.title,
+                originalFileName: file.originalFileName,
+                lastOpenedAt: selectAfterImport ? openedAt : nil,
+                collectionIDs: collectionID.map { [$0] } ?? [],
+                metadata: file.metadata,
+                contentFingerprint: file.fingerprint,
+                lastImportedMetadata: file.metadata
             )
-        } catch {
-            presentedError = "无法导入 PDF：\(error.localizedDescription)"
+            record.didReadAutoMetadata = true
+            updatedPapers.append(record)
+            importedIDs.append(record.id)
+        }
+        let updatedSelection = selectAfterImport
+            ? importedIDs.last ?? selectedPaperID
+            : selectedPaperID
+        if updatedPapers != papers || updatedSelection != selectedPaperID {
+            try commit(
+                papers: updatedPapers,
+                collections: collections,
+                selectedPaperID: updatedSelection
+            )
         }
     }
 
@@ -480,6 +576,19 @@ final class LibraryStore: ObservableObject {
             scheduleMetadataRead(for: id, resolvedURL: nil)
         }
         return importedIDs
+    }
+
+    func applyFolderImport(
+        papers candidatePapers: [PaperRecord],
+        collections candidateCollections: [CollectionRecord],
+        undoManager: UndoManager?
+    ) throws {
+        try applyOrganizationChange(
+            papers: candidatePapers,
+            collections: candidateCollections,
+            undoManager: undoManager,
+            actionName: "文件夹导入"
+        )
     }
 
     func selectPaper(id: UUID?) {
