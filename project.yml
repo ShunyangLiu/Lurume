@@ -27,6 +27,7 @@ targets:
     platform: macOS
     sources:
       - path: Lurume
+      - path: Shared
     info:
       path: Lurume/Info.plist
       properties:
@@ -56,6 +57,8 @@ targets:
           - $(PRODUCT_BUNDLE_IDENTIFIER)-spki
     dependencies:
       - package: Sparkle
+      - target: LurumeTranslationService
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.lurume.Lurume
@@ -64,6 +67,38 @@ targets:
         CODE_SIGN_IDENTITY: "-"
         CURRENT_PROJECT_VERSION: 4
         MARKETING_VERSION: 0.0.4
+
+  LurumeTranslationService:
+    type: xpc-service
+    platform: macOS
+    sources:
+      - path: Shared
+      - path: TranslationServiceCore
+      - path: TranslationService
+    info:
+      path: TranslationService/Info.plist
+      properties:
+        CFBundleDisplayName: Lurume Translation Service
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        XPCService:
+          ServiceType: Application
+    entitlements:
+      path: TranslationService/TranslationService.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.lurume.Lurume.TranslationService
+        PRODUCT_NAME: LurumeTranslationService
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 1.0.0
+        SKIP_INSTALL: YES
 
   LurumeTests:
     type: bundle.unit-test
@@ -76,6 +111,20 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.lurume.LurumeTests
         GENERATE_INFOPLIST_FILE: YES
+
+  TranslationServiceCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Shared
+      - path: TranslationServiceCore
+      - path: Tests/TranslationServiceCoreTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.lurume.TranslationServiceCoreTests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""
 
   LurumeUpdateTestHost:
     type: application
@@ -117,17 +166,61 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: 1.0.0
 
+  LurumeTranslationProbe:
+    type: application
+    platform: macOS
+    sources:
+      - path: Shared
+      - path: Tests/P7TranslationProbe
+    info:
+      path: Tests/P7TranslationProbe/Info.plist
+      properties:
+        CFBundleDisplayName: Lurume Translation Probe
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSBackgroundOnly: true
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+    entitlements:
+      path: Tests/P7TranslationProbe/Probe.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+    dependencies:
+      - target: LurumeTranslationService
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.lurume.TranslationProbe
+        PRODUCT_NAME: LurumeTranslationProbe
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 1.0.0
+        SKIP_INSTALL: YES
+
 schemes:
   Lurume:
     build:
       targets:
         Lurume: all
         LurumeTests: [test]
+        TranslationServiceCoreTests: [test]
     test:
+      environmentVariables:
+        LURUME_TRANSLATION_FAKE_SERVER: $(LURUME_TRANSLATION_FAKE_SERVER)
       targets:
         - LurumeTests
+        - TranslationServiceCoreTests
     run:
       config: Debug
+    archive:
+      config: Release
+
+  LurumeTranslationProbe:
+    build:
+      targets:
+        LurumeTranslationProbe: all
+    run:
+      config: Release
     archive:
       config: Release
 
