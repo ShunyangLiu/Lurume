@@ -82,7 +82,8 @@ P5 的文献集、独立文献库模式、批量整理和删除语义详见
 [P6 应用内更新计划](docs/P6-plan.md)，最终发布、升级和性能证据见
 [P6 检查点四实现记录](docs/P6-checkpoint4.md)。P7 的范围见
 [P7 原生大模型翻译计划](docs/P7-plan.md)；最终实现、真实服务验证和受控故障替代验收见
-[P7 检查点四记录](docs/P7-checkpoint4.md)。
+[P7 检查点四记录](docs/P7-checkpoint4.md)。下一阶段的批量文件夹导入、嵌套文献集和 Zotero
+本地迁移边界见 [P8 批量文件夹导入与 Zotero 迁移计划](docs/P8-plan.md)；P8 尚未开始实现。
 
 使用 Xcode 26.3 或更新版本打开 `Lurume.xcodeproj`，选择 `Lurume` scheme 即可构建运行。
 工程最低支持 macOS 15；运行时第三方依赖仅有系统框架无法替代的 Sparkle 更新基础设施。
