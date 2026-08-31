@@ -17,7 +17,7 @@ protocol TranslationXPCClientProtocol {
 }
 
 @objc(LurumeTranslationXPCRequest)
-final class TranslationXPCRequest: NSObject, NSSecureCoding {
+final class TranslationXPCRequest: NSObject, NSSecureCoding, @unchecked Sendable {
     static var supportsSecureCoding: Bool { true }
 
     let requestID: String
@@ -79,7 +79,7 @@ final class TranslationXPCRequest: NSObject, NSSecureCoding {
 }
 
 @objc(LurumeTranslationXPCEvent)
-final class TranslationXPCEvent: NSObject, NSSecureCoding {
+final class TranslationXPCEvent: NSObject, NSSecureCoding, @unchecked Sendable {
     static var supportsSecureCoding: Bool { true }
 
     let requestID: String

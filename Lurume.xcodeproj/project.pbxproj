@@ -24,6 +24,7 @@
 		3BA0251DCE1AE33611F16C6E /* LibraryPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50CE51B033570DB20B180628 /* LibraryPersistenceTests.swift */; };
 		3C4E8C4AE39330A50E8DB278 /* PDFReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A66F42ECD28F65520797F64 /* PDFReaderView.swift */; };
 		41FD93F70589AA16993061E4 /* LurumeTranslationService.xpc in CopyFiles */ = {isa = PBXBuildFile; fileRef = E2DD1BB9E639067387C339DF /* LurumeTranslationService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		4D0F236DF0C4ED60F0D25CF3 /* ModelTranslationSettingsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC99175073F30FE9C56F0DC9 /* ModelTranslationSettingsController.swift */; };
 		4E447FBC4C73F23434578CF9 /* OpenAIChatCompletions.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC5484C864E05733C0A97EE0 /* OpenAIChatCompletions.swift */; };
 		4FB3C0272A970C0EC45CF60D /* TranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20C3BF4B7E2E5A5F0024822 /* TranslationService.swift */; };
 		5025B51E193750769CBA42CF /* P7TranslationNetworkOperationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 040C195F10E062C42AC6E6F8 /* P7TranslationNetworkOperationTests.swift */; };
@@ -39,6 +40,7 @@
 		7E10AC773AD3045C05059C26 /* TranslationControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AC352337307455A20A17D1A /* TranslationControllerTests.swift */; };
 		8226C9EA96CDAE79A9037711 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 3E5A34989D0B107DE3DBA0F3 /* Sparkle */; };
 		8A612497C2D39BFFBC3CD179 /* LurumeSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */; };
+		8C76D856E19DC6EC27287901 /* ModelTranslationConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFBCE235CDCC1C9AC3DC27B0 /* ModelTranslationConfigurationTests.swift */; };
 		901386E6D513046A375512B4 /* SystemPaperMetadataReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC49AD84FACDAB3ED5163A55 /* SystemPaperMetadataReader.swift */; };
 		9048D80279177B1F81AE0790 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B52C1CACB063DB3505EEF6C /* AppSettings.swift */; };
 		95E6621DB260C534F214A262 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 5BDFE7ED94697A4351F79112 /* Localizable.strings */; };
@@ -49,9 +51,11 @@
 		A1B77B1E421B37A01DA3BA39 /* LibraryTableInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF9CA75918F1517CF9434D8D /* LibraryTableInteractionTests.swift */; };
 		A5DE3609DC3C9F2CAD5718E8 /* ReaderModeTransitionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04E0646022AA5A1039AD2D3F /* ReaderModeTransitionTests.swift */; };
 		A73E9083CB324645CFF43590 /* SecurityScopedFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 451E4AC55AABA630D088790D /* SecurityScopedFile.swift */; };
+		AD0510193C70C076364F0BF3 /* ModelTranslationConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13D4FB732F27567ED56D6D05 /* ModelTranslationConfiguration.swift */; };
 		B13C920775B082B1C331ED5F /* OpenAIChatCompletions.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC5484C864E05733C0A97EE0 /* OpenAIChatCompletions.swift */; };
 		B1AE1C81032365A6F314978A /* HighlightModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFEAA76699D454EB7F711760 /* HighlightModels.swift */; };
 		B4042DDCBCA2A04985D37575 /* TranslationXPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 032EC53B9158647738493AB6 /* TranslationXPCProtocol.swift */; };
+		B6CDFABD6995CD92A30CD86A /* TranslationAPIKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 862485423CEF552ECEA8712C /* TranslationAPIKeyStore.swift */; };
 		B96EA3B16617DEA37D0FF4FD /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B43B08E498537804DB3769E8 /* SettingsView.swift */; };
 		C844133EBD258AD8321EA43A /* HighlightPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A2CEFED2568E02C16AA36E /* HighlightPersistence.swift */; };
 		CAEB67A89F6A35C4A583AEF4 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6026208784328D8B45E4805D /* main.swift */; };
@@ -62,6 +66,7 @@
 		D89E328BF1F4676E4548EB72 /* PaperRemovalCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF258DB2C0B0F3B21B5A12D /* PaperRemovalCoordinator.swift */; };
 		D9E8C3A77EE0A76B56701542 /* PaperRemovalCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C68C64D3676F502236BD86 /* PaperRemovalCoordinatorTests.swift */; };
 		DD5F3D4DF228FD158D575BB6 /* UpdateTestHostApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E4CE87BA8D875DB1CF932E5 /* UpdateTestHostApp.swift */; };
+		E1FA3537138C6630E9064659 /* TranslationXPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6662DB14AB725B65D5107D51 /* TranslationXPCClient.swift */; };
 		EB7D92CC26B4FE6453148D55 /* UpdaterController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB67A6A41839515674054B2B /* UpdaterController.swift */; };
 		EE1BEB4BABADE6A8044077BD /* MainWindowMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C060B9B8CAE158F8A0B938 /* MainWindowMode.swift */; };
 		F1030095E5FF32766B4C1C8C /* LibraryCollectionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5294525FCF269307315AAFD4 /* LibraryCollectionStoreTests.swift */; };
@@ -126,6 +131,7 @@
 		09C68C64D3676F502236BD86 /* PaperRemovalCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaperRemovalCoordinatorTests.swift; sourceTree = "<group>"; };
 		0A66F42ECD28F65520797F64 /* PDFReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReaderView.swift; sourceTree = "<group>"; };
 		0B52C1CACB063DB3505EEF6C /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		13D4FB732F27567ED56D6D05 /* ModelTranslationConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTranslationConfiguration.swift; sourceTree = "<group>"; };
 		1AC352337307455A20A17D1A /* TranslationControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationControllerTests.swift; sourceTree = "<group>"; };
 		1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LurumeSmokeTests.swift; sourceTree = "<group>"; };
 		1C3B11CC74DE63BBBC3D20C9 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -145,6 +151,7 @@
 		5AF258DB2C0B0F3B21B5A12D /* PaperRemovalCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaperRemovalCoordinator.swift; sourceTree = "<group>"; };
 		5E1C788C814921FADF9D45E2 /* UpdateTestHost.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UpdateTestHost.entitlements; sourceTree = "<group>"; };
 		6026208784328D8B45E4805D /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		6662DB14AB725B65D5107D51 /* TranslationXPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationXPCClient.swift; sourceTree = "<group>"; };
 		6741F46CA962F25B42E43E09 /* LibraryDragDrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDragDrop.swift; sourceTree = "<group>"; };
 		67ED0DE1FEE1DFEEA102642F /* Lurume.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Lurume.entitlements; sourceTree = "<group>"; };
 		6D64B77A7BD1986CDDE927FE /* LibraryManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryManagementView.swift; sourceTree = "<group>"; };
@@ -156,6 +163,7 @@
 		813B2765B8739B290712AAD7 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		83C060B9B8CAE158F8A0B938 /* MainWindowMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowMode.swift; sourceTree = "<group>"; };
 		84DFEEEEEFB00E092E4208D9 /* LurumeUpdateTestHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LurumeUpdateTestHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		862485423CEF552ECEA8712C /* TranslationAPIKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationAPIKeyStore.swift; sourceTree = "<group>"; };
 		87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationInspector.swift; sourceTree = "<group>"; };
 		8C41FFA7D8E56BD22C5C53E0 /* TranslationServiceCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TranslationServiceCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F7E981F2906D52C08B550DF /* LibraryTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryTableView.swift; sourceTree = "<group>"; };
@@ -176,6 +184,7 @@
 		C4B1046217A0A7510C373C81 /* Probe.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Probe.entitlements; sourceTree = "<group>"; };
 		CE8CD7C388BCCCF781BEFEB6 /* TranslationXPCIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationXPCIntegrationTests.swift; sourceTree = "<group>"; };
 		CF9734898B3282BC4665E433 /* LurumeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LurumeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DC99175073F30FE9C56F0DC9 /* ModelTranslationSettingsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTranslationSettingsController.swift; sourceTree = "<group>"; };
 		E0325E1A53B306B4E070020D /* LibraryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryModels.swift; sourceTree = "<group>"; };
 		E2DD1BB9E639067387C339DF /* LurumeTranslationService.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = LurumeTranslationService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4B1E8C5AAC4A05692CCB495 /* TranslationRequestOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationRequestOperation.swift; sourceTree = "<group>"; };
@@ -186,6 +195,7 @@
 		EFEAA76699D454EB7F711760 /* HighlightModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightModels.swift; sourceTree = "<group>"; };
 		F6926A08DEB7D03C4C95EF04 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		FC49AD84FACDAB3ED5163A55 /* SystemPaperMetadataReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPaperMetadataReader.swift; sourceTree = "<group>"; };
+		FFBCE235CDCC1C9AC3DC27B0 /* ModelTranslationConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTranslationConfigurationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -297,6 +307,8 @@
 				67ED0DE1FEE1DFEEA102642F /* Lurume.entitlements */,
 				EDCEED45D44F9A78BABF93BC /* LurumeApp.swift */,
 				83C060B9B8CAE158F8A0B938 /* MainWindowMode.swift */,
+				13D4FB732F27567ED56D6D05 /* ModelTranslationConfiguration.swift */,
+				DC99175073F30FE9C56F0DC9 /* ModelTranslationSettingsController.swift */,
 				5AF258DB2C0B0F3B21B5A12D /* PaperRemovalCoordinator.swift */,
 				3C0C186E21CE73620E1ECB1C /* PDFNavigationSidebar.swift */,
 				0A66F42ECD28F65520797F64 /* PDFReaderView.swift */,
@@ -305,8 +317,10 @@
 				EBD276D9AB2C63D7E24FDE04 /* Sparkle-LICENSE.txt */,
 				FC49AD84FACDAB3ED5163A55 /* SystemPaperMetadataReader.swift */,
 				BA1583E513232AC7D0AA7CA0 /* TextNormalizer.swift */,
+				862485423CEF552ECEA8712C /* TranslationAPIKeyStore.swift */,
 				4ACA72A5E79BC8728F19084D /* TranslationController.swift */,
 				87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */,
+				6662DB14AB725B65D5107D51 /* TranslationXPCClient.swift */,
 				EB67A6A41839515674054B2B /* UpdaterController.swift */,
 				002933A34CD2A16535238505 /* InfoPlist.strings */,
 				5BDFE7ED94697A4351F79112 /* Localizable.strings */,
@@ -337,6 +351,7 @@
 				50CE51B033570DB20B180628 /* LibraryPersistenceTests.swift */,
 				AF9CA75918F1517CF9434D8D /* LibraryTableInteractionTests.swift */,
 				1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */,
+				FFBCE235CDCC1C9AC3DC27B0 /* ModelTranslationConfigurationTests.swift */,
 				BC5F48DA0E16EBAC5F6646BE /* PaperMetadataTests.swift */,
 				09C68C64D3676F502236BD86 /* PaperRemovalCoordinatorTests.swift */,
 				04E0646022AA5A1039AD2D3F /* ReaderModeTransitionTests.swift */,
@@ -557,6 +572,7 @@
 				3BA0251DCE1AE33611F16C6E /* LibraryPersistenceTests.swift in Sources */,
 				A1B77B1E421B37A01DA3BA39 /* LibraryTableInteractionTests.swift in Sources */,
 				8A612497C2D39BFFBC3CD179 /* LurumeSmokeTests.swift in Sources */,
+				8C76D856E19DC6EC27287901 /* ModelTranslationConfigurationTests.swift in Sources */,
 				6C93CF0C527FC9C095C471D4 /* PaperMetadataTests.swift in Sources */,
 				D9E8C3A77EE0A76B56701542 /* PaperRemovalCoordinatorTests.swift in Sources */,
 				A5DE3609DC3C9F2CAD5718E8 /* ReaderModeTransitionTests.swift in Sources */,
@@ -626,6 +642,8 @@
 				FB55D8FD66278CC5D4D022D0 /* LibraryTableView.swift in Sources */,
 				33F14A5B4F2FF059040D2EBC /* LurumeApp.swift in Sources */,
 				EE1BEB4BABADE6A8044077BD /* MainWindowMode.swift in Sources */,
+				AD0510193C70C076364F0BF3 /* ModelTranslationConfiguration.swift in Sources */,
+				4D0F236DF0C4ED60F0D25CF3 /* ModelTranslationSettingsController.swift in Sources */,
 				5F38DD445676B098B239719D /* PDFNavigationSidebar.swift in Sources */,
 				3C4E8C4AE39330A50E8DB278 /* PDFReaderView.swift in Sources */,
 				D89E328BF1F4676E4548EB72 /* PaperRemovalCoordinator.swift in Sources */,
@@ -633,8 +651,10 @@
 				B96EA3B16617DEA37D0FF4FD /* SettingsView.swift in Sources */,
 				901386E6D513046A375512B4 /* SystemPaperMetadataReader.swift in Sources */,
 				132643F5DC3DDD1E9EB22813 /* TextNormalizer.swift in Sources */,
+				B6CDFABD6995CD92A30CD86A /* TranslationAPIKeyStore.swift in Sources */,
 				FE891CFC7127EEB8A4BD6FC7 /* TranslationController.swift in Sources */,
 				24F9D19682C67BFEFB015DAC /* TranslationInspector.swift in Sources */,
+				E1FA3537138C6630E9064659 /* TranslationXPCClient.swift in Sources */,
 				9DF2CBAF36DF36B28F9F6365 /* TranslationXPCProtocol.swift in Sources */,
 				EB7D92CC26B4FE6453148D55 /* UpdaterController.swift in Sources */,
 			);

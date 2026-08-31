@@ -71,6 +71,28 @@ final class P7TranslationNetworkOperationTests: XCTestCase {
         XCTAssertEqual(result.last?.errorCode, "stream_ended_early")
     }
 
+    func testSameOriginRedirectCanComplete() throws {
+        let result = try runOperation(
+            endpoint: fakeEndpoint(path: "/redirect/same-origin"),
+            streamsResponse: true,
+            policy: TranslationTimeoutPolicy(firstByte: 1, streamIdle: 1, nonStreamingTotal: 2)
+        )
+
+        XCTAssertEqual(result.compactMap(\.text).joined(), "分块译文")
+        XCTAssertEqual(result.last?.kind, "completed")
+    }
+
+    func testCrossOriginRedirectIsRejectedBeforeFollowing() throws {
+        let result = try runOperation(
+            endpoint: fakeEndpoint(path: "/redirect/cross-origin"),
+            streamsResponse: true,
+            policy: TranslationTimeoutPolicy(firstByte: 1, streamIdle: 1, nonStreamingTotal: 2)
+        )
+
+        XCTAssertEqual(result.last?.kind, "failed")
+        XCTAssertEqual(result.last?.errorCode, "invalid_response")
+    }
+
     private func fakeEndpoint(path: String) throws -> URL {
         guard let root = ProcessInfo.processInfo.environment["LURUME_TRANSLATION_FAKE_SERVER"],
               root.hasPrefix("http://127.0.0.1:"),

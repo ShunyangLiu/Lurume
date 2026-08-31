@@ -26,14 +26,47 @@ class Handler(BaseHTTPRequestHandler):
         if set(payload.keys()) != {"model", "messages", "stream"}:
             self._json(400, {"error": {"message": "unexpected request fields"}})
             return
-        if payload.get("messages") != [
+        fixture_messages = [
             {"role": "system", "content": "Translate the selected text."},
             {"role": "user", "content": "fixture selection only"},
-        ]:
+        ]
+        connection_test_messages = payload.get("messages", [])
+        is_connection_test = (
+            self.path == "/v1/chat/completions"
+            and isinstance(connection_test_messages, list)
+            and len(connection_test_messages) == 2
+            and isinstance(connection_test_messages[0], dict)
+            and isinstance(connection_test_messages[1], dict)
+            and connection_test_messages[0].get("role") == "system"
+            and "Lurume" in connection_test_messages[0].get("content", "")
+            and connection_test_messages[1]
+            == {
+                "role": "user",
+                "content": "This is a connection test from Lurume.",
+            }
+        )
+        if payload.get("messages") != fixture_messages and not is_connection_test:
             self._json(400, {"error": {"message": "unexpected request content"}})
             return
 
-        if self.path == "/nonstream":
+        if self.path == "/redirect/same-origin":
+            self._redirect("/stream")
+        elif self.path == "/redirect/cross-origin":
+            port = self.server.server_address[1]
+            self._redirect(f"http://localhost:{port}/stream")
+        elif self.path == "/v1/chat/completions" and payload.get("stream"):
+            self._stream(
+                [
+                    b'data: {"choices":[{"delta":{"content":"connection ok"},"finish_reason":null}]}\n\n',
+                    b'data: [DONE]\n\n',
+                ]
+            )
+        elif self.path == "/v1/chat/completions":
+            self._json(
+                200,
+                {"choices": [{"message": {"role": "assistant", "content": "connection ok"}}]},
+            )
+        elif self.path == "/nonstream":
             self._json(
                 200,
                 {"choices": [{"message": {"role": "assistant", "content": "一次性译文"}}]},
@@ -113,6 +146,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "close")
+        self.end_headers()
+
+    def _redirect(self, location):
+        self.send_response(307)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
         self.end_headers()
 
     def _stream(self, chunks, split=False):

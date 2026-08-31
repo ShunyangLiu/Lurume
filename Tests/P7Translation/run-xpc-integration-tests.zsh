@@ -42,6 +42,7 @@ xcodebuild \
     -scheme Lurume \
     -configuration Debug \
     -destination 'platform=macOS' \
+    -quiet \
     test \
     -only-testing:LurumeTests/TranslationXPCIntegrationTests \
     -only-testing:TranslationServiceCoreTests/P7TranslationNetworkOperationTests \

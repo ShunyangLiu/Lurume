@@ -74,10 +74,18 @@ enum TranslationServiceError: Error, Equatable {
 
 struct OpenAIChatCompletionRequestBuilder {
     static func makeURLRequest(from request: TranslationXPCRequest) throws -> URLRequest {
-        guard let url = URL(string: request.endpoint),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "https" || scheme == "http",
-              url.host != nil,
+        guard let components = URLComponents(string: request.endpoint),
+              let url = components.url,
+              let scheme = components.scheme?.lowercased(),
+              let rawHost = components.host?.lowercased(),
+              (scheme == "https" || scheme == "http"),
+              components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil,
+              scheme != "http" || ["localhost", "127.0.0.1", "::1"].contains(
+                  rawHost.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+              ),
               !request.model.isEmpty,
               !request.systemPrompt.isEmpty,
               !request.selectedText.isEmpty

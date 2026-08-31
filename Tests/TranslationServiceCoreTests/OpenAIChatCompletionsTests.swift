@@ -38,6 +38,31 @@ final class OpenAIChatCompletionsTests: XCTestCase {
         XCTAssertEqual(urlRequest.value(forHTTPHeaderField: "Accept"), "application/json")
     }
 
+    func testRequestBuilderRejectsUnsafeEndpointVariants() {
+        let endpoints = [
+            "http://example.test/v1/chat/completions",
+            "https://user:pass@example.test/v1/chat/completions",
+            "https://example.test/v1/chat/completions?token=value",
+            "https://example.test/v1/chat/completions#fragment",
+            "file:///tmp/chat/completions",
+        ]
+
+        for endpoint in endpoints {
+            let request = TranslationXPCRequest(
+                requestID: "request-1",
+                endpoint: endpoint,
+                model: "example-model",
+                systemPrompt: "Translate.",
+                selectedText: "Selection",
+                apiKey: nil,
+                streamsResponse: true
+            )
+            XCTAssertThrowsError(try OpenAIChatCompletionRequestBuilder.makeURLRequest(from: request)) {
+                XCTAssertEqual($0 as? TranslationServiceError, .invalidRequest)
+            }
+        }
+    }
+
     func testNonStreamingResponseExtractsOnlyTextContent() throws {
         let data = Data(#"{"choices":[{"message":{"role":"assistant","content":"译文"}}]}"#.utf8)
         XCTAssertEqual(try OpenAIChatCompletionResponseParser.parseText(from: data), "译文")

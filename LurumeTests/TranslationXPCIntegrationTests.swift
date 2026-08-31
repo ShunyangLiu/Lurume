@@ -61,6 +61,43 @@ final class TranslationXPCIntegrationTests: XCTestCase {
         XCTAssertEqual(result.errorCode, "cancelled")
     }
 
+    @MainActor
+    func testSettingsConnectionTestUsesEmbeddedServiceAndFixedFixture() async throws {
+        guard let root = ProcessInfo.processInfo.environment["LURUME_TRANSLATION_FAKE_SERVER"],
+              root.hasPrefix("http://127.0.0.1:")
+        else {
+            throw XCTSkip("Set LURUME_TRANSLATION_FAKE_SERVER to run localhost XPC integration tests.")
+        }
+        let controller = ModelTranslationSettingsController(
+            keyStore: EmptyTranslationAPIKeyStore(),
+            requestSender: TranslationXPCClient()
+        )
+        controller.draftBaseURL = root + "/v1/chat/completions"
+        controller.draftModel = "fixture-model"
+        controller.draftPrompt = ModelTranslationConfiguration.defaultPrompt
+        controller.draftStreamsResponse = true
+
+        controller.startConnectionTest(
+            sourceLanguageIdentifier: TranslationSourceLanguageOption.englishID,
+            targetLanguageIdentifier: "zh-Hans"
+        )
+
+        for _ in 0..<200 {
+            switch controller.connectionState {
+            case let .succeeded(model, response):
+                XCTAssertEqual(model, "fixture-model")
+                XCTAssertEqual(response, "connection ok")
+                return
+            case let .failed(message):
+                XCTFail("Connection test failed: \(message)")
+                return
+            case .idle, .testing:
+                try await Task.sleep(for: .milliseconds(25))
+            }
+        }
+        XCTFail("Connection test timed out")
+    }
+
     private func fakeEndpoint(path: String) throws -> URL {
         guard let root = ProcessInfo.processInfo.environment["LURUME_TRANSLATION_FAKE_SERVER"],
               root.hasPrefix("http://127.0.0.1:"),
@@ -70,6 +107,12 @@ final class TranslationXPCIntegrationTests: XCTestCase {
         }
         return url
     }
+}
+
+private struct EmptyTranslationAPIKeyStore: TranslationAPIKeyStoring {
+    func read() async throws -> String? { nil }
+    func save(_ apiKey: String) async throws {}
+    func delete() async throws {}
 }
 
 private struct TranslationXPCTestResult {
