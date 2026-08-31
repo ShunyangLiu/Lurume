@@ -66,6 +66,36 @@ cp "$lurume_work_dir/artifacts/manifest.json" "$lurume_work_dir/path-traversal.j
 jq '.files.dmg.path = "../outside.dmg"' "$lurume_work_dir/path-traversal.json" > "$lurume_work_dir/artifacts/manifest.json"
 expect_failure '清单路径越界' lurume_verify_manifest_files "$lurume_work_dir/artifacts"
 
+lurume_minimal_translation_entitlements='<key>com.apple.security.app-sandbox</key><true/><key>com.apple.security.network.client</key><true/>'
+lurume_verify_translation_xpc_entitlements "$lurume_minimal_translation_entitlements"
+expect_failure \
+    'Translation XPC 缺少网络权限' \
+    lurume_verify_translation_xpc_entitlements \
+    '<key>com.apple.security.app-sandbox</key><true/>'
+expect_failure \
+    'Translation XPC 意外获得文件权限' \
+    lurume_verify_translation_xpc_entitlements \
+    "$lurume_minimal_translation_entitlements<key>com.apple.security.files.user-selected.read-only</key><true/>"
+expect_failure \
+    'Translation XPC 意外获得 Sparkle Mach lookup' \
+    lurume_verify_translation_xpc_entitlements \
+    "$lurume_minimal_translation_entitlements<key>com.apple.security.temporary-exception.mach-lookup.global-name</key><array/>"
+expect_failure \
+    'Translation XPC Release 意外允许调试' \
+    lurume_verify_translation_xpc_entitlements \
+    "$lurume_minimal_translation_entitlements<key>com.apple.security.get-task-allow</key><true/>"
+lurume_verify_translation_fixture_text 'production translation strings'
+for lurume_fixture_marker in \
+    'fixture selection only' \
+    'connection ok' \
+    'test-placeholder-key' \
+    '127.0.0.1:8765'; do
+    expect_failure \
+        "Translation Release 包含夹具 $lurume_fixture_marker" \
+        lurume_verify_translation_fixture_text \
+        "prefix $lurume_fixture_marker suffix"
+done
+
 mkdir -p "$lurume_work_dir/preflight/Scripts/lib" \
     "$lurume_work_dir/preflight/release-notes" \
     "$lurume_work_dir/preflight/Lurume.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"

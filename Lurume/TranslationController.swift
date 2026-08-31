@@ -140,12 +140,17 @@ struct TranslationConfigurationIdentity: Equatable, Sendable {
 
 enum TranslationResultSource: Equatable, Sendable {
     case apple
-    case customModel(model: String)
+    case customModel(model: String?)
 
     var label: String {
         switch self {
         case .apple: "系统翻译"
-        case let .customModel(model): "自定义大模型 · \(model)"
+        case let .customModel(model):
+            if let model, !model.isEmpty {
+                "自定义大模型 · \(model)"
+            } else {
+                "自定义大模型"
+            }
         }
     }
 }
@@ -470,6 +475,8 @@ final class TranslationController: ObservableObject {
             resultSource = .apple
             state = .success
         } catch is CancellationError {
+            // Controller-driven cancellation also advances generation and is ignored above.
+            // Keep this branch for a performer that independently reports cancellation.
             guard request.generation == generation else { return }
             state = .failed("系统翻译已停止。")
         } catch {
@@ -568,7 +575,7 @@ final class TranslationController: ObservableObject {
     ) {
         configuration = nil
         guard let configuration = preferences.modelConfiguration else {
-            resultSource = .customModel(model: "未配置")
+            resultSource = .customModel(model: nil)
             state = .failed("自定义大模型配置不完整，请先在设置中保存有效配置。")
             refreshSystemFallbackAvailability()
             return
@@ -740,12 +747,15 @@ final class TranslationController: ObservableObject {
     private func refreshSystemFallbackAvailability() {
         guard let preferences = lastPreferences,
               preferences.engine == .customModel,
-              let selection,
-              let sourceLanguage = resolvedAppleSourceLanguage(
-                  selection: selection,
-                  preferences: preferences
-              )
+              let selection
         else {
+            systemFallbackAvailability = nil
+            return
+        }
+        guard let sourceLanguage = resolvedAppleSourceLanguage(
+            selection: selection,
+            preferences: preferences
+        ) else {
             systemFallbackAvailability = .unavailable("系统翻译无法识别当前原文语言。")
             return
         }

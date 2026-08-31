@@ -62,6 +62,28 @@ final class ProbeValue: @unchecked Sendable {
     }
 }
 
+final class ProbeState: @unchecked Sendable {
+    let proxyError = ProbeValue()
+    let pingSemaphore = DispatchSemaphore(value: 0)
+    let pingValue = ProbeValue()
+    let acceptedSemaphore = DispatchSemaphore(value: 0)
+    let acceptedValue = ProbeValue()
+
+    func recordProxyError(_ error: Error) {
+        proxyError.set(error.localizedDescription)
+    }
+
+    func recordPing(_ value: String) {
+        pingValue.set(value)
+        pingSemaphore.signal()
+    }
+
+    func recordAcceptance(_ value: Bool) {
+        acceptedValue.set(value ? "yes" : "no")
+        acceptedSemaphore.signal()
+    }
+}
+
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
     exit(1)
@@ -76,6 +98,7 @@ else {
 }
 
 let callback = ProbeCallback()
+let state = ProbeState()
 let connection = NSXPCConnection(serviceName: TranslationXPCConstants.serviceName)
 connection.remoteObjectInterface = NSXPCInterface(with: TranslationXPCServiceProtocol.self)
 connection.exportedInterface = NSXPCInterface(with: TranslationXPCClientProtocol.self)
@@ -83,30 +106,24 @@ connection.exportedObject = callback
 connection.resume()
 defer { connection.invalidate() }
 
-guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
-    fail("XPC proxy failed: \(error.localizedDescription)")
-}) as? TranslationXPCServiceProtocol else {
+guard let proxy = connection.remoteObjectProxyWithErrorHandler(state.recordProxyError) as? TranslationXPCServiceProtocol else {
     fail("Translation XPC proxy unavailable")
 }
 
-let pingSemaphore = DispatchSemaphore(value: 0)
-let pingValue = ProbeValue()
 let launchStart = DispatchTime.now().uptimeNanoseconds
-proxy.ping { value in
-    pingValue.set(value)
-    pingSemaphore.signal()
-}
-guard pingSemaphore.wait(timeout: .now() + 5) == .success,
-      pingValue.get() == "ready"
+proxy.ping(withReply: state.recordPing)
+guard state.pingSemaphore.wait(timeout: .now() + 5) == .success,
+      state.pingValue.get() == "ready"
 else {
+    if let message = state.proxyError.get() {
+        fail("XPC proxy failed: \(message)")
+    }
     fail("Translation XPC cold-start ping timed out")
 }
 let launchElapsed = DispatchTime.now().uptimeNanoseconds - launchStart
 
 let requestID = UUID().uuidString
 callback.begin(requestID: requestID)
-let accepted = DispatchSemaphore(value: 0)
-let acceptedValue = ProbeValue()
 proxy.start(
     TranslationXPCRequest(
         requestID: requestID,
@@ -116,17 +133,21 @@ proxy.start(
         selectedText: "fixture selection only",
         apiKey: nil,
         streamsResponse: true
-    )
-) { value in
-    acceptedValue.set(value ? "yes" : "no")
-    accepted.signal()
-}
-guard accepted.wait(timeout: .now() + 3) == .success,
-      acceptedValue.get() == "yes"
+    ),
+    withReply: state.recordAcceptance
+)
+guard state.acceptedSemaphore.wait(timeout: .now() + 3) == .success,
+      state.acceptedValue.get() == "yes"
 else {
+    if let message = state.proxyError.get() {
+        fail("XPC proxy failed: \(message)")
+    }
     fail("Translation XPC rejected the probe request")
 }
 guard let result = callback.wait(timeout: 8), result.event.kind == "completed" else {
+    if let message = state.proxyError.get() {
+        fail("XPC proxy failed: \(message)")
+    }
     fail("Translation XPC probe request did not complete")
 }
 

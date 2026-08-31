@@ -526,6 +526,26 @@ final class TranslationControllerTests: XCTestCase {
         XCTAssertNil(controller.translatedText)
     }
 
+    func testMissingModelConfigurationUsesGenericSourceAndNoRequest() {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        let preferences = TranslationRequestPreferences(
+            engine: .customModel,
+            sourceLanguageIdentifier: "en",
+            targetLanguageIdentifier: "zh-Hans",
+            modelConfiguration: nil,
+            modelOriginIsConfirmed: false
+        )
+        receiveModelSelection("Selection", controller: controller, preferences: preferences)
+
+        controller.requestTranslation(preferences: preferences)
+
+        XCTAssertEqual(controller.resultSource, .customModel(model: nil))
+        XCTAssertEqual(controller.resultSource?.label, "自定义大模型")
+        XCTAssertEqual(controller.state, .failed("自定义大模型配置不完整，请先在设置中保存有效配置。"))
+        XCTAssertEqual(sender.requestCount, 0)
+    }
+
     func testAutomaticModelTranslationUsesCapturedPreferences() async throws {
         let sender = RecordingModelRequestSender()
         let controller = makeModelController(sender: sender)

@@ -123,6 +123,105 @@ lurume_find_sparkle_tool() {
     print -r -- "$lurume_candidate"
 }
 
+lurume_verify_translation_xpc_entitlements() {
+    local lurume_entitlements="$1"
+
+    [[ "$lurume_entitlements" == *'com.apple.security.app-sandbox'* ]] || {
+        lurume_release_error 'Translation XPC 缺少 App Sandbox entitlement'
+        return 1
+    }
+    [[ "$lurume_entitlements" == *'com.apple.security.network.client'* ]] || {
+        lurume_release_error 'Translation XPC 缺少 network client entitlement'
+        return 1
+    }
+
+    local lurume_forbidden
+    for lurume_forbidden in \
+        'com.apple.security.network.server' \
+        'com.apple.security.files.' \
+        'com.apple.security.temporary-exception.mach-lookup' \
+        'com.apple.security.personal-information.' \
+        'com.apple.security.assets.' \
+        'com.apple.security.device.' \
+        'keychain-access-groups' \
+        'com.apple.security.get-task-allow'; do
+        [[ "$lurume_entitlements" != *"$lurume_forbidden"* ]] || {
+            lurume_release_error "Translation XPC 包含禁止的 entitlement：$lurume_forbidden"
+            return 1
+        }
+    done
+}
+
+lurume_verify_translation_fixture_text() {
+    local lurume_text="$1"
+    local lurume_marker
+    for lurume_marker in \
+        'fixture selection only' \
+        'connection ok' \
+        'test-placeholder-key' \
+        '127.0.0.1:8765'; do
+        [[ "$lurume_text" != *"$lurume_marker"* ]] || {
+            lurume_release_error "Release 包含 P7 测试夹具文本：$lurume_marker"
+            return 1
+        }
+    done
+}
+
+lurume_verify_translation_xpc() {
+    local lurume_app="$1"
+    local lurume_xpc="$lurume_app/Contents/XPCServices/LurumeTranslationService.xpc"
+    local lurume_binary="$lurume_xpc/Contents/MacOS/LurumeTranslationService"
+    local lurume_info="$lurume_xpc/Contents/Info.plist"
+
+    [[ -d "$lurume_xpc" && ! -L "$lurume_xpc" ]] || {
+        lurume_release_error 'Release App 缺少内嵌 Translation XPC'
+        return 1
+    }
+    [[ -x "$lurume_binary" && -f "$lurume_info" ]] || {
+        lurume_release_error 'Translation XPC 结构不完整'
+        return 1
+    }
+    [[ "$(find "$lurume_app/Contents/XPCServices" -maxdepth 1 -type d -name 'LurumeTranslationService.xpc' | wc -l | tr -d ' ')" == '1' ]] || {
+        lurume_release_error 'Translation XPC 数量不唯一'
+        return 1
+    }
+
+    codesign --verify --strict --verbose=2 "$lurume_xpc" >/dev/null || {
+        lurume_release_error 'Translation XPC 严格签名校验失败'
+        return 1
+    }
+    local lurume_archs
+    lurume_archs="$(lipo -archs "$lurume_binary")"
+    [[ "$lurume_archs" == *arm64* && "$lurume_archs" == *x86_64* ]] || {
+        lurume_release_error "Translation XPC 不是 Universal：$lurume_archs"
+        return 1
+    }
+    [[ "$(plutil -extract CFBundleIdentifier raw "$lurume_info")" == 'app.lurume.Lurume.TranslationService' ]] || {
+        lurume_release_error 'Translation XPC Bundle ID 不一致'
+        return 1
+    }
+    [[ "$(plutil -extract CFBundlePackageType raw "$lurume_info")" == 'XPC!' ]] || {
+        lurume_release_error 'Translation XPC 包类型不一致'
+        return 1
+    }
+    [[ "$(plutil -extract LSMinimumSystemVersion raw "$lurume_info")" == '15.0' ]] || {
+        lurume_release_error 'Translation XPC 最低系统版本不是 15.0'
+        return 1
+    }
+
+    local lurume_entitlements
+    lurume_entitlements="$(codesign -d --entitlements - "$lurume_xpc" 2>&1)" || {
+        lurume_release_error '无法读取 Translation XPC entitlement'
+        return 1
+    }
+    lurume_verify_translation_xpc_entitlements "$lurume_entitlements" || return 1
+
+    local lurume_release_strings
+    lurume_release_strings="$(strings "$lurume_app/Contents/MacOS/Lurume")
+$(strings "$lurume_binary")"
+    lurume_verify_translation_fixture_text "$lurume_release_strings"
+}
+
 lurume_verify_appcast() {
     local lurume_artifact_dir="$1"
     local lurume_account="$2"

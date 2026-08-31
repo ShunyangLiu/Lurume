@@ -22,6 +22,16 @@ Universal Release, creates and mounts a DMG, signs the DMG/appcast/release
 notes, verifies every signature and writes an immutable manifest under
 `build/releases/v<version>/`. It does not contact or modify GitHub.
 
+The Release and mounted-DMG checks also require exactly one embedded
+`LurumeTranslationService.xpc`, verify its strict signature, `arm64`/`x86_64`
+architectures, macOS 15 deployment target and exact bundle identifier, and
+reject file, Keychain, Mach lookup, server, device, personal-information or
+debug entitlements. It also rejects the fixed P7 localhost fixture text, result,
+placeholder key and endpoint if they appear in the production executables. The
+main App must remain sandboxed without generic network client access. Release
+preparation and publishing never call a translation API or read the user's
+translation API Key.
+
 Use `--preflight-only` to validate source inputs without building or reading the
 private key.
 

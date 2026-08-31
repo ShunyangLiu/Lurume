@@ -68,9 +68,10 @@ final class TranslationXPCIntegrationTests: XCTestCase {
         else {
             throw XCTSkip("Set LURUME_TRANSLATION_FAKE_SERVER to run localhost XPC integration tests.")
         }
+        let requestSender = TranslationXPCClient()
         let controller = ModelTranslationSettingsController(
             keyStore: EmptyTranslationAPIKeyStore(),
-            requestSender: TranslationXPCClient()
+            requestSender: requestSender
         )
         controller.draftBaseURL = root + "/v1/chat/completions"
         controller.draftModel = "fixture-model"
@@ -87,6 +88,7 @@ final class TranslationXPCIntegrationTests: XCTestCase {
             case let .succeeded(model, response):
                 XCTAssertEqual(model, "fixture-model")
                 XCTAssertEqual(response, "connection ok")
+                XCTAssertFalse(requestSender.hasActiveConnectionForTesting)
                 return
             case let .failed(message):
                 XCTFail("Connection test failed: \(message)")
@@ -118,11 +120,12 @@ final class TranslationXPCIntegrationTests: XCTestCase {
             modelConfiguration: configuration,
             modelOriginIsConfirmed: true
         )
+        let requestSender = TranslationXPCClient()
         let controller = TranslationController(
             sourceLanguageRecognizer: IntegrationEnglishSourceRecognizer(),
             availabilityChecker: IntegrationAvailabilityChecker(),
             keyStore: EmptyTranslationAPIKeyStore(),
-            modelRequestSender: TranslationXPCClient()
+            modelRequestSender: requestSender
         )
         controller.receiveSelection(
             PDFSelectionEvent(rawText: "  fixture   selection\nonly  ", pageIndex: 4),
@@ -140,6 +143,7 @@ final class TranslationXPCIntegrationTests: XCTestCase {
                 XCTAssertEqual(controller.translatedText, "connection ok")
                 XCTAssertEqual(controller.resultSource, .customModel(model: "fixture-model"))
                 XCTAssertNil(controller.configuration)
+                XCTAssertFalse(requestSender.hasActiveConnectionForTesting)
                 return
             case let .failed(message), let .interrupted(message):
                 XCTFail("Controller translation failed: \(message)")

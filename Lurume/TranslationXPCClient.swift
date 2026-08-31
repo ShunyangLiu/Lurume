@@ -68,6 +68,7 @@ final class TranslationXPCClient: NSObject, TranslationXPCClientProtocol, Transl
         connectionLock.unlock()
         (activeConnection?.remoteObjectProxy as? TranslationXPCServiceProtocol)?
             .cancel(requestID: requestID)
+        invalidateConnectionIfIdle()
     }
 
     func receive(_ event: TranslationXPCEvent) {
@@ -78,6 +79,9 @@ final class TranslationXPCClient: NSObject, TranslationXPCClientProtocol, Transl
         }
         lock.unlock()
         handler?(event)
+        if Self.terminalKinds.contains(event.kind) {
+            invalidateConnectionIfIdle()
+        }
     }
 
     private func fail(requestID: String) {
@@ -92,6 +96,7 @@ final class TranslationXPCClient: NSObject, TranslationXPCClientProtocol, Transl
                 message: "翻译服务连接已中断。"
             )
         )
+        invalidateConnectionIfIdle()
     }
 
     private func failAllActiveRequests() {
@@ -109,6 +114,7 @@ final class TranslationXPCClient: NSObject, TranslationXPCClientProtocol, Transl
                 )
             )
         }
+        invalidateConnectionIfIdle()
     }
 
     private func removeHandler(requestID: String) {
@@ -145,6 +151,29 @@ final class TranslationXPCClient: NSObject, TranslationXPCClientProtocol, Transl
         }
         connectionLock.unlock()
     }
+
+    private func invalidateConnectionIfIdle() {
+        connectionLock.lock()
+        lock.lock()
+        guard handlers.isEmpty else {
+            lock.unlock()
+            connectionLock.unlock()
+            return
+        }
+        let idleConnection = connection
+        connection = nil
+        lock.unlock()
+        connectionLock.unlock()
+        idleConnection?.invalidate()
+    }
+
+    #if DEBUG
+    var hasActiveConnectionForTesting: Bool {
+        connectionLock.lock()
+        defer { connectionLock.unlock() }
+        return connection != nil
+    }
+    #endif
 
     private static let terminalKinds: Set<String> = ["completed", "failed", "cancelled"]
 }
