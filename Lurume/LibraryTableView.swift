@@ -312,7 +312,7 @@ struct LibraryTableView: NSViewRepresentable {
                     collectionID: collection.id
                 )
                 let item = NSMenuItem(
-                    title: collection.name,
+                    title: collectionPathLabel(for: collection),
                     action: #selector(toggleMembership(_:)),
                     keyEquivalent: ""
                 )
@@ -425,10 +425,25 @@ struct LibraryTableView: NSViewRepresentable {
             _ lhs: CollectionRecord,
             _ rhs: CollectionRecord
         ) -> Bool {
-            let order = lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+            let order = collectionPathLabel(for: lhs)
+                .localizedCaseInsensitiveCompare(collectionPathLabel(for: rhs))
             if order != .orderedSame { return order == .orderedAscending }
             if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
             return lhs.id.uuidString < rhs.id.uuidString
+        }
+
+        private func collectionPathLabel(for collection: CollectionRecord) -> String {
+            let byID = Dictionary(uniqueKeysWithValues: parent.collections.map { ($0.id, $0) })
+            var names = [collection.name]
+            var parentID = collection.parentID
+            var visited: Set<UUID> = [collection.id]
+            while let id = parentID,
+                  let ancestor = byID[id],
+                  visited.insert(id).inserted {
+                names.append(ancestor.name)
+                parentID = ancestor.parentID
+            }
+            return names.reversed().joined(separator: " › ")
         }
 
         private func perform(_ command: LibraryTableCommand) {

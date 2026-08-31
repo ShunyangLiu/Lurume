@@ -73,6 +73,41 @@ final class LibraryOrganizationTests: XCTestCase {
         )
     }
 
+    func testSearchIncludesExpandedBibliographicMetadata() {
+        var paper = makePaper(title: "Opaque Title", dateAdded: 10)
+        paper.metadata = BibliographicMetadata(
+            itemType: .journalArticle,
+            title: "Opaque Title",
+            creators: [BibliographicCreator(role: .editor, literalName: "Editorial Group")],
+            issuedDate: BibliographicDate(sourceText: "Spring 2025", year: 2025),
+            containerTitle: "Journal of Native Reading",
+            identifiers: [BibliographicIdentifier(kind: .doi, displayValue: "10.1000/LURUME")],
+            publisher: "Example Press",
+            url: "https://example.com/paper",
+            language: "zh-Hans",
+            abstractText: "A distinctive abstract phrase"
+        )
+
+        for query in ["Editorial", "Spring", "Native Reading", "10.1000/lurume", "example.com/paper"] {
+            XCTAssertEqual(
+                LibraryQuery.apply(to: [paper], searchText: query, status: .all, sort: .title).map(\.id),
+                [paper.id],
+                "Expected expanded metadata search to match \(query)"
+            )
+        }
+        for excludedQuery in ["Example Press", "zh-Hans", "distinctive"] {
+            XCTAssertTrue(
+                LibraryQuery.apply(
+                    to: [paper],
+                    searchText: excludedQuery,
+                    status: .all,
+                    sort: .title
+                ).isEmpty,
+                "Ordinary search must not include \(excludedQuery)"
+            )
+        }
+    }
+
     func testRecentlyOpenedPlacesNeverOpenedLastAndUsesDateAddedFallback() {
         let recent = makePaper(title: "Recent", dateAdded: 10, lastOpenedAt: 100)
         let older = makePaper(title: "Older", dateAdded: 50, lastOpenedAt: 90)

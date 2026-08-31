@@ -93,6 +93,78 @@ final class P8LibraryModelTests: XCTestCase {
         XCTAssertTrue(loaded.snapshot.collections.first?.importSources.isEmpty == true)
     }
 
+    @MainActor
+    func testV4OnDiskLibraryOpensRewritesAndSupportsCheckpointTwoOperations() throws {
+        let fileURL = makeTempFileURL()
+        defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
+        let collectionID = UUID(uuidString: "44444444-4444-4444-4444-444444444444")!
+        let paperID = UUID(uuidString: "55555555-5555-5555-5555-555555555555")!
+        let legacy = LibrarySnapshotV4(
+            schemaVersion: 4,
+            papers: [
+                PaperRecordV4(
+                    id: paperID,
+                    volumeUUID: "legacy-volume",
+                    documentIdentifier: 405,
+                    bookmarkData: Data([4, 0, 5]),
+                    fallbackPath: "/tmp/legacy-v4.pdf",
+                    originalFileName: "legacy-v4.pdf",
+                    title: "Legacy V4 Title",
+                    authors: "Research Group",
+                    year: 2024,
+                    manuallyEditedFields: [.authors],
+                    didReadAutoMetadata: true,
+                    dateAdded: Date(timeIntervalSince1970: 1_730_000_000),
+                    lastOpenedAt: Date(timeIntervalSince1970: 1_730_000_100),
+                    lastPageIndex: 27,
+                    readingStatus: .reading,
+                    collectionIDs: [collectionID]
+                ),
+            ],
+            collections: [
+                CollectionRecordV4(
+                    id: collectionID,
+                    name: "Legacy Collection",
+                    createdAt: Date(timeIntervalSince1970: 1_720_000_000)
+                ),
+            ],
+            selectedPaperID: paperID
+        )
+        try writeJSON(legacy, to: fileURL)
+
+        let persistence = LibraryPersistence(fileURL: fileURL)
+        let store = LibraryStore(persistence: persistence)
+        let childID = try store.createCollection(
+            named: "Nested Child",
+            parentID: collectionID
+        )
+        try store.setMembership(of: [paperID], in: childID, isMember: true)
+        var edited = try XCTUnwrap(store.papers.first).metadata
+        edited.containerTitle = "Migrated Journal"
+        try store.setManualMetadata(
+            edited,
+            attachmentLabel: "Accepted manuscript",
+            for: paperID
+        )
+
+        let rewritten = try persistence.load()
+        XCTAssertFalse(rewritten.migratedFromLegacy)
+        XCTAssertEqual(rewritten.snapshot.schemaVersion, 5)
+        XCTAssertEqual(rewritten.snapshot.selectedPaperID, paperID)
+        XCTAssertEqual(rewritten.snapshot.papers.first?.lastPageIndex, 27)
+        XCTAssertEqual(rewritten.snapshot.papers.first?.readingStatus, .reading)
+        XCTAssertEqual(
+            Set(rewritten.snapshot.papers.first?.collectionIDs ?? []),
+            [collectionID, childID]
+        )
+        XCTAssertEqual(rewritten.snapshot.papers.first?.metadata.containerTitle, "Migrated Journal")
+        XCTAssertEqual(rewritten.snapshot.papers.first?.attachmentLabel, "Accepted manuscript")
+        XCTAssertEqual(
+            rewritten.snapshot.collections.first(where: { $0.id == childID })?.parentID,
+            collectionID
+        )
+    }
+
     func testV5PersistsOnlyMetadataTitleAndCompatibilityFacadeMutatesIt() throws {
         var record = paper(title: "Initial")
         record.title = "Changed"

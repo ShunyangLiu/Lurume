@@ -198,4 +198,167 @@ final class LibraryCollectionStoreTests: XCTestCase {
         XCTAssertTrue(store.papers.isEmpty)
         XCTAssertTrue(try persistence.load().snapshot.papers.isEmpty)
     }
+
+    @MainActor
+    func testNestedSourceRecursivelyDeduplicatesMembersAndCounts() throws {
+        let root = CollectionRecord(name: "Root")
+        let first = CollectionRecord(name: "First", parentID: root.id)
+        let second = CollectionRecord(name: "Second", parentID: root.id)
+        let shared = makePaper(title: "Shared", collectionIDs: [first.id, second.id])
+        let direct = makePaper(title: "Direct", collectionIDs: [root.id])
+        let (store, _, directory) = try makeStore(
+            papers: [shared, direct],
+            collections: [root, first, second]
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        XCTAssertEqual(store.count(in: .collection(root.id)), 2)
+        XCTAssertEqual(
+            Set(store.papers(in: .collection(root.id), matching: "").map(\.id)),
+            [shared.id, direct.id]
+        )
+        XCTAssertEqual(store.count(in: .collection(first.id)), 1)
+    }
+
+    @MainActor
+    func testCreateMoveRenameUseSiblingNamesAndRejectCyclesWithUndo() throws {
+        let left = CollectionRecord(name: "Left")
+        let right = CollectionRecord(name: "Right")
+        let child = CollectionRecord(name: "Papers", parentID: left.id)
+        let (store, persistence, directory) = try makeStore(collections: [left, right, child])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let undoManager = UndoManager()
+
+        let rightChildID = try store.createCollection(named: "Papers", parentID: right.id)
+        XCTAssertThrowsError(try store.createCollection(named: " papers ", parentID: left.id)) {
+            XCTAssertEqual($0 as? LibraryStoreError, .duplicateCollectionName)
+        }
+        XCTAssertFalse(store.canMoveCollection(child.id, to: right.id))
+        try store.renameCollection(id: rightChildID, to: "Other")
+        XCTAssertTrue(store.canMoveCollection(child.id, to: right.id))
+        XCTAssertThrowsError(try store.moveCollection(id: left.id, toParentID: child.id)) {
+            XCTAssertEqual($0 as? LibraryStoreError, .invalidCollectionMove)
+        }
+
+        try store.moveCollection(id: child.id, toParentID: right.id, undoManager: undoManager)
+        XCTAssertEqual(store.collections.first(where: { $0.id == child.id })?.parentID, right.id)
+        XCTAssertTrue(store.collections.first(where: { $0.id == child.id })?.wasManuallyOrganized == true)
+
+        undoManager.undo()
+        XCTAssertEqual(store.collections.first(where: { $0.id == child.id })?.parentID, left.id)
+        XCTAssertEqual(
+            try persistence.load().snapshot.collections.first(where: { $0.id == child.id })?.parentID,
+            left.id
+        )
+    }
+
+    @MainActor
+    func testCreateAndRenameEachProvideACompleteUndoStep() throws {
+        let (store, _, directory) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let undoManager = UndoManager()
+
+        let id = try store.createCollection(
+            named: "Draft",
+            undoManager: undoManager
+        )
+        XCTAssertEqual(store.collections.first?.name, "Draft")
+        undoManager.undo()
+        XCTAssertTrue(store.collections.isEmpty)
+        undoManager.redo()
+        XCTAssertEqual(store.collections.first?.id, id)
+
+        try store.renameCollection(
+            id: id,
+            to: "Final",
+            undoManager: undoManager
+        )
+        XCTAssertEqual(store.collections.first?.name, "Final")
+        undoManager.undo()
+        XCTAssertEqual(store.collections.first?.name, "Draft")
+    }
+
+    @MainActor
+    func testRecursiveDeleteSummaryAndUndoRestoreWholeSubtreeAndMemberships() throws {
+        let root = CollectionRecord(name: "Root")
+        let child = CollectionRecord(name: "Child", parentID: root.id)
+        let leaf = CollectionRecord(name: "Leaf", parentID: child.id)
+        let outside = CollectionRecord(name: "Outside")
+        let first = makePaper(title: "First", collectionIDs: [root.id, leaf.id, outside.id])
+        let second = makePaper(title: "Second", collectionIDs: [child.id])
+        let (store, _, directory) = try makeStore(
+            papers: [first, second],
+            collections: [root, child, leaf, outside]
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let undoManager = UndoManager()
+
+        XCTAssertEqual(
+            store.deletionSummary(forCollectionID: root.id),
+            CollectionDeletionSummary(collectionCount: 3, affectedPaperCount: 2)
+        )
+        try store.deleteCollection(id: root.id, undoManager: undoManager)
+        XCTAssertEqual(store.collections.map(\.id), [outside.id])
+        XCTAssertEqual(store.papers[0].collectionIDs, [outside.id])
+        XCTAssertTrue(store.papers[1].collectionIDs.isEmpty)
+
+        undoManager.undo()
+        XCTAssertEqual(Set(store.collections.map(\.id)), [root.id, child.id, leaf.id, outside.id])
+        XCTAssertEqual(store.papers[0].collectionIDs, first.collectionIDs)
+        XCTAssertEqual(store.papers[1].collectionIDs, second.collectionIDs)
+    }
+
+    @MainActor
+    func testRemovingFromParentHierarchyRemovesDescendantMembershipsInOneUndoStep() throws {
+        let root = CollectionRecord(name: "Root")
+        let child = CollectionRecord(name: "Child", parentID: root.id)
+        let outside = CollectionRecord(name: "Outside")
+        let paper = makePaper(title: "Paper", collectionIDs: [child.id, outside.id])
+        let (store, _, directory) = try makeStore(
+            papers: [paper],
+            collections: [root, child, outside]
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let undoManager = UndoManager()
+
+        try store.removeMemberships(
+            of: [paper.id],
+            fromCollectionHierarchy: root.id,
+            undoManager: undoManager
+        )
+        XCTAssertEqual(store.papers.first?.collectionIDs, [outside.id])
+
+        undoManager.undo()
+        XCTAssertEqual(store.papers.first?.collectionIDs, paper.collectionIDs)
+
+        XCTAssertThrowsError(try store.removeMemberships(
+            of: [UUID()],
+            fromCollectionHierarchy: root.id
+        )) {
+            XCTAssertEqual($0 as? LibraryStoreError, .paperNotFound)
+        }
+    }
+
+    @MainActor
+    func testStructuredMetadataSaveIsAtomicAndMarksOnlyChangedFields() throws {
+        let paper = makePaper(title: "Paper")
+        let (store, persistence, directory) = try makeStore(papers: [paper])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var metadata = paper.metadata
+        metadata.containerTitle = "Journal"
+        metadata.language = "en"
+
+        try store.setManualMetadata(
+            metadata,
+            attachmentLabel: "Accepted manuscript",
+            for: paper.id
+        )
+
+        let saved = try XCTUnwrap(store.papers.first)
+        XCTAssertEqual(saved.metadata.containerTitle, "Journal")
+        XCTAssertEqual(saved.metadata.language, "en")
+        XCTAssertEqual(saved.attachmentLabel, "Accepted manuscript")
+        XCTAssertEqual(saved.manuallyEditedFields, [.containerTitle, .language])
+        XCTAssertEqual(try persistence.load().snapshot.papers.first, saved)
+    }
 }

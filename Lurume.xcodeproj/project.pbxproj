@@ -46,8 +46,10 @@
 		8226C9EA96CDAE79A9037711 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 3E5A34989D0B107DE3DBA0F3 /* Sparkle */; };
 		832317642703EDFE268ECA0D /* TranslationXPCConnectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADC9C439BE92821AED7C642 /* TranslationXPCConnectionPolicy.swift */; };
 		86654EDA264C87B8116DD5EF /* TranslationXPCConnectionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8903F807C3C628B22038F66 /* TranslationXPCConnectionPolicyTests.swift */; };
+		8682A270EE82DAB1AAB28160 /* BibliographicMetadataEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E98CC2FD6E3829DE0DF21FA4 /* BibliographicMetadataEditingTests.swift */; };
 		8A612497C2D39BFFBC3CD179 /* LurumeSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */; };
 		8C76D856E19DC6EC27287901 /* ModelTranslationConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFBCE235CDCC1C9AC3DC27B0 /* ModelTranslationConfigurationTests.swift */; };
+		8E86D8807B455C44DDE17E48 /* BibliographicMetadataEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = E84158311BB335DE2B886431 /* BibliographicMetadataEditing.swift */; };
 		901386E6D513046A375512B4 /* SystemPaperMetadataReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC49AD84FACDAB3ED5163A55 /* SystemPaperMetadataReader.swift */; };
 		9048D80279177B1F81AE0790 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B52C1CACB063DB3505EEF6C /* AppSettings.swift */; };
 		95E6621DB260C534F214A262 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 5BDFE7ED94697A4351F79112 /* Localizable.strings */; };
@@ -64,6 +66,7 @@
 		B4042DDCBCA2A04985D37575 /* TranslationXPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 032EC53B9158647738493AB6 /* TranslationXPCProtocol.swift */; };
 		B6CDFABD6995CD92A30CD86A /* TranslationAPIKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 862485423CEF552ECEA8712C /* TranslationAPIKeyStore.swift */; };
 		B96EA3B16617DEA37D0FF4FD /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B43B08E498537804DB3769E8 /* SettingsView.swift */; };
+		C056C40ACD4F4F8AE19ED45B /* CollectionExpansionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83DE810265C2BFA72E2A33E7 /* CollectionExpansionState.swift */; };
 		C844133EBD258AD8321EA43A /* HighlightPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A2CEFED2568E02C16AA36E /* HighlightPersistence.swift */; };
 		CAEB67A89F6A35C4A583AEF4 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6026208784328D8B45E4805D /* main.swift */; };
 		CBA9B4B2323565FEB2538795 /* LibraryImportPlanning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95B0193F4D7D2AD499EFE01F /* LibraryImportPlanning.swift */; };
@@ -75,6 +78,7 @@
 		D9E8C3A77EE0A76B56701542 /* PaperRemovalCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C68C64D3676F502236BD86 /* PaperRemovalCoordinatorTests.swift */; };
 		DD5F3D4DF228FD158D575BB6 /* UpdateTestHostApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E4CE87BA8D875DB1CF932E5 /* UpdateTestHostApp.swift */; };
 		E1FA3537138C6630E9064659 /* TranslationXPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6662DB14AB725B65D5107D51 /* TranslationXPCClient.swift */; };
+		E4DE5B18C7C0D99CDF273F36 /* CollectionExpansionStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CDB4FFF66903850755F56A6 /* CollectionExpansionStateTests.swift */; };
 		EB7D92CC26B4FE6453148D55 /* UpdaterController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB67A6A41839515674054B2B /* UpdaterController.swift */; };
 		EE1BEB4BABADE6A8044077BD /* MainWindowMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C060B9B8CAE158F8A0B938 /* MainWindowMode.swift */; };
 		F1030095E5FF32766B4C1C8C /* LibraryCollectionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5294525FCF269307315AAFD4 /* LibraryCollectionStoreTests.swift */; };
@@ -165,6 +169,7 @@
 		6662DB14AB725B65D5107D51 /* TranslationXPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationXPCClient.swift; sourceTree = "<group>"; };
 		6741F46CA962F25B42E43E09 /* LibraryDragDrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDragDrop.swift; sourceTree = "<group>"; };
 		67ED0DE1FEE1DFEEA102642F /* Lurume.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Lurume.entitlements; sourceTree = "<group>"; };
+		6CDB4FFF66903850755F56A6 /* CollectionExpansionStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionExpansionStateTests.swift; sourceTree = "<group>"; };
 		6D64B77A7BD1986CDDE927FE /* LibraryManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryManagementView.swift; sourceTree = "<group>"; };
 		6E489A1C10FD4AE7E9A33154 /* LibraryOrganizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryOrganizationTests.swift; sourceTree = "<group>"; };
 		6F541B6F7724A857648FF173 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -173,6 +178,7 @@
 		7C778B6C50C6E4415F71CB8F /* OpenAIChatCompletionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIChatCompletionsTests.swift; sourceTree = "<group>"; };
 		813B2765B8739B290712AAD7 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		83C060B9B8CAE158F8A0B938 /* MainWindowMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowMode.swift; sourceTree = "<group>"; };
+		83DE810265C2BFA72E2A33E7 /* CollectionExpansionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionExpansionState.swift; sourceTree = "<group>"; };
 		84DFEEEEEFB00E092E4208D9 /* LurumeUpdateTestHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LurumeUpdateTestHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		862485423CEF552ECEA8712C /* TranslationAPIKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationAPIKeyStore.swift; sourceTree = "<group>"; };
 		87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationInspector.swift; sourceTree = "<group>"; };
@@ -201,6 +207,8 @@
 		E0325E1A53B306B4E070020D /* LibraryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryModels.swift; sourceTree = "<group>"; };
 		E2DD1BB9E639067387C339DF /* LurumeTranslationService.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = LurumeTranslationService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4B1E8C5AAC4A05692CCB495 /* TranslationRequestOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationRequestOperation.swift; sourceTree = "<group>"; };
+		E84158311BB335DE2B886431 /* BibliographicMetadataEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BibliographicMetadataEditing.swift; sourceTree = "<group>"; };
+		E98CC2FD6E3829DE0DF21FA4 /* BibliographicMetadataEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BibliographicMetadataEditingTests.swift; sourceTree = "<group>"; };
 		EB67A6A41839515674054B2B /* UpdaterController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterController.swift; sourceTree = "<group>"; };
 		EBD276D9AB2C63D7E24FDE04 /* Sparkle-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Sparkle-LICENSE.txt"; sourceTree = "<group>"; };
 		EC5484C864E05733C0A97EE0 /* OpenAIChatCompletions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIChatCompletions.swift; sourceTree = "<group>"; };
@@ -305,6 +313,8 @@
 			isa = PBXGroup;
 			children = (
 				0B52C1CACB063DB3505EEF6C /* AppSettings.swift */,
+				E84158311BB335DE2B886431 /* BibliographicMetadataEditing.swift */,
+				83DE810265C2BFA72E2A33E7 /* CollectionExpansionState.swift */,
 				813B2765B8739B290712AAD7 /* ContentView.swift */,
 				390A1F1BF533AFA28CCFD10F /* Credits.html */,
 				EFEAA76699D454EB7F711760 /* HighlightModels.swift */,
@@ -359,6 +369,8 @@
 		F3DCD83738E5075D4829D5A4 /* LurumeTests */ = {
 			isa = PBXGroup;
 			children = (
+				E98CC2FD6E3829DE0DF21FA4 /* BibliographicMetadataEditingTests.swift */,
+				6CDB4FFF66903850755F56A6 /* CollectionExpansionStateTests.swift */,
 				B332936519E7741B917213C1 /* FileIdentityTests.swift */,
 				B84CEE7D84F804319313E2FC /* HighlightPersistenceTests.swift */,
 				5294525FCF269307315AAFD4 /* LibraryCollectionStoreTests.swift */,
@@ -582,6 +594,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8682A270EE82DAB1AAB28160 /* BibliographicMetadataEditingTests.swift in Sources */,
+				E4DE5B18C7C0D99CDF273F36 /* CollectionExpansionStateTests.swift in Sources */,
 				61A1E8FC19A5F997C16108CE /* FileIdentityTests.swift in Sources */,
 				CD6C64A27F724DEB33871DFF /* HighlightPersistenceTests.swift in Sources */,
 				F1030095E5FF32766B4C1C8C /* LibraryCollectionStoreTests.swift in Sources */,
@@ -652,6 +666,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				9048D80279177B1F81AE0790 /* AppSettings.swift in Sources */,
+				8E86D8807B455C44DDE17E48 /* BibliographicMetadataEditing.swift in Sources */,
+				C056C40ACD4F4F8AE19ED45B /* CollectionExpansionState.swift in Sources */,
 				68D5F0FC04789CBE194A49A1 /* ContentView.swift in Sources */,
 				B1AE1C81032365A6F314978A /* HighlightModels.swift in Sources */,
 				15FB3FBDD96F12FD1A097CE0 /* HighlightPDFView.swift in Sources */,

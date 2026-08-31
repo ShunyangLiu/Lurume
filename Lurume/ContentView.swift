@@ -91,14 +91,15 @@ struct ContentView: View {
     private var readingLibrarySearchPrompt: String {
         switch readingLibrarySource {
         case .all:
-            "搜索文献"
+            return "搜索文献"
         case .unfiled:
-            "搜索未分类文献"
+            return "搜索未分类文献"
         case let .collection(id):
-            if let name = libraryStore.collections.first(where: { $0.id == id })?.name {
-                "搜索“\(name)”"
+            let path = libraryStore.collectionPath(for: id).map(\.name).joined(separator: " › ")
+            if !path.isEmpty {
+                return "搜索“\(path)”"
             } else {
-                "搜索文献"
+                return "搜索文献"
             }
         }
     }
@@ -1187,30 +1188,153 @@ final class ReadingStatusInteractionGuard {
     }
 }
 
+private struct MetadataPickerOption: Identifiable {
+    let value: String
+    let label: String
+    var id: String { value }
+}
+
 private struct MetadataFormView: View {
     let paper: PaperRecord
     let onClose: () -> Void
 
     @EnvironmentObject private var libraryStore: LibraryStore
     @Environment(\.dismiss) private var dismiss
-    @State private var titleText = ""
-    @State private var authorsText = ""
-    @State private var yearText = ""
-    @State private var didLoadInitialValues = false
+    @State private var draft: BibliographicMetadataDraft
+    @State private var validationMessage: String?
+
+    init(paper: PaperRecord, onClose: @escaping () -> Void) {
+        self.paper = paper
+        self.onClose = onClose
+        _draft = State(initialValue: BibliographicMetadataDraft(
+            metadata: paper.metadata,
+            attachmentLabel: paper.attachmentLabel
+        ))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("编辑文献信息")
                 .font(.headline)
 
-            Form {
-                TextField("标题", text: $titleText)
-                TextField("作者", text: $authorsText)
-                TextField("年份（如 2023）", text: $yearText)
-                if case .invalid = parsedYearInput {
-                    Text("年份必须是整数，或留空。")
-                        .font(.caption)
-                        .foregroundStyle(.red)
+            ScrollView {
+                Form {
+                    Section("基本信息") {
+                        TextField("标题", text: $draft.title)
+                        TextField("条目类型", text: $draft.itemType)
+                            .help("保留 Zotero 或其他来源的稳定类型字符串")
+                        TextField("原始日期", text: $draft.dateText)
+                        TextField("规范化年份", text: $draft.yearText)
+                    }
+
+                    Section("创作者") {
+                        ForEach($draft.creators) { $creator in
+                            VStack(alignment: .leading, spacing: 7) {
+                                HStack {
+                                    Picker("角色", selection: $creator.role) {
+                                        ForEach(creatorRoleOptions(current: creator.role)) { option in
+                                            Text(option.label).tag(option.value)
+                                        }
+                                    }
+                                    .frame(maxWidth: 240)
+                                    Spacer()
+                                    Button(role: .destructive) {
+                                        draft.creators.removeAll { $0.id == creator.id }
+                                    } label: {
+                                        Image(systemName: "minus.circle")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help("移除创作者")
+                                    .accessibilityLabel("移除创作者")
+                                    Button {
+                                        moveCreator(creator.id, offset: -1)
+                                    } label: {
+                                        Image(systemName: "arrow.up")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .disabled(draft.creators.first?.id == creator.id)
+                                    .help("上移创作者")
+                                    .accessibilityLabel("上移创作者")
+                                    Button {
+                                        moveCreator(creator.id, offset: 1)
+                                    } label: {
+                                        Image(systemName: "arrow.down")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .disabled(draft.creators.last?.id == creator.id)
+                                    .help("下移创作者")
+                                    .accessibilityLabel("下移创作者")
+                                }
+                                HStack {
+                                    TextField("名", text: $creator.givenName)
+                                    TextField("姓", text: $creator.familyName)
+                                }
+                                TextField("团体或单字段姓名", text: $creator.literalName)
+                            }
+                            .padding(.vertical, 3)
+                        }
+                        Button("添加创作者", systemImage: "plus") {
+                            draft.creators.append(BibliographicCreatorDraft())
+                        }
+                    }
+
+                    Section("发表信息") {
+                        TextField("期刊、会议论文集或书名", text: $draft.containerTitle)
+                        HStack {
+                            TextField("卷", text: $draft.volume)
+                            TextField("期", text: $draft.issue)
+                            TextField("页码", text: $draft.pages)
+                        }
+                        TextField("出版社", text: $draft.publisher)
+                        TextField("出版地", text: $draft.place)
+                        TextField("版本", text: $draft.edition)
+                    }
+
+                    Section("标识符") {
+                        ForEach($draft.identifiers) { $identifier in
+                            HStack {
+                                Picker("类型", selection: $identifier.kind) {
+                                    ForEach(identifierKindOptions(current: identifier.kind)) { option in
+                                        Text(option.label).tag(option.value)
+                                    }
+                                }
+                                .frame(width: 150)
+                                TextField("值", text: $identifier.value)
+                                Button(role: .destructive) {
+                                    draft.identifiers.removeAll { $0.id == identifier.id }
+                                } label: {
+                                    Image(systemName: "minus.circle")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("移除标识符")
+                                .accessibilityLabel("移除标识符")
+                            }
+                        }
+                        Button("添加标识符", systemImage: "plus") {
+                            draft.identifiers.append(BibliographicIdentifierDraft())
+                        }
+                        TextField("URL", text: $draft.url)
+                    }
+
+                    Section("其他") {
+                        TextField("语言", text: $draft.language)
+                        TextField("附件标签", text: $draft.attachmentLabel)
+                        Text("摘要")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $draft.abstractText)
+                            .font(.body)
+                            .frame(minHeight: 100)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 5)
+                                    .stroke(.separator, lineWidth: 0.5)
+                            }
+                        LabeledContent("来源") {
+                            Text(paper.importSourceSummary)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
                 }
             }
 
@@ -1225,6 +1349,13 @@ private struct MetadataFormView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
+            if let validationMessage {
+                Text(validationMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("无法保存：\(validationMessage)")
+            }
+
             HStack {
                 Spacer()
                 Button("取消", action: closeWithoutSaving)
@@ -1232,49 +1363,27 @@ private struct MetadataFormView: View {
                 Button("保存", action: save)
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(parsedYearInput == .invalid || libraryStore.persistenceDisabled)
+                    .disabled(libraryStore.persistenceDisabled)
             }
         }
         .padding(20)
-        .frame(width: 420)
-        .onAppear(perform: loadInitialValues)
-    }
-
-    private func loadInitialValues() {
-        guard !didLoadInitialValues else { return }
-        didLoadInitialValues = true
-        titleText = paper.title
-        authorsText = paper.authors ?? ""
-        yearText = paper.year.map(String.init) ?? ""
+        .frame(width: 650, height: 720)
     }
 
     private func save() {
-        guard parsedYearInput != .invalid else { return }
-        // 只提交发生变化的字段，避免未触碰的字段被误标记为手动维护。
-        if titleText.trimmingCharacters(in: .whitespacesAndNewlines) != paper.title {
-            libraryStore.setManualTitle(titleText, for: paper.id)
+        do {
+            let result = try draft.result(comparedWith: paper.metadata)
+            try libraryStore.setManualMetadata(
+                result.metadata,
+                attachmentLabel: result.attachmentLabel,
+                for: paper.id
+            )
+            validationMessage = nil
+            dismiss()
+            onClose()
+        } catch {
+            validationMessage = error.localizedDescription
         }
-        if authorsText.trimmingCharacters(in: .whitespacesAndNewlines) != (paper.authors ?? "") {
-            libraryStore.setManualAuthors(authorsText, for: paper.id)
-        }
-        let parsedYear: Int?
-        switch parsedYearInput {
-        case .empty:
-            parsedYear = nil
-        case let .value(year):
-            parsedYear = year
-        case .invalid:
-            return
-        }
-        if parsedYear != paper.year {
-            libraryStore.setManualYear(parsedYear, for: paper.id)
-        }
-        dismiss()
-        onClose()
-    }
-
-    private var parsedYearInput: PaperYearInput {
-        PaperYearRules.parse(yearText)
     }
 
     private func closeWithoutSaving() {
@@ -1288,6 +1397,39 @@ private struct MetadataFormView: View {
             Text(value)
                 .textSelection(.enabled)
         }
+    }
+
+    private func creatorRoleOptions(current: String) -> [MetadataPickerOption] {
+        var options = [
+            MetadataPickerOption(value: BibliographicCreatorRole.author.rawValue, label: "作者"),
+            MetadataPickerOption(value: BibliographicCreatorRole.editor.rawValue, label: "编辑"),
+            MetadataPickerOption(value: BibliographicCreatorRole.translator.rawValue, label: "译者"),
+            MetadataPickerOption(value: "other", label: "其他"),
+        ]
+        if !options.contains(where: { $0.value == current }) {
+            options.append(MetadataPickerOption(value: current, label: "其他（\(current)）"))
+        }
+        return options
+    }
+
+    private func identifierKindOptions(current: String) -> [MetadataPickerOption] {
+        var options = [
+            MetadataPickerOption(value: BibliographicIdentifierKind.doi.rawValue, label: "DOI"),
+            MetadataPickerOption(value: BibliographicIdentifierKind.isbn.rawValue, label: "ISBN"),
+            MetadataPickerOption(value: BibliographicIdentifierKind.issn.rawValue, label: "ISSN"),
+            MetadataPickerOption(value: BibliographicIdentifierKind.arXiv.rawValue, label: "arXiv"),
+        ]
+        if !options.contains(where: { $0.value == current }) {
+            options.append(MetadataPickerOption(value: current, label: current))
+        }
+        return options
+    }
+
+    private func moveCreator(_ id: UUID, offset: Int) {
+        guard let source = draft.creators.firstIndex(where: { $0.id == id }) else { return }
+        let destination = source + offset
+        guard draft.creators.indices.contains(destination) else { return }
+        draft.creators.swapAt(source, destination)
     }
 }
 

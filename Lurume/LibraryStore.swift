@@ -5,6 +5,7 @@ enum LibraryStoreError: LocalizedError, Equatable {
     case collectionNotFound
     case invalidCollectionName
     case duplicateCollectionName
+    case invalidCollectionMove
     case paperNotFound
 
     var errorDescription: String? {
@@ -16,7 +17,9 @@ enum LibraryStoreError: LocalizedError, Equatable {
         case .invalidCollectionName:
             "文献集名称不能为空。"
         case .duplicateCollectionName:
-            "已有同名文献集。"
+            "同一层级已有同名文献集。"
+        case .invalidCollectionMove:
+            "不能把文献集移入自身或它的子文献集。"
         case .paperNotFound:
             "部分文献已不在文献库中。"
         }
@@ -26,6 +29,11 @@ enum LibraryStoreError: LocalizedError, Equatable {
 struct RemovedLibraryPapers: Sendable {
     let papers: [PaperRecord]
     let selectedPaperID: UUID?
+}
+
+struct CollectionDeletionSummary: Equatable, Sendable {
+    let collectionCount: Int
+    let affectedPaperCount: Int
 }
 
 @MainActor
@@ -81,7 +89,7 @@ final class LibraryStore: ObservableObject {
         status: ReadingStatusFilter = .all,
         sortedBy sort: LibrarySortOption? = nil
     ) -> [PaperRecord] {
-        let sourcePapers = papers.filter(source.includes)
+        let sourcePapers = papers(in: source)
         guard let sort else {
             let filtered = LibraryQuery.apply(
                 to: sourcePapers,
@@ -101,11 +109,35 @@ final class LibraryStore: ObservableObject {
     }
 
     func count(in source: LibrarySource) -> Int {
-        papers.lazy.filter(source.includes).count
+        papers(in: source).count
     }
 
     var sortedCollections: [CollectionRecord] {
-        collections.sorted { lhs, rhs in
+        sorted(collections)
+    }
+
+    var rootCollections: [CollectionRecord] {
+        sorted(collections.filter { $0.parentID == nil })
+    }
+
+    func childCollections(of parentID: UUID) -> [CollectionRecord] {
+        sorted(collections.filter { $0.parentID == parentID })
+    }
+
+    func collectionPath(for id: UUID) -> [CollectionRecord] {
+        let byID = Dictionary(uniqueKeysWithValues: collections.map { ($0.id, $0) })
+        var path: [CollectionRecord] = []
+        var current = byID[id]
+        var visited: Set<UUID> = []
+        while let collection = current, visited.insert(collection.id).inserted {
+            path.append(collection)
+            current = collection.parentID.flatMap { byID[$0] }
+        }
+        return path.reversed()
+    }
+
+    private func sorted(_ values: [CollectionRecord]) -> [CollectionRecord] {
+        values.sorted { lhs, rhs in
             let order = lhs.name.localizedCaseInsensitiveCompare(rhs.name)
             if order != .orderedSame { return order == .orderedAscending }
             if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
@@ -123,13 +155,23 @@ final class LibraryStore: ObservableObject {
     @discardableResult
     func createCollection(
         named rawName: String,
+        parentID: UUID? = nil,
         undoManager: UndoManager? = nil,
         id: UUID = UUID(),
         createdAt: Date = Date()
     ) throws -> UUID {
-        let name = try validatedCollectionName(rawName)
+        if let parentID,
+           !collections.contains(where: { $0.id == parentID }) {
+            throw LibraryStoreError.collectionNotFound
+        }
+        let name = try validatedCollectionName(rawName, parentID: parentID)
         var updatedCollections = collections
-        updatedCollections.append(CollectionRecord(id: id, name: name, createdAt: createdAt))
+        updatedCollections.append(CollectionRecord(
+            id: id,
+            name: name,
+            createdAt: createdAt,
+            parentID: parentID
+        ))
         try applyOrganizationChange(
             papers: papers,
             collections: updatedCollections,
@@ -147,7 +189,11 @@ final class LibraryStore: ObservableObject {
         guard let index = collections.firstIndex(where: { $0.id == id }) else {
             throw LibraryStoreError.collectionNotFound
         }
-        let name = try validatedCollectionName(rawName, excluding: id)
+        let name = try validatedCollectionName(
+            rawName,
+            parentID: collections[index].parentID,
+            excluding: id
+        )
         guard collections[index].name != name else { return }
         var updatedCollections = collections
         updatedCollections[index].name = name
@@ -163,17 +209,87 @@ final class LibraryStore: ObservableObject {
         guard let collection = collections.first(where: { $0.id == id }) else {
             throw LibraryStoreError.collectionNotFound
         }
-        var updatedPapers = papers
-        for index in updatedPapers.indices {
-            updatedPapers[index].collectionIDs.removeAll { $0 == id }
+        guard let candidate = CollectionHierarchy.deletionCandidate(
+            for: id,
+            papers: papers,
+            collections: collections
+        ) else {
+            throw LibraryStoreError.collectionNotFound
         }
-        let updatedCollections = collections.filter { $0.id != id }
+        let removedIDs = Set(candidate.removedCollections.map(\.id))
+        let updatedCollections = collections.filter { !removedIDs.contains($0.id) }
         try applyOrganizationChange(
-            papers: updatedPapers,
+            papers: candidate.updatedPapers,
             collections: updatedCollections,
             undoManager: undoManager,
             actionName: "文献集：删除“\(collection.name)”"
         )
+    }
+
+    func deletionSummary(forCollectionID id: UUID) -> CollectionDeletionSummary? {
+        guard let candidate = CollectionHierarchy.deletionCandidate(
+            for: id,
+            papers: papers,
+            collections: collections
+        ) else {
+            return nil
+        }
+        return CollectionDeletionSummary(
+            collectionCount: candidate.removedCollections.count,
+            affectedPaperCount: candidate.affectedPaperCount
+        )
+    }
+
+    func moveCollection(
+        id: UUID,
+        toParentID parentID: UUID?,
+        undoManager: UndoManager? = nil
+    ) throws {
+        guard let index = collections.firstIndex(where: { $0.id == id }) else {
+            throw LibraryStoreError.collectionNotFound
+        }
+        guard CollectionHierarchy.canMove(
+            collectionID: id,
+            to: parentID,
+            in: collections
+        ) else {
+            throw LibraryStoreError.invalidCollectionMove
+        }
+        guard collections[index].parentID != parentID else { return }
+        _ = try validatedCollectionName(
+            collections[index].name,
+            parentID: parentID,
+            excluding: id
+        )
+        var updatedCollections = collections
+        updatedCollections[index].parentID = parentID
+        updatedCollections[index].wasManuallyOrganized = true
+        try applyOrganizationChange(
+            papers: papers,
+            collections: updatedCollections,
+            undoManager: undoManager,
+            actionName: "文献集：移动“\(collections[index].name)”"
+        )
+    }
+
+    func canMoveCollection(_ id: UUID, to parentID: UUID?) -> Bool {
+        guard let collection = collections.first(where: { $0.id == id }),
+              collection.parentID != parentID else {
+            return false
+        }
+        guard CollectionHierarchy.canMove(
+            collectionID: id,
+            to: parentID,
+            in: collections
+        ) else {
+            return false
+        }
+        let nameKey = CollectionNameRules.comparisonKey(collection.name)
+        return !collections.contains {
+            $0.id != id
+                && $0.parentID == parentID
+                && CollectionNameRules.comparisonKey($0.name) == nameKey
+        }
     }
 
     func membershipState(
@@ -225,6 +341,37 @@ final class LibraryStore: ObservableObject {
             collections: collections,
             undoManager: undoManager,
             actionName: "文献集：\(verb) \(paperIDs.count) 篇"
+        )
+    }
+
+    func removeMemberships(
+        of paperIDs: Set<UUID>,
+        fromCollectionHierarchy collectionID: UUID,
+        undoManager: UndoManager? = nil
+    ) throws {
+        guard collections.contains(where: { $0.id == collectionID }) else {
+            throw LibraryStoreError.collectionNotFound
+        }
+        guard paperIDs.isSubset(of: Set(papers.map(\.id))) else {
+            throw LibraryStoreError.paperNotFound
+        }
+        let removedCollectionIDs = CollectionHierarchy.descendantIDs(
+            of: collectionID,
+            in: collections
+        )
+        var updatedPapers = papers
+        var didChange = false
+        for index in updatedPapers.indices where paperIDs.contains(updatedPapers[index].id) {
+            let previous = updatedPapers[index].collectionIDs
+            updatedPapers[index].collectionIDs.removeAll(where: removedCollectionIDs.contains)
+            didChange = didChange || previous != updatedPapers[index].collectionIDs
+        }
+        guard didChange else { return }
+        try applyOrganizationChange(
+            papers: updatedPapers,
+            collections: collections,
+            undoManager: undoManager,
+            actionName: "文献集：移出 \(paperIDs.count) 篇"
         )
     }
 
@@ -426,6 +573,35 @@ final class LibraryStore: ObservableObject {
         persistReportingErrors()
     }
 
+    func setManualMetadata(
+        _ metadata: BibliographicMetadata,
+        attachmentLabel: String?,
+        for id: UUID
+    ) throws {
+        guard let index = papers.firstIndex(where: { $0.id == id }) else {
+            throw LibraryStoreError.paperNotFound
+        }
+        guard papers[index].metadata != metadata
+                || papers[index].attachmentLabel != attachmentLabel else {
+            return
+        }
+        var updatedPapers = papers
+        let changedFields = BibliographicMetadataChanges.fields(
+            from: updatedPapers[index].metadata,
+            to: metadata
+        )
+        updatedPapers[index].metadata = metadata
+        updatedPapers[index].attachmentLabel = attachmentLabel
+        updatedPapers[index].manuallyEditedFields.formUnion(changedFields)
+        updatedPapers[index].manuallyEditedFields.remove(.authors)
+        updatedPapers[index].manuallyEditedFields.remove(.year)
+        try commit(
+            papers: updatedPapers,
+            collections: collections,
+            selectedPaperID: selectedPaperID
+        )
+    }
+
     func cycleReadingStatus(for id: UUID) {
         guard let paper = paper(withID: id) else { return }
         setReadingStatus(paper.readingStatus.next, for: id)
@@ -606,17 +782,37 @@ final class LibraryStore: ObservableObject {
 
     private func validatedCollectionName(
         _ rawName: String,
+        parentID: UUID?,
         excluding excludedID: UUID? = nil
     ) throws -> String {
         let name = CollectionNameRules.trimmed(rawName)
         guard !name.isEmpty else { throw LibraryStoreError.invalidCollectionName }
         let key = CollectionNameRules.comparisonKey(name)
         guard !collections.contains(where: {
-            $0.id != excludedID && CollectionNameRules.comparisonKey($0.name) == key
+            $0.id != excludedID
+                && $0.parentID == parentID
+                && CollectionNameRules.comparisonKey($0.name) == key
         }) else {
             throw LibraryStoreError.duplicateCollectionName
         }
         return name
+    }
+
+    private func papers(in source: LibrarySource) -> [PaperRecord] {
+        switch source {
+        case .all:
+            return papers
+        case .unfiled:
+            return papers.filter { $0.collectionIDs.isEmpty }
+        case let .collection(id):
+            let includedCollectionIDs = CollectionHierarchy.descendantIDs(
+                of: id,
+                in: collections
+            )
+            return papers.filter { paper in
+                paper.collectionIDs.contains(where: includedCollectionIDs.contains)
+            }
+        }
     }
 
     private var snapshot: LibrarySnapshot {

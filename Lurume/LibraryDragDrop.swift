@@ -3,6 +3,7 @@ import Foundation
 
 enum LibraryDropPayload: Equatable {
     case internalPapers([UUID])
+    case internalCollections([UUID])
     case finderPDFs([URL])
     case unsupported
 }
@@ -12,9 +13,17 @@ private struct LibraryPaperDragEnvelope: Codable {
     let paperIDs: [UUID]
 }
 
+private struct LibraryCollectionDragEnvelope: Codable {
+    let schemaVersion: Int
+    let collectionIDs: [UUID]
+}
+
 enum LibraryDragDropCodec {
     static let internalPaperType = NSPasteboard.PasteboardType(
         "app.lurume.internal-paper-ids"
+    )
+    static let internalCollectionType = NSPasteboard.PasteboardType(
+        "app.lurume.internal-collection-ids"
     )
 
     static func pasteboardItem(paperIDs: [UUID]) -> NSPasteboardItem? {
@@ -30,8 +39,63 @@ enum LibraryDragDropCodec {
         return item
     }
 
+    static func itemProvider(collectionIDs: [UUID]) -> NSItemProvider? {
+        let normalizedIDs = normalized(collectionIDs)
+        guard !normalizedIDs.isEmpty,
+              let data = try? JSONEncoder().encode(LibraryCollectionDragEnvelope(
+                schemaVersion: 1,
+                collectionIDs: normalizedIDs
+              )) else {
+            return nil
+        }
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(
+            forTypeIdentifier: internalCollectionType.rawValue,
+            visibility: .all
+        ) { completion in
+            completion(data, nil)
+            return nil
+        }
+        return provider
+    }
+
+    static func pasteboardItem(collectionIDs: [UUID]) -> NSPasteboardItem? {
+        let normalizedIDs = normalized(collectionIDs)
+        guard !normalizedIDs.isEmpty,
+              let data = try? JSONEncoder().encode(LibraryCollectionDragEnvelope(
+                schemaVersion: 1,
+                collectionIDs: normalizedIDs
+              )) else {
+            return nil
+        }
+        let item = NSPasteboardItem()
+        item.setData(data, forType: internalCollectionType)
+        return item
+    }
+
     static func resolve(_ pasteboard: NSPasteboard) -> LibraryDropPayload {
         let items = pasteboard.pasteboardItems ?? []
+        let collectionItems = items.filter {
+            $0.availableType(from: [internalCollectionType]) != nil
+        }
+        if !collectionItems.isEmpty {
+            var collectionIDs: [UUID] = []
+            for item in collectionItems {
+                guard let data = item.data(forType: internalCollectionType),
+                      let envelope = try? JSONDecoder().decode(
+                        LibraryCollectionDragEnvelope.self,
+                        from: data
+                      ),
+                      envelope.schemaVersion == 1,
+                      !envelope.collectionIDs.isEmpty else {
+                    return .unsupported
+                }
+                collectionIDs.append(contentsOf: envelope.collectionIDs)
+            }
+            let normalizedIDs = normalized(collectionIDs)
+            return normalizedIDs.isEmpty ? .unsupported : .internalCollections(normalizedIDs)
+        }
+
         let internalItems = items.filter {
             $0.availableType(from: [internalPaperType]) != nil
         }

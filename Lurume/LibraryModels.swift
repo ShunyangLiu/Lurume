@@ -495,9 +495,7 @@ enum LibraryQuery {
             .filter { status.includes($0.readingStatus) }
             .filter { paper in
                 guard !query.isEmpty else { return true }
-                return matches(query, in: paper.displayTitle)
-                    || paper.authors.map { matches(query, in: $0) } == true
-                    || matches(query, in: paper.originalFileName)
+                return paper.searchableMetadataValues.contains { matches(query, in: $0) }
             }
             .sorted { orderedBefore($0, $1, by: sort) }
     }
@@ -704,6 +702,34 @@ struct PaperRecord: Identifiable, Codable, Equatable, Sendable {
             segments.append(String(year))
         }
         return segments.isEmpty ? nil : segments.joined(separator: " · ")
+    }
+
+    var searchableMetadataValues: [String] {
+        var values = [displayTitle, originalFileName]
+        values.append(contentsOf: metadata.creators.compactMap(\.displayName))
+        if let sourceText = metadata.issuedDate?.sourceText { values.append(sourceText) }
+        if let year { values.append(String(year)) }
+        if let containerTitle = metadata.containerTitle { values.append(containerTitle) }
+        if let url = metadata.url { values.append(url) }
+        for identifier in metadata.identifiers {
+            values.append(identifier.displayValue)
+            values.append(identifier.comparisonValue)
+        }
+        return values
+    }
+
+    /// 只暴露来源类型和数量，不显示路径、Zotero key 或 server ID。
+    var importSourceSummary: String {
+        let folderCount = importSources.reduce(into: 0) { count, source in
+            if case .folder = source { count += 1 }
+        }
+        let zoteroCount = importSources.count - folderCount
+        switch (folderCount, zoteroCount) {
+        case (0, 0): return "手动导入"
+        case (_, 0): return "文件夹导入 · \(folderCount) 个来源"
+        case (0, _): return "Zotero 迁移 · \(zoteroCount) 个来源"
+        default: return "文件夹与 Zotero · \(importSources.count) 个来源"
+        }
     }
 
     /// 导入与迁移共用：标题以文件名起步，等待一次性自动补全或用户编辑。

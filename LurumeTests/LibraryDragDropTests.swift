@@ -27,6 +27,22 @@ final class LibraryDragDropTests: XCTestCase {
         )
     }
 
+    func testCollectionPayloadIsDistinctAndDeduplicated() throws {
+        let first = UUID()
+        let second = UUID()
+        let pasteboard = makePasteboard()
+        let item = try XCTUnwrap(
+            LibraryDragDropCodec.pasteboardItem(collectionIDs: [second, first, second])
+        )
+        XCTAssertTrue(pasteboard.writeObjects([item]))
+
+        let expected = [first, second].sorted { $0.uuidString < $1.uuidString }
+        XCTAssertEqual(
+            LibraryDragDropCodec.resolve(pasteboard),
+            .internalCollections(expected)
+        )
+    }
+
     func testFinderPayloadKeepsOnlyPDFFileURLs() {
         let pasteboard = makePasteboard()
         let pdfURL = URL(fileURLWithPath: "/tmp/paper.pdf")
