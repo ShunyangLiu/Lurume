@@ -169,6 +169,32 @@ final class AppSettings: ObservableObject {
         )
     }
 
+    var translationRequestPreferences: TranslationRequestPreferences {
+        let configuration = modelTranslationConfiguration
+        return TranslationRequestPreferences(
+            engine: translationEngine,
+            sourceLanguageIdentifier: sourceLanguageIdentifier,
+            targetLanguageIdentifier: targetLanguageIdentifier,
+            modelConfiguration: configuration,
+            modelOriginIsConfirmed: configuration.map {
+                isTranslationOriginConfirmed($0.origin)
+            } ?? false
+        )
+    }
+
+    var translationConfigurationIdentity: TranslationConfigurationIdentity {
+        let configuration = modelTranslationConfiguration?.configuration
+        return TranslationConfigurationIdentity(
+            engine: translationEngine,
+            sourceLanguageIdentifier: sourceLanguageIdentifier,
+            targetLanguageIdentifier: targetLanguageIdentifier,
+            baseURL: configuration?.baseURL,
+            model: configuration?.model,
+            streamsResponse: configuration?.streamsResponse,
+            prompt: configuration?.prompt
+        )
+    }
+
     func applyModelTranslationConfiguration(
         _ configuration: ValidatedModelTranslationConfiguration,
         engine: TranslationEngine

@@ -62,6 +62,7 @@ final class TranslationXPCClient: NSObject, TranslationXPCClientProtocol, Transl
     }
 
     func cancel(requestID: String) {
+        removeHandler(requestID: requestID)
         connectionLock.lock()
         let activeConnection = connection
         connectionLock.unlock()

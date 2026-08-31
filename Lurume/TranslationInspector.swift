@@ -97,9 +97,16 @@ struct TranslationInspector: View {
                         HStack {
                             statusLabel
                             Spacer()
-                            translateAgainButton
+                            primaryTranslationAction
+                        }
+                        if let source = controller.resultSource {
+                            Text(source.label)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("译文来源：\(source.label)")
                         }
                         translationBody
+                        recoveryActions
                     }
                     .padding()
                 }
@@ -213,8 +220,24 @@ struct TranslationInspector: View {
     @ViewBuilder
     private var translationBody: some View {
         if let translatedText = controller.translatedText {
-            Text(translatedText)
-                .textSelection(.enabled)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(translatedText)
+                    .textSelection(.enabled)
+                switch controller.state {
+                case .stopped:
+                    Label("生成已停止，内容可能不完整。", systemImage: "stop.circle")
+                        .foregroundStyle(.orange)
+                case let .interrupted(message):
+                    Label("响应中断，内容可能不完整。", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                default:
+                    EmptyView()
+                }
+            }
         } else if case let .failed(message) = controller.state {
             Text(message)
                 .foregroundStyle(.red)
@@ -222,13 +245,22 @@ struct TranslationInspector: View {
         }
     }
 
-    private var translateAgainButton: some View {
-        Group {
-            if controller.state != .translating && controller.state != .resourcesNeeded {
+    @ViewBuilder
+    private var primaryTranslationAction: some View {
+        if controller.isModelTranslationActive {
+            Button("停止") {
+                controller.stopTranslation()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityHint("停止当前大模型请求并保留已经生成的译文")
+        } else if !controller.canRetryModelTranslation {
+            if controller.state != .translating
+                && controller.state != .streaming
+                && controller.state != .resourcesNeeded {
                 Button("翻译") {
                     controller.requestTranslation(
-                        targetLanguage: settings.targetLanguage,
-                        sourceLanguage: settings.sourceLanguage
+                        preferences: settings.translationRequestPreferences
                     )
                 }
                 .buttonStyle(.borderedProminent)
@@ -237,9 +269,49 @@ struct TranslationInspector: View {
         }
     }
 
+    @ViewBuilder
+    private var recoveryActions: some View {
+        if controller.canRetryModelTranslation {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Button("重试") {
+                        controller.requestTranslation(
+                            preferences: settings.translationRequestPreferences
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button("使用系统翻译") {
+                        controller.requestSystemTranslation(
+                            preferences: settings.translationRequestPreferences
+                        )
+                    }
+                    .disabled(controller.systemFallbackAvailability != .available)
+                }
+                .controlSize(.small)
+
+                switch controller.systemFallbackAvailability {
+                case .checking:
+                    Text("正在检查系统语言支持…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case let .unavailable(message):
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                default:
+                    EmptyView()
+                }
+            }
+        }
+    }
+
     private var statusLabel: some View {
         HStack(spacing: 7) {
-            if controller.state == .translating || controller.state == .resourcesNeeded {
+            if controller.state == .connecting
+                || controller.state == .translating
+                || controller.state == .streaming
+                || controller.state == .resourcesNeeded {
                 ProgressView()
                     .controlSize(.small)
             }

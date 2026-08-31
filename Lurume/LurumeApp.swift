@@ -32,8 +32,7 @@ struct LurumeApp: App {
             CommandMenu("翻译") {
                 Button("翻译当前选区") {
                     translationController.requestTranslation(
-                        targetLanguage: appSettings.targetLanguage,
-                        sourceLanguage: appSettings.sourceLanguage
+                        preferences: appSettings.translationRequestPreferences
                     )
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])

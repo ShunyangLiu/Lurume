@@ -98,6 +98,59 @@ final class TranslationXPCIntegrationTests: XCTestCase {
         XCTFail("Connection test timed out")
     }
 
+    @MainActor
+    func testControllerStreamsSelectedTextThroughEmbeddedService() async throws {
+        guard let root = ProcessInfo.processInfo.environment["LURUME_TRANSLATION_FAKE_SERVER"],
+              root.hasPrefix("http://127.0.0.1:")
+        else {
+            throw XCTSkip("Set LURUME_TRANSLATION_FAKE_SERVER to run localhost XPC integration tests.")
+        }
+        let configuration = try ModelTranslationConfigurationValidator.validate(
+            baseURL: root + "/v1",
+            model: "fixture-model",
+            streamsResponse: true,
+            prompt: ModelTranslationConfiguration.defaultPrompt
+        )
+        let preferences = TranslationRequestPreferences(
+            engine: .customModel,
+            sourceLanguageIdentifier: "en",
+            targetLanguageIdentifier: "zh-Hans",
+            modelConfiguration: configuration,
+            modelOriginIsConfirmed: true
+        )
+        let controller = TranslationController(
+            sourceLanguageRecognizer: IntegrationEnglishSourceRecognizer(),
+            availabilityChecker: IntegrationAvailabilityChecker(),
+            keyStore: EmptyTranslationAPIKeyStore(),
+            modelRequestSender: TranslationXPCClient()
+        )
+        controller.receiveSelection(
+            PDFSelectionEvent(rawText: "  fixture   selection\nonly  ", pageIndex: 4),
+            paperID: UUID(),
+            paperName: "fixture paper metadata must stay local",
+            automaticTranslation: false,
+            preferences: preferences
+        )
+
+        controller.requestTranslation(preferences: preferences)
+
+        for _ in 0..<300 {
+            switch controller.state {
+            case .success:
+                XCTAssertEqual(controller.translatedText, "connection ok")
+                XCTAssertEqual(controller.resultSource, .customModel(model: "fixture-model"))
+                XCTAssertNil(controller.configuration)
+                return
+            case let .failed(message), let .interrupted(message):
+                XCTFail("Controller translation failed: \(message)")
+                return
+            default:
+                try await Task.sleep(for: .milliseconds(25))
+            }
+        }
+        XCTFail("Controller translation timed out")
+    }
+
     private func fakeEndpoint(path: String) throws -> URL {
         guard let root = ProcessInfo.processInfo.environment["LURUME_TRANSLATION_FAKE_SERVER"],
               root.hasPrefix("http://127.0.0.1:"),
@@ -113,6 +166,18 @@ private struct EmptyTranslationAPIKeyStore: TranslationAPIKeyStoring {
     func read() async throws -> String? { nil }
     func save(_ apiKey: String) async throws {}
     func delete() async throws {}
+}
+
+private struct IntegrationEnglishSourceRecognizer: SourceLanguageRecognizing {
+    func language(for text: String) -> Locale.Language? {
+        Locale.Language(identifier: "en")
+    }
+}
+
+private struct IntegrationAvailabilityChecker: TranslationAvailabilityChecking {
+    func readiness(from source: Locale.Language, to target: Locale.Language) async -> TranslationReadiness {
+        .installed
+    }
 }
 
 private struct TranslationXPCTestResult {

@@ -45,7 +45,25 @@ class Handler(BaseHTTPRequestHandler):
                 "content": "This is a connection test from Lurume.",
             }
         )
-        if payload.get("messages") != fixture_messages and not is_connection_test:
+        is_controller_translation = (
+            self.path == "/v1/chat/completions"
+            and isinstance(connection_test_messages, list)
+            and len(connection_test_messages) == 2
+            and isinstance(connection_test_messages[0], dict)
+            and isinstance(connection_test_messages[1], dict)
+            and connection_test_messages[0].get("role") == "system"
+            and "Lurume" in connection_test_messages[0].get("content", "")
+            and connection_test_messages[1]
+            == {
+                "role": "user",
+                "content": "fixture selection only",
+            }
+        )
+        if (
+            payload.get("messages") != fixture_messages
+            and not is_connection_test
+            and not is_controller_translation
+        ):
             self._json(400, {"error": {"message": "unexpected request content"}})
             return
 

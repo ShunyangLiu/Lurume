@@ -17,6 +17,7 @@ enum TranslationEngine: String, CaseIterable, Identifiable, Sendable {
 struct ModelTranslationConfiguration: Equatable, Sendable {
     static let defaultBaseURL = "https://api.openai.com/v1"
     static let maximumPromptCharacters = 4_000
+    static let maximumSelectionCharacters = 12_000
     static let connectionTestText = "This is a connection test from Lurume."
     static let defaultPrompt = """
     你是 Lurume 的学术论文翻译引擎。

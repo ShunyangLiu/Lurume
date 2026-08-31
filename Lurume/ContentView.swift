@@ -252,6 +252,7 @@ struct ContentView: View {
                 Text(batchRemovalConfirmationMessage(for: pendingBatchPaperRemoval))
             }
             .task(id: libraryStore.selectedPaperID) {
+                translationController.activePaperDidChange(to: libraryStore.selectedPaperID)
                 guard appSettings.mainWindowMode == .reading else { return }
                 await Task.yield()
                 openSelectedPaper()
@@ -321,6 +322,12 @@ struct ContentView: View {
                     using: SystemTranslationPerformer(session: session)
                 )
             }
+            .modifier(
+                TranslationIntegrationModifier(
+                    controller: translationController,
+                    settings: appSettings
+                )
+            )
 
             if appSettings.mainWindowMode == .reading {
                 KeyboardCommandMonitor(
@@ -637,15 +644,13 @@ struct ContentView: View {
                             paperID: paper.id,
                             paperName: paper.title,
                             automaticTranslation: appSettings.automaticTranslation,
-                            targetLanguage: appSettings.targetLanguage,
-                            sourceLanguage: appSettings.sourceLanguage
+                            preferences: appSettings.translationRequestPreferences
                         )
                     },
                     onTranslateSelection: {
                         inspectorMode = .translation
                         translationController.requestTranslation(
-                            targetLanguage: appSettings.targetLanguage,
-                            sourceLanguage: appSettings.sourceLanguage
+                            preferences: appSettings.translationRequestPreferences
                         )
                     },
                     onToggleHighlight: toggleCurrentHighlight,
@@ -1478,6 +1483,38 @@ private final class KeyboardCommandMonitoringView: NSView {
         }
 
         return event
+    }
+}
+
+private struct TranslationIntegrationModifier: ViewModifier {
+    @ObservedObject var controller: TranslationController
+    @ObservedObject var settings: AppSettings
+
+    private var consentRequest: Binding<TranslationOriginConsentRequest?> {
+        Binding(
+            get: { controller.pendingOriginConsent },
+            set: { _ in }
+        )
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: settings.translationConfigurationIdentity) {
+                controller.translationPreferencesDidChange()
+            }
+            .alert(item: consentRequest) { request in
+                Alert(
+                    title: Text(request.title),
+                    message: Text(request.message),
+                    primaryButton: .default(Text("允许")) {
+                        settings.confirmTranslationOrigin(request.origin)
+                        controller.confirmPendingOrigin()
+                    },
+                    secondaryButton: .cancel {
+                        controller.declinePendingOrigin()
+                    }
+                )
+            }
     }
 }
 

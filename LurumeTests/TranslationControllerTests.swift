@@ -255,8 +255,365 @@ final class TranslationControllerTests: XCTestCase {
         )
     }
 
+    func testModelTranslationWaitsForOriginConsentAndSendsOnlyNormalizedSelection() async throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender, apiKey: "  secret-key  ")
+        let preferences = try modelPreferences(originConfirmed: false)
+        receiveModelSelection("  fixture   selection\nonly  ", controller: controller, preferences: preferences)
+
+        controller.requestTranslation(preferences: preferences)
+
+        XCTAssertEqual(sender.requestCount, 0)
+        XCTAssertNotNil(controller.pendingOriginConsent)
+        XCTAssertEqual(controller.state, .waiting)
+
+        controller.confirmPendingOrigin()
+        let request = try await waitForModelRequest(sender)
+
+        XCTAssertEqual(request.endpoint, "http://127.0.0.1:8765/v1/chat/completions")
+        XCTAssertEqual(request.model, "fixture-model")
+        XCTAssertEqual(request.selectedText, "fixture selection only")
+        XCTAssertEqual(request.apiKey, "secret-key")
+        XCTAssertTrue(request.systemPrompt.contains("英语"))
+        XCTAssertTrue(request.systemPrompt.contains("简体中文"))
+        XCTAssertFalse(request.systemPrompt.contains("Paper"))
+    }
+
+    func testDecliningOriginConsentNeverStartsModelRequest() throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        let preferences = try modelPreferences(originConfirmed: false)
+        receiveModelSelection("Private selection", controller: controller, preferences: preferences)
+
+        controller.requestTranslation(preferences: preferences)
+        controller.declinePendingOrigin()
+
+        XCTAssertEqual(sender.requestCount, 0)
+        XCTAssertNil(controller.pendingOriginConsent)
+        XCTAssertEqual(controller.state, .failed("未授权向该服务发送选中文字。"))
+    }
+
+    func testOversizedSelectionFailsBeforeKeychainOrXPC() async throws {
+        let sender = RecordingModelRequestSender()
+        let keyStore = RecordingTranslationAPIKeyStore(key: "unused")
+        let controller = TranslationController(
+            sourceLanguageRecognizer: FixedSourceLanguageRecognizer(),
+            availabilityChecker: FixedTranslationAvailabilityChecker(readiness: .installed),
+            keyStore: keyStore,
+            modelRequestSender: sender
+        )
+        let preferences = try modelPreferences(originConfirmed: true)
+        receiveModelSelection(
+            String(repeating: "x", count: ModelTranslationConfiguration.maximumSelectionCharacters + 1),
+            controller: controller,
+            preferences: preferences
+        )
+
+        controller.requestTranslation(preferences: preferences)
+        await Task.yield()
+
+        XCTAssertEqual(sender.requestCount, 0)
+        let keychainReadCount = await keyStore.readCount
+        XCTAssertEqual(keychainReadCount, 0)
+        XCTAssertEqual(controller.state, .failed("选中文字超过 12,000 个字符，未发送翻译请求。"))
+    }
+
+    func testStreamingFailureKeepsPartialTextAndCompletedRetryIsCached() async throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        let preferences = try modelPreferences(originConfirmed: true)
+        receiveModelSelection("Selection", controller: controller, preferences: preferences)
+
+        controller.requestTranslation(preferences: preferences)
+        let first = try await waitForModelRequest(sender)
+        sender.emit(.init(requestID: first.requestID, kind: "delta", text: "部分译文"))
+        sender.emit(.init(requestID: first.requestID, kind: "failed", message: "连接中断"))
+        try await waitUntil { controller.state == .interrupted("连接中断") }
+
+        XCTAssertEqual(controller.translatedText, "部分译文")
+        XCTAssertNil(controller.configuration)
+        XCTAssertEqual(sender.requestCount, 1)
+
+        controller.requestTranslation(preferences: preferences)
+        let second = try await waitForModelRequest(sender, count: 2)
+        sender.emit(.init(requestID: second.requestID, kind: "delta", text: "完整"))
+        sender.emit(.init(requestID: second.requestID, kind: "delta", text: "译文"))
+        sender.emit(.init(requestID: second.requestID, kind: "completed"))
+        try await waitUntil { controller.state == .success }
+
+        XCTAssertEqual(controller.translatedText, "完整译文")
+
+        controller.requestTranslation(preferences: preferences)
+
+        XCTAssertEqual(controller.state, .success)
+        XCTAssertEqual(controller.translatedText, "完整译文")
+        XCTAssertEqual(sender.requestCount, 2)
+    }
+
+    func testStopKeepsPartialTextCancelsRequestAndIgnoresLateEvents() async throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        let preferences = try modelPreferences(originConfirmed: true)
+        receiveModelSelection("Selection", controller: controller, preferences: preferences)
+        controller.requestTranslation(preferences: preferences)
+        let request = try await waitForModelRequest(sender)
+        sender.emit(.init(requestID: request.requestID, kind: "delta", text: "已生成"))
+        try await waitUntil { controller.state == .streaming }
+
+        controller.stopTranslation()
+
+        XCTAssertEqual(controller.state, .stopped)
+        XCTAssertEqual(controller.translatedText, "已生成")
+        XCTAssertEqual(sender.cancelledRequestIDs, [request.requestID])
+
+        sender.emit(.init(requestID: request.requestID, kind: "delta", text: "迟到内容"))
+        sender.emit(.init(requestID: request.requestID, kind: "completed"))
+        await Task.yield()
+
+        XCTAssertEqual(controller.state, .stopped)
+        XCTAssertEqual(controller.translatedText, "已生成")
+    }
+
+    func testStopBeforeFirstDeltaIsAFailureWithoutPartialResult() async throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        let preferences = try modelPreferences(originConfirmed: true)
+        receiveModelSelection("Selection", controller: controller, preferences: preferences)
+        controller.requestTranslation(preferences: preferences)
+        let request = try await waitForModelRequest(sender)
+
+        controller.stopTranslation()
+
+        XCTAssertEqual(controller.state, .failed("已停止翻译，尚未收到译文。"))
+        XCTAssertNil(controller.translatedText)
+        XCTAssertEqual(sender.cancelledRequestIDs, [request.requestID])
+    }
+
+    func testFailureDoesNotRetryOrFallbackUntilUserRequestsSystemTranslation() async throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        let preferences = try modelPreferences(originConfirmed: true)
+        receiveModelSelection("Selection", controller: controller, preferences: preferences)
+        controller.requestTranslation(preferences: preferences)
+        let request = try await waitForModelRequest(sender)
+
+        sender.emit(.init(requestID: request.requestID, kind: "failed", message: "服务不可用"))
+        try await waitUntil { controller.state == .failed("服务不可用") }
+        try await waitUntil { controller.systemFallbackAvailability == .available }
+
+        XCTAssertEqual(sender.requestCount, 1)
+        XCTAssertNil(controller.configuration)
+        XCTAssertEqual(controller.resultSource, .customModel(model: "fixture-model"))
+
+        controller.requestSystemTranslation(preferences: preferences)
+        XCTAssertNotNil(controller.configuration)
+        XCTAssertEqual(controller.resultSource, .apple)
+        await controller.perform(using: FakeTranslationPerformer(output: "系统译文", delay: .zero))
+
+        XCTAssertEqual(controller.state, .success)
+        XCTAssertEqual(controller.translatedText, "系统译文")
+        XCTAssertEqual(sender.requestCount, 1)
+    }
+
+    func testConfigurationChangeCancelsModelRequestAndRejectsItsLateResult() async throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        let preferences = try modelPreferences(originConfirmed: true)
+        receiveModelSelection("Selection", controller: controller, preferences: preferences)
+        controller.requestTranslation(preferences: preferences)
+        let request = try await waitForModelRequest(sender)
+
+        controller.translationPreferencesDidChange()
+        sender.emit(.init(requestID: request.requestID, kind: "delta", text: "stale"))
+        sender.emit(.init(requestID: request.requestID, kind: "completed"))
+        await Task.yield()
+
+        XCTAssertEqual(sender.cancelledRequestIDs, [request.requestID])
+        XCTAssertEqual(controller.state, .waiting)
+        XCTAssertNil(controller.translatedText)
+        XCTAssertNil(controller.resultSource)
+    }
+
+    func testSwitchingPaperCancelsModelRequestAndClearsOldSelection() async throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        let preferences = try modelPreferences(originConfirmed: true)
+        let firstPaperID = UUID()
+        controller.receiveSelection(
+            PDFSelectionEvent(rawText: "Selection", pageIndex: 0),
+            paperID: firstPaperID,
+            paperName: "First Paper",
+            automaticTranslation: false,
+            preferences: preferences
+        )
+        controller.requestTranslation(preferences: preferences)
+        let request = try await waitForModelRequest(sender)
+
+        controller.activePaperDidChange(to: UUID())
+        sender.emit(.init(requestID: request.requestID, kind: "delta", text: "stale"))
+        await Task.yield()
+
+        XCTAssertEqual(sender.cancelledRequestIDs, [request.requestID])
+        XCTAssertNil(controller.selection)
+        XCTAssertNil(controller.translatedText)
+        XCTAssertEqual(controller.state, .idle)
+    }
+
+    func testCustomModelCacheKeyExcludesStreamingButIncludesPromptAndEndpoint() throws {
+        let streaming = try validatedConfiguration(streamsResponse: true)
+        let nonStreaming = try validatedConfiguration(streamsResponse: false)
+        let differentPrompt = try validatedConfiguration(
+            streamsResponse: true,
+            prompt: "Different {source_language} to {target_language} prompt"
+        )
+        let differentEndpoint = try ModelTranslationConfigurationValidator.validate(
+            baseURL: "http://127.0.0.1:8766/v1",
+            model: "fixture-model",
+            streamsResponse: true,
+            prompt: ModelTranslationConfiguration.defaultPrompt
+        )
+        let key = TranslationCacheKey.customModel(
+            text: "Selection",
+            sourceIdentifier: "en",
+            targetIdentifier: "zh-Hans",
+            configuration: streaming
+        )
+
+        XCTAssertEqual(
+            key,
+            .customModel(
+                text: "Selection",
+                sourceIdentifier: "en",
+                targetIdentifier: "zh-Hans",
+                configuration: nonStreaming
+            )
+        )
+        XCTAssertNotEqual(
+            key,
+            .customModel(
+                text: "Selection",
+                sourceIdentifier: "en",
+                targetIdentifier: "zh-Hans",
+                configuration: differentPrompt
+            )
+        )
+        XCTAssertNotEqual(
+            key,
+            .customModel(
+                text: "Selection",
+                sourceIdentifier: "en",
+                targetIdentifier: "zh-Hans",
+                configuration: differentEndpoint
+            )
+        )
+    }
+
+    func testKeychainReadFailureNeverStartsXPCRequest() async throws {
+        let sender = RecordingModelRequestSender()
+        let controller = TranslationController(
+            sourceLanguageRecognizer: FixedSourceLanguageRecognizer(),
+            availabilityChecker: FixedTranslationAvailabilityChecker(readiness: .installed),
+            keyStore: FailingTranslationAPIKeyStore(),
+            modelRequestSender: sender
+        )
+        let preferences = try modelPreferences(originConfirmed: true)
+        receiveModelSelection("Selection", controller: controller, preferences: preferences)
+
+        controller.requestTranslation(preferences: preferences)
+        try await waitUntil { controller.state == .failed("无法读取 API Key。") }
+
+        XCTAssertEqual(sender.requestCount, 0)
+        XCTAssertNil(controller.translatedText)
+    }
+
+    func testAutomaticModelTranslationUsesCapturedPreferences() async throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        let preferences = try modelPreferences(originConfirmed: true)
+        controller.isInspectorPresented = false
+
+        controller.receiveSelection(
+            PDFSelectionEvent(rawText: "Automatic selection", pageIndex: 0),
+            paperID: UUID(),
+            paperName: "Paper",
+            automaticTranslation: true,
+            preferences: preferences
+        )
+
+        let request = try await waitForModelRequest(sender)
+        XCTAssertEqual(request.selectedText, "Automatic selection")
+        XCTAssertEqual(request.model, "fixture-model")
+        XCTAssertFalse(controller.isInspectorPresented)
+    }
+
     private func makeController() -> TranslationController {
         TranslationController(sourceLanguageRecognizer: FixedSourceLanguageRecognizer())
+    }
+
+    private func makeModelController(
+        sender: RecordingModelRequestSender,
+        apiKey: String? = nil
+    ) -> TranslationController {
+        TranslationController(
+            sourceLanguageRecognizer: FixedSourceLanguageRecognizer(),
+            availabilityChecker: FixedTranslationAvailabilityChecker(readiness: .installed),
+            keyStore: RecordingTranslationAPIKeyStore(key: apiKey),
+            modelRequestSender: sender
+        )
+    }
+
+    private func modelPreferences(originConfirmed: Bool) throws -> TranslationRequestPreferences {
+        TranslationRequestPreferences(
+            engine: .customModel,
+            sourceLanguageIdentifier: "en",
+            targetLanguageIdentifier: "zh-Hans",
+            modelConfiguration: try validatedConfiguration(),
+            modelOriginIsConfirmed: originConfirmed
+        )
+    }
+
+    private func validatedConfiguration(
+        streamsResponse: Bool = true,
+        prompt: String = ModelTranslationConfiguration.defaultPrompt
+    ) throws -> ValidatedModelTranslationConfiguration {
+        try ModelTranslationConfigurationValidator.validate(
+            baseURL: "http://127.0.0.1:8765/v1",
+            model: "fixture-model",
+            streamsResponse: streamsResponse,
+            prompt: prompt
+        )
+    }
+
+    private func receiveModelSelection(
+        _ text: String,
+        controller: TranslationController,
+        preferences: TranslationRequestPreferences
+    ) {
+        controller.receiveSelection(
+            PDFSelectionEvent(rawText: text, pageIndex: 0),
+            paperID: UUID(),
+            paperName: "Paper",
+            automaticTranslation: false,
+            preferences: preferences
+        )
+    }
+
+    private func waitForModelRequest(
+        _ sender: RecordingModelRequestSender,
+        count: Int = 1
+    ) async throws -> TranslationXPCRequest {
+        try await waitUntil { sender.requestCount >= count }
+        return try XCTUnwrap(sender.requests.last)
+    }
+
+    private func waitUntil(
+        _ condition: @escaping @MainActor () -> Bool
+    ) async throws {
+        for _ in 0..<200 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("Timed out waiting for asynchronous translation state")
     }
 }
 
@@ -311,5 +668,85 @@ private actor RecordingTranslationPerformer: TranslationPerforming {
     func translate(_ text: String) async throws -> TranslationOutput {
         calls.append("translate")
         return TranslationOutput(targetText: "译文")
+    }
+}
+
+private struct FixedTranslationAvailabilityChecker: TranslationAvailabilityChecking {
+    let readiness: TranslationReadiness
+
+    func readiness(from source: Locale.Language, to target: Locale.Language) async -> TranslationReadiness {
+        readiness
+    }
+}
+
+private actor RecordingTranslationAPIKeyStore: TranslationAPIKeyStoring {
+    let key: String?
+    private(set) var readCount = 0
+
+    init(key: String?) {
+        self.key = key
+    }
+
+    func read() async throws -> String? {
+        readCount += 1
+        return key
+    }
+
+    func save(_ apiKey: String) async throws {}
+    func delete() async throws {}
+}
+
+private struct FailingTranslationAPIKeyStore: TranslationAPIKeyStoring {
+    func read() async throws -> String? {
+        throw FailingTranslationAPIKeyStoreError.unavailable
+    }
+
+    func save(_ apiKey: String) async throws {}
+    func delete() async throws {}
+}
+
+private enum FailingTranslationAPIKeyStoreError: LocalizedError {
+    case unavailable
+
+    var errorDescription: String? { "无法读取 API Key。" }
+}
+
+private final class RecordingModelRequestSender: TranslationRequestSending, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedRequests: [TranslationXPCRequest] = []
+    private var handlers: [String: @Sendable (TranslationXPCEvent) -> Void] = [:]
+    private var storedCancelledRequestIDs: [String] = []
+
+    var requests: [TranslationXPCRequest] {
+        lock.withLock { storedRequests }
+    }
+
+    var requestCount: Int {
+        lock.withLock { storedRequests.count }
+    }
+
+    var cancelledRequestIDs: [String] {
+        lock.withLock { storedCancelledRequestIDs }
+    }
+
+    func start(
+        _ request: TranslationXPCRequest,
+        eventHandler: @escaping @Sendable (TranslationXPCEvent) -> Void
+    ) throws {
+        lock.withLock {
+            storedRequests.append(request)
+            handlers[request.requestID] = eventHandler
+        }
+    }
+
+    func cancel(requestID: String) {
+        lock.withLock {
+            storedCancelledRequestIDs.append(requestID)
+        }
+    }
+
+    func emit(_ event: TranslationXPCEvent) {
+        let handler = lock.withLock { handlers[event.requestID] }
+        handler?(event)
     }
 }

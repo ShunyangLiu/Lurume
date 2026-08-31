@@ -8,7 +8,9 @@ cancellable, and settings connection-test responses without using a real API key
 text. The connection-test fixture only accepts Lurume's fixed built-in test sentence. Production
 timeout constants remain fixed at 30/90/120 seconds; focused timeout tests inject shorter policies
 so CI does not wait minutes. The hosted XPC tests also exercise the service's connection-level code
-signing requirement through a real embedded XPC launch.
+signing requirement through a real embedded XPC launch. The checkpoint-three controller fixture
+accepts only Lurume's system prompt and the normalized fixed selection `fixture selection only`, then
+streams the result through the complete controller → embedded XPC → HTTP/SSE path.
 
 Run from the repository root:
 
