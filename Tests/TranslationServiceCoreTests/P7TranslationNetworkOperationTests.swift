@@ -93,6 +93,29 @@ final class P7TranslationNetworkOperationTests: XCTestCase {
         XCTAssertEqual(result.last?.errorCode, "invalid_response")
     }
 
+    func testStreamingHTTPErrorFinishesWithoutWaitingForBodyEOF() throws {
+        let result = try runOperation(
+            endpoint: fakeEndpoint(path: "/error/429-hang"),
+            streamsResponse: true,
+            policy: TranslationTimeoutPolicy(firstByte: 1, streamIdle: 1, nonStreamingTotal: 2)
+        )
+
+        XCTAssertEqual(result.last?.kind, "failed")
+        XCTAssertEqual(result.last?.errorCode, "http")
+        XCTAssertTrue(result.last?.message?.contains("HTTP 429") == true)
+    }
+
+    func testSameOriginRedirectLoopIsRejectedAtLocalHopLimit() throws {
+        let result = try runOperation(
+            endpoint: fakeEndpoint(path: "/redirect/loop"),
+            streamsResponse: true,
+            policy: TranslationTimeoutPolicy(firstByte: 1, streamIdle: 1, nonStreamingTotal: 2)
+        )
+
+        XCTAssertEqual(result.last?.kind, "failed")
+        XCTAssertEqual(result.last?.errorCode, "invalid_response")
+    }
+
     private func fakeEndpoint(path: String) throws -> URL {
         guard let root = ProcessInfo.processInfo.environment["LURUME_TRANSLATION_FAKE_SERVER"],
               root.hasPrefix("http://127.0.0.1:"),

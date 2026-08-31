@@ -212,7 +212,10 @@ final class ModelTranslationConfigurationTests: XCTestCase {
 
         XCTAssertEqual(settings.translationEngine, .apple)
         XCTAssertEqual(settings.modelTranslationModel, "")
-        XCTAssertTrue(controller.saveMessage?.contains("钥匙串") == true)
+        guard case let .failure(message) = controller.saveStatus else {
+            return XCTFail("Expected a save failure status")
+        }
+        XCTAssertTrue(message.contains("钥匙串"))
     }
 
     func testEmptyKeySaveDeletesPreviousKey() async {
@@ -233,6 +236,32 @@ final class ModelTranslationConfigurationTests: XCTestCase {
         let storedValue = await store.currentValue()
         XCTAssertNil(storedValue)
         XCTAssertFalse(controller.hasStoredAPIKey)
+    }
+
+    func testReadFailureCannotSilentlyDeleteExistingKeyOnSave() async {
+        let store = FakeTranslationAPIKeyStore(initialValue: "old-value", failsOnRead: true)
+        let controller = ModelTranslationSettingsController(
+            keyStore: store,
+            requestSender: RecordingTranslationRequestSender()
+        )
+        let (settings, defaults, suiteName) = makeSettings()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        await controller.load(from: settings)
+        controller.draftBaseURL = "https://example.com/v1"
+        controller.draftModel = "fixture-model"
+
+        await controller.save(to: settings)
+
+        let storedValue = await store.currentValue()
+        let deleteCount = await store.deleteCount()
+        XCTAssertEqual(storedValue, "old-value")
+        XCTAssertEqual(deleteCount, 0)
+        XCTAssertEqual(settings.modelTranslationModel, "")
+        XCTAssertTrue(controller.apiKeyLoadFailed)
+        guard case let .failure(message) = controller.saveStatus else {
+            return XCTFail("Expected a save failure status")
+        }
+        XCTAssertTrue(message.contains("未删除原有 Key"))
     }
 
     func testConnectionTestRequestUsesOnlyBuiltInTextAndCurrentDraft() throws {
@@ -296,14 +325,22 @@ final class ModelTranslationConfigurationTests: XCTestCase {
 
 private actor FakeTranslationAPIKeyStore: TranslationAPIKeyStoring {
     private var value: String?
+    private var deletionCount = 0
+    private let failsOnRead: Bool
     private let failsOnSave: Bool
 
-    init(initialValue: String? = nil, failsOnSave: Bool = false) {
+    init(initialValue: String? = nil, failsOnRead: Bool = false, failsOnSave: Bool = false) {
         value = initialValue
+        self.failsOnRead = failsOnRead
         self.failsOnSave = failsOnSave
     }
 
-    func read() async throws -> String? { value }
+    func read() async throws -> String? {
+        if failsOnRead {
+            throw TranslationAPIKeyStoreError.keychain(-1)
+        }
+        return value
+    }
 
     func save(_ apiKey: String) async throws {
         if failsOnSave {
@@ -313,10 +350,12 @@ private actor FakeTranslationAPIKeyStore: TranslationAPIKeyStoring {
     }
 
     func delete() async throws {
+        deletionCount += 1
         value = nil
     }
 
     func currentValue() -> String? { value }
+    func deleteCount() -> Int { deletionCount }
 }
 
 private final class RecordingTranslationRequestSender: TranslationRequestSending, @unchecked Sendable {

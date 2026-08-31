@@ -170,9 +170,16 @@ private struct TranslationSettingsView: View {
                         .foregroundStyle(.red)
                         .accessibilityLabel("配置错误：\(validationMessage)")
                 }
-                if let saveMessage = modelSettings.saveMessage {
-                    Text(saveMessage)
-                        .foregroundStyle(saveMessage.contains("已") ? Color.secondary : Color.red)
+                if let saveStatus = modelSettings.saveStatus {
+                    switch saveStatus {
+                    case let .success(message):
+                        Text(message)
+                            .foregroundStyle(.secondary)
+                    case let .failure(message):
+                        Text(message)
+                            .foregroundStyle(.red)
+                            .accessibilityLabel("保存失败：\(message)")
+                    }
                 }
                 connectionResult
             }
@@ -214,6 +221,7 @@ private struct TranslationSettingsView: View {
 
     private var apiKeyStatusText: String {
         if modelSettings.isLoadingAPIKey { return "正在读取钥匙串…" }
+        if modelSettings.apiKeyLoadFailed { return "钥匙串读取失败；原有 API Key 未更改" }
         return modelSettings.hasStoredAPIKey ? "钥匙串中已配置 API Key" : "未配置 API Key"
     }
 

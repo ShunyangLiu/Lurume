@@ -10,11 +10,13 @@
 		093780883DA94598BE5C29AF /* Sparkle-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = EBD276D9AB2C63D7E24FDE04 /* Sparkle-LICENSE.txt */; };
 		106513FBEC771211CB9DE862 /* LibraryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0325E1A53B306B4E070020D /* LibraryModels.swift */; };
 		132643F5DC3DDD1E9EB22813 /* TextNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA1583E513232AC7D0AA7CA0 /* TextNormalizer.swift */; };
+		1481C4EE808A3E3E87709009 /* TranslationXPCConnectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADC9C439BE92821AED7C642 /* TranslationXPCConnectionPolicy.swift */; };
 		15EDF2A25C2A3FEAE4972ED4 /* Credits.html in Resources */ = {isa = PBXBuildFile; fileRef = 390A1F1BF533AFA28CCFD10F /* Credits.html */; };
 		15FB3FBDD96F12FD1A097CE0 /* HighlightPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20CE4CB5998833B1454C74E2 /* HighlightPDFView.swift */; };
 		1D1E1300196BD224FE89A00F /* TextNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969EC9C892796AB815567020 /* TextNormalizerTests.swift */; };
 		2127A41C5EBC3A230F573908 /* TranslationRequestOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B1E8C5AAC4A05692CCB495 /* TranslationRequestOperation.swift */; };
 		24F9D19682C67BFEFB015DAC /* TranslationInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */; };
+		26FF117388587C1AE13E85A6 /* TranslationXPCConnectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADC9C439BE92821AED7C642 /* TranslationXPCConnectionPolicy.swift */; };
 		2845DD09521799EA1249F0AE /* LibraryOrganizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E489A1C10FD4AE7E9A33154 /* LibraryOrganizationTests.swift */; };
 		293A7207697643F6E957F3A6 /* LurumeTranslationService.xpc in CopyFiles */ = {isa = PBXBuildFile; fileRef = E2DD1BB9E639067387C339DF /* LurumeTranslationService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		2D0ED8285C80930DD3959F6C /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 002933A34CD2A16535238505 /* InfoPlist.strings */; };
@@ -33,12 +35,15 @@
 		62D9B0E6CE35A2C437A5285F /* TranslationXPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 032EC53B9158647738493AB6 /* TranslationXPCProtocol.swift */; };
 		6822FA6E4AD446AACFCDF966 /* TranslationXPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 032EC53B9158647738493AB6 /* TranslationXPCProtocol.swift */; };
 		68D5F0FC04789CBE194A49A1 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 813B2765B8739B290712AAD7 /* ContentView.swift */; };
+		695E0AA23464100D94ECDB24 /* TranslationXPCConnectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADC9C439BE92821AED7C642 /* TranslationXPCConnectionPolicy.swift */; };
 		6C93CF0C527FC9C095C471D4 /* PaperMetadataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC5F48DA0E16EBAC5F6646BE /* PaperMetadataTests.swift */; };
 		6E4325F180DCCE01B54F12F0 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7357965D8D0C423680ACCF0B /* LibraryStore.swift */; };
 		72166701FF73790BA0636872 /* TranslationRequestOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B1E8C5AAC4A05692CCB495 /* TranslationRequestOperation.swift */; };
 		73FBF7FF0060D7E8D718364C /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C3B11CC74DE63BBBC3D20C9 /* main.swift */; };
 		7E10AC773AD3045C05059C26 /* TranslationControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AC352337307455A20A17D1A /* TranslationControllerTests.swift */; };
 		8226C9EA96CDAE79A9037711 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 3E5A34989D0B107DE3DBA0F3 /* Sparkle */; };
+		832317642703EDFE268ECA0D /* TranslationXPCConnectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADC9C439BE92821AED7C642 /* TranslationXPCConnectionPolicy.swift */; };
+		86654EDA264C87B8116DD5EF /* TranslationXPCConnectionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8903F807C3C628B22038F66 /* TranslationXPCConnectionPolicyTests.swift */; };
 		8A612497C2D39BFFBC3CD179 /* LurumeSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */; };
 		8C76D856E19DC6EC27287901 /* ModelTranslationConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFBCE235CDCC1C9AC3DC27B0 /* ModelTranslationConfigurationTests.swift */; };
 		901386E6D513046A375512B4 /* SystemPaperMetadataReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC49AD84FACDAB3ED5163A55 /* SystemPaperMetadataReader.swift */; };
@@ -148,6 +153,7 @@
 		50CE51B033570DB20B180628 /* LibraryPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPersistenceTests.swift; sourceTree = "<group>"; };
 		5294525FCF269307315AAFD4 /* LibraryCollectionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCollectionStoreTests.swift; sourceTree = "<group>"; };
 		53CF2BD0282B0452978CC108 /* Lurume.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lurume.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5ADC9C439BE92821AED7C642 /* TranslationXPCConnectionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationXPCConnectionPolicy.swift; sourceTree = "<group>"; };
 		5AF258DB2C0B0F3B21B5A12D /* PaperRemovalCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaperRemovalCoordinator.swift; sourceTree = "<group>"; };
 		5E1C788C814921FADF9D45E2 /* UpdateTestHost.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UpdateTestHost.entitlements; sourceTree = "<group>"; };
 		6026208784328D8B45E4805D /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -184,6 +190,7 @@
 		C4B1046217A0A7510C373C81 /* Probe.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Probe.entitlements; sourceTree = "<group>"; };
 		CE8CD7C388BCCCF781BEFEB6 /* TranslationXPCIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationXPCIntegrationTests.swift; sourceTree = "<group>"; };
 		CF9734898B3282BC4665E433 /* LurumeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LurumeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D8903F807C3C628B22038F66 /* TranslationXPCConnectionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationXPCConnectionPolicyTests.swift; sourceTree = "<group>"; };
 		DC99175073F30FE9C56F0DC9 /* ModelTranslationSettingsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTranslationSettingsController.swift; sourceTree = "<group>"; };
 		E0325E1A53B306B4E070020D /* LibraryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryModels.swift; sourceTree = "<group>"; };
 		E2DD1BB9E639067387C339DF /* LurumeTranslationService.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = LurumeTranslationService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -271,6 +278,7 @@
 		988BAF39698A4D28B05BECB8 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
+				5ADC9C439BE92821AED7C642 /* TranslationXPCConnectionPolicy.swift */,
 				032EC53B9158647738493AB6 /* TranslationXPCProtocol.swift */,
 			);
 			path = Shared;
@@ -281,6 +289,7 @@
 			children = (
 				7C778B6C50C6E4415F71CB8F /* OpenAIChatCompletionsTests.swift */,
 				040C195F10E062C42AC6E6F8 /* P7TranslationNetworkOperationTests.swift */,
+				D8903F807C3C628B22038F66 /* TranslationXPCConnectionPolicyTests.swift */,
 			);
 			name = TranslationServiceCoreTests;
 			path = Tests/TranslationServiceCoreTests;
@@ -589,6 +598,7 @@
 				B13C920775B082B1C331ED5F /* OpenAIChatCompletions.swift in Sources */,
 				72166701FF73790BA0636872 /* TranslationRequestOperation.swift in Sources */,
 				4FB3C0272A970C0EC45CF60D /* TranslationService.swift in Sources */,
+				832317642703EDFE268ECA0D /* TranslationXPCConnectionPolicy.swift in Sources */,
 				62D9B0E6CE35A2C437A5285F /* TranslationXPCProtocol.swift in Sources */,
 				CAEB67A89F6A35C4A583AEF4 /* main.swift in Sources */,
 			);
@@ -606,6 +616,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				695E0AA23464100D94ECDB24 /* TranslationXPCConnectionPolicy.swift in Sources */,
 				B4042DDCBCA2A04985D37575 /* TranslationXPCProtocol.swift in Sources */,
 				73FBF7FF0060D7E8D718364C /* main.swift in Sources */,
 			);
@@ -619,6 +630,8 @@
 				3B6F29215EACAD8BCABF7D43 /* OpenAIChatCompletionsTests.swift in Sources */,
 				5025B51E193750769CBA42CF /* P7TranslationNetworkOperationTests.swift in Sources */,
 				2127A41C5EBC3A230F573908 /* TranslationRequestOperation.swift in Sources */,
+				1481C4EE808A3E3E87709009 /* TranslationXPCConnectionPolicy.swift in Sources */,
+				86654EDA264C87B8116DD5EF /* TranslationXPCConnectionPolicyTests.swift in Sources */,
 				6822FA6E4AD446AACFCDF966 /* TranslationXPCProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -655,6 +668,7 @@
 				FE891CFC7127EEB8A4BD6FC7 /* TranslationController.swift in Sources */,
 				24F9D19682C67BFEFB015DAC /* TranslationInspector.swift in Sources */,
 				E1FA3537138C6630E9064659 /* TranslationXPCClient.swift in Sources */,
+				26FF117388587C1AE13E85A6 /* TranslationXPCConnectionPolicy.swift in Sources */,
 				9DF2CBAF36DF36B28F9F6365 /* TranslationXPCProtocol.swift in Sources */,
 				EB7D92CC26B4FE6453148D55 /* UpdaterController.swift in Sources */,
 			);

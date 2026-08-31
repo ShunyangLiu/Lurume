@@ -13,6 +13,8 @@ struct TranslationTimeoutPolicy: Equatable {
 }
 
 final class TranslationRequestOperation: NSObject, @unchecked Sendable {
+    private static let maximumRedirectCount = 5
+
     typealias EventHandler = @Sendable (TranslationXPCEvent) -> Void
     typealias CompletionHandler = @Sendable (String) -> Void
 
@@ -32,6 +34,7 @@ final class TranslationRequestOperation: NSObject, @unchecked Sendable {
     private var totalTimer: DispatchWorkItem?
     private var isFinished = false
     private var wasCancelledByClient = false
+    private var redirectCount = 0
 
     init(
         request: TranslationXPCRequest,
@@ -186,8 +189,11 @@ extension TranslationRequestOperation: URLSessionDataDelegate, URLSessionTaskDel
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
-            completionHandler(.allow)
-            firstByteTimer?.cancel()
+            // Error bodies are intentionally never exposed across XPC. Finishing as soon as
+            // the status arrives also prevents a streaming request from waiting on a server
+            // that sends error headers but never completes the response body.
+            completionHandler(.cancel)
+            finish(with: .http(status: httpResponse.statusCode))
             return
         }
         completionHandler(.allow)
@@ -302,6 +308,12 @@ extension TranslationRequestOperation: URLSessionDataDelegate, URLSessionTaskDel
               original.host?.lowercased() == redirected.host?.lowercased(),
               effectivePort(for: original) == effectivePort(for: redirected)
         else {
+            completionHandler(nil)
+            finish(with: .invalidResponse)
+            return
+        }
+        redirectCount += 1
+        guard redirectCount <= Self.maximumRedirectCount else {
             completionHandler(nil)
             finish(with: .invalidResponse)
             return

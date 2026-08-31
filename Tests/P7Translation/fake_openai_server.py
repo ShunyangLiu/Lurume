@@ -51,6 +51,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/redirect/same-origin":
             self._redirect("/stream")
+        elif self.path == "/redirect/loop":
+            self._redirect("/redirect/loop")
         elif self.path == "/redirect/cross-origin":
             port = self.server.server_address[1]
             self._redirect(f"http://localhost:{port}/stream")
@@ -81,6 +83,13 @@ class Handler(BaseHTTPRequestHandler):
                     }
                 },
             )
+        elif self.path == "/error/429-hang":
+            self.send_response(429)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self._write(b"{")
+            time.sleep(5)
         elif self.path == "/stream":
             self._stream(
                 [

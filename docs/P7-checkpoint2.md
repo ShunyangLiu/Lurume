@@ -12,8 +12,9 @@
   Keychain 失败时保留上一份成功配置。升级和首次启动仍默认 Apple 系统翻译。
 - Base URL、模型、流式选项、提示词、引擎和已确认 origin 存入 UserDefaults；API Key
   只使用稳定 service/account 的 generic password 钥匙串条目，不进入 UserDefaults。
-- 空 Key 保存会删除旧钥匙串条目；提供独立删除按钮。Keychain 读写在主线程之外执行，
-  错误只显示本地分类文案，不包含 OSStatus、Key 或请求正文。
+- 成功读取钥匙串后，空 Key 保存会删除旧条目；提供独立删除按钮。若读取失败，空 Key 保存
+  和删除都会明确失败并保留原条目，避免把“读不到”误判为“没有 Key”。Keychain 读写在
+  主线程之外执行，错误只显示本地分类文案，不包含 OSStatus、Key 或请求正文。
 - Base URL 规范化会去除首尾空白与尾部斜杠、统一 scheme/host 大小写，并固定追加
   `/chat/completions`。粘贴完整端点时先剥除同名后缀，并在界面明确提示。
 - 远端地址只允许 HTTPS；HTTP 只允许主机精确为 `localhost`、`127.0.0.1` 或 `::1`。
@@ -25,6 +26,19 @@
 - origin 授权以规范化的 `scheme + host + effective port` 持久化，并提供 loopback/远端两套
   确认文案。它尚未被 PDF 翻译调用；检查点三会在首次发送选区前使用该边界。
 - XPC 客户端改为惰性连接：打开 App 或设置窗口不会启动 XPC，只有明确测试连接时才建立。
+
+## 审查后加固
+
+- 流式请求收到非 2xx 响应头后立即以本地 HTTP 分类失败并取消任务，不读取或转发供应商
+  错误正文；即使服务端发出错误头和部分正文后永不结束，也不会悬挂到 24 小时资源超时。
+- 同 origin 重定向最多跟随 5 次；第 6 次以及跨 origin 重定向都会在本地失败，因此循环不再
+  依赖 URLSession 的内部实现上限。
+- Translation XPC 在 `resume` 前为连接安装 code-signing requirement。正式签名只允许
+  `app.lurume.Lurume` 或 Release 探针且必须与 XPC 同 Team、满足 Apple 签名锚；本地 ad-hoc
+  构建也只允许这两个精确标识。校验由 XPC 对真实对端凭据执行，未通过者无法调用导出方法，
+  因而无法把 API Key 送入服务。
+- 保存结果改为显式的 success/failure 状态，界面颜色和辅助功能文案不再依赖中文字符串中
+  是否包含“已”。
 
 ## 测试连接隐私边界
 
@@ -48,8 +62,8 @@ This is a connection test from Lurume.
 - 配置、持久化、URL、提示词、origin 文案、Keychain 失败回退和固定测试请求单元测试通过。
 - OpenAI-compatible 请求边界单元测试通过，包括 XPC 对远端 HTTP、凭据、query、fragment
   和非 HTTP(S) scheme 的二次拒绝。
-- 专用 localhost runner 共 14 项：6 项真实内嵌 XPC、8 项网络/超时/重定向测试，全部通过。
-- Debug 全量回归 162 项：149 项通过、13 项依赖 localhost fixture 的测试按设计跳过、
+- 专用 localhost runner 共 16 项：6 项真实内嵌 XPC、10 项网络/超时/重定向测试，全部通过。
+- Debug 全量回归 169 项：154 项通过、15 项依赖 localhost fixture 的测试按设计跳过、
   0 项失败；跳过项由专用 runner 执行并通过。
 - 主 App 与 Translation XPC 的 Universal Release 构建均为 `x86_64 arm64`，
   `codesign --verify --deep --strict` 通过。
@@ -57,8 +71,8 @@ This is a connection test from Lurume.
   例外，**没有** network client。
 - Translation XPC Release entitlement 仍只有 sandbox 与 network client，没有文件、相册、
   摄像头、麦克风或其他用户数据权限。
-- 无网络权限 Release 探针仍能通过内嵌 XPC 获取 `分块译文`：本次冷启动完成时间约
-  65.0 ms，结束后 100 ms 的首次轮询已看不到 XPC 进程。
+- 无网络权限 Release 探针仍能通过签名绑定的内嵌 XPC 获取 `分块译文`：本次冷启动完成
+  时间约 51.2 ms，结束后 100 ms 的首次轮询已看不到 XPC 进程。
 
 ## 未进入的范围
 
@@ -78,3 +92,5 @@ This is a connection test from Lurume.
 - Apple Keychain Services：
   <https://developer.apple.com/documentation/security/keychain-services>
 - Apple XPC：<https://developer.apple.com/documentation/xpc>
+- NSXPCConnection code-signing requirement：
+  <https://developer.apple.com/documentation/foundation/nsxpcconnection/setcodesigningrequirement(_:)>

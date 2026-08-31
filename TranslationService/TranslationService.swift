@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 final class TranslationService: NSObject, TranslationXPCServiceProtocol, @unchecked Sendable {
     private weak var connection: NSXPCConnection?
@@ -70,6 +71,9 @@ final class TranslationService: NSObject, TranslationXPCServiceProtocol, @unchec
 
 final class TranslationServiceListenerDelegate: NSObject, NSXPCListenerDelegate {
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
+        guard TranslationXPCConnectionVerifier.validateAndPin(connection) else {
+            return false
+        }
         let service = TranslationService(connection: connection)
         connection.exportedInterface = TranslationXPCInterfaces.service()
         connection.exportedObject = service
@@ -82,6 +86,68 @@ final class TranslationServiceListenerDelegate: NSObject, NSXPCListenerDelegate 
         }
         connection.resume()
         return true
+    }
+}
+
+private enum TranslationXPCConnectionVerifier {
+    static func validateAndPin(_ connection: NSXPCConnection) -> Bool {
+        guard let signingMode = serviceSigningMode() else {
+            NSLog("Translation XPC rejected connection: service signature unavailable")
+            return false
+        }
+        let requirement = TranslationXPCConnectionPolicy.codeSigningRequirement(
+            teamIdentifier: signingMode.teamIdentifier
+        )
+        // NSXPCConnection evaluates this requirement against the real peer credentials,
+        // before any exported service method can receive a request or API key.
+        connection.setCodeSigningRequirement(requirement)
+        return true
+    }
+
+    private enum ServiceSigningMode {
+        case adHoc
+        case developmentOrDistribution(teamIdentifier: String)
+
+        var teamIdentifier: String? {
+            switch self {
+            case .adHoc: nil
+            case let .developmentOrDistribution(teamIdentifier): teamIdentifier
+            }
+        }
+    }
+
+    private static func serviceSigningMode() -> ServiceSigningMode? {
+        var dynamicCode: SecCode?
+        guard SecCodeCopySelf(SecCSFlags(), &dynamicCode) == errSecSuccess,
+              let dynamicCode,
+              SecCodeCheckValidity(dynamicCode, SecCSFlags(), nil) == errSecSuccess
+        else {
+            return nil
+        }
+        var code: SecStaticCode?
+        guard SecCodeCopyStaticCode(dynamicCode, SecCSFlags(), &code) == errSecSuccess,
+              let code
+        else {
+            return nil
+        }
+        var information: CFDictionary?
+        let flags = SecCSFlags(rawValue: kSecCSSigningInformation)
+        guard SecCodeCopySigningInformation(code, flags, &information) == errSecSuccess,
+              let values = information as? [CFString: Any],
+              let signatureFlags = values[kSecCodeInfoFlags] as? NSNumber
+        else {
+            return nil
+        }
+        let adHocSignatureFlag: UInt32 = 0x0002 // kSecCodeSignatureAdhoc in CSCommon.h
+        if signatureFlags.uint32Value & adHocSignatureFlag != 0 {
+            return .adHoc
+        }
+        guard let teamIdentifier = values[kSecCodeInfoTeamIdentifier] as? String,
+              !teamIdentifier.isEmpty
+        else {
+            return nil
+        }
+        return .developmentOrDistribution(teamIdentifier: teamIdentifier)
     }
 }
 

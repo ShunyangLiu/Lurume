@@ -9,6 +9,17 @@ final class ModelTranslationSettingsController: ObservableObject {
         case failed(String)
     }
 
+    enum SaveStatus: Equatable {
+        case success(String)
+        case failure(String)
+
+        var message: String {
+            switch self {
+            case let .success(message), let .failure(message): message
+            }
+        }
+    }
+
     @Published var draftEngine: TranslationEngine = .apple {
         didSet { draftDidChange() }
     }
@@ -28,9 +39,10 @@ final class ModelTranslationSettingsController: ObservableObject {
         didSet { draftDidChange() }
     }
     @Published private(set) var hasStoredAPIKey = false
+    @Published private(set) var apiKeyLoadFailed = false
     @Published private(set) var isLoadingAPIKey = false
     @Published private(set) var isSaving = false
-    @Published private(set) var saveMessage: String?
+    @Published private(set) var saveStatus: SaveStatus?
     @Published private(set) var validationMessage: String?
     @Published private(set) var normalizationMessage: String?
     @Published private(set) var connectionState: ConnectionState = .idle
@@ -60,6 +72,7 @@ final class ModelTranslationSettingsController: ObservableObject {
         draftPrompt = settings.modelTranslationPrompt
         isSynchronizingDraft = false
         isLoadingAPIKey = true
+        apiKeyLoadFailed = false
         defer { isLoadingAPIKey = false }
         do {
             if let apiKey = try await keyStore.read() {
@@ -69,7 +82,8 @@ final class ModelTranslationSettingsController: ObservableObject {
                 hasStoredAPIKey = true
             }
         } catch {
-            saveMessage = error.localizedDescription
+            apiKeyLoadFailed = true
+            saveStatus = .failure("无法读取钥匙串；原有 API Key 未更改。\(error.localizedDescription)")
         }
     }
 
@@ -91,10 +105,14 @@ final class ModelTranslationSettingsController: ObservableObject {
 
     func save(to settings: AppSettings) async {
         guard !isLoadingAPIKey, !isSaving, let configuration = validateDraft() else { return }
-        isSaving = true
-        saveMessage = nil
-        cancelConnectionTest()
         let apiKey = draftAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !(apiKeyLoadFailed && apiKey.isEmpty) else {
+            saveStatus = .failure("无法确认钥匙串中的 API Key，因此未保存配置，也未删除原有 Key。请重新打开设置后再试。")
+            return
+        }
+        isSaving = true
+        saveStatus = nil
+        cancelConnectionTest()
         do {
             if apiKey.isEmpty {
                 try await keyStore.delete()
@@ -103,6 +121,7 @@ final class ModelTranslationSettingsController: ObservableObject {
             } else {
                 try await keyStore.save(apiKey)
                 hasStoredAPIKey = true
+                apiKeyLoadFailed = false
                 draftAPIKey = apiKey
             }
             settings.applyModelTranslationConfiguration(configuration, engine: draftEngine)
@@ -114,24 +133,28 @@ final class ModelTranslationSettingsController: ObservableObject {
             normalizationMessage = configuration.strippedChatCompletionsSuffix
                 ? "已移除 /chat/completions；请求端点保持为单一 /chat/completions。"
                 : nil
-            saveMessage = "配置已保存。"
+            saveStatus = .success("配置已保存。")
         } catch {
-            saveMessage = error.localizedDescription
+            saveStatus = .failure(error.localizedDescription)
         }
         isSaving = false
     }
 
     func deleteAPIKey() async {
         guard !isLoadingAPIKey, !isSaving else { return }
+        guard !apiKeyLoadFailed else {
+            saveStatus = .failure("钥匙串读取失败，未删除原有 API Key。请重新打开设置后再试。")
+            return
+        }
         isSaving = true
-        saveMessage = nil
+        saveStatus = nil
         do {
             try await keyStore.delete()
             draftAPIKey = ""
             hasStoredAPIKey = false
-            saveMessage = "API Key 已从钥匙串删除。"
+            saveStatus = .success("API Key 已从钥匙串删除。")
         } catch {
-            saveMessage = error.localizedDescription
+            saveStatus = .failure(error.localizedDescription)
         }
         isSaving = false
     }
@@ -145,7 +168,7 @@ final class ModelTranslationSettingsController: ObservableObject {
         cancelConnectionTest()
         validationMessage = nil
         normalizationMessage = nil
-        saveMessage = nil
+        saveStatus = nil
         connectionState = .idle
     }
 
