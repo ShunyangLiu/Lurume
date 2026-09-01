@@ -86,8 +86,8 @@ P5 的文献集、独立文献库模式、批量整理和删除语义详见
 本地迁移边界见 [P8 批量文件夹导入与 Zotero 迁移计划](docs/P8-plan.md)。P8 检查点一至四已完成
 schema v5 与旧库迁移、嵌套文献集、文件夹原位批量导入，以及只读 Zotero Local API
 专用 XPC。检查点五已实现用户明确授权的来源/目标目录、不覆盖的暂存复制、双端哈希、
-事务日志、崩溃恢复、重导冲突决定和批量撤销；真实 Zotero 隔离测试库的人工验收仍需在用户
-明确选择后完成。证据见 [P8 检查点一](docs/P8-checkpoint1.md)、
+事务日志、崩溃恢复、重导冲突决定和批量撤销，并通过 Zotero 10.0.1 隔离数据的真实复制、
+三层文献集、重启后书签恢复与零复制重导验收。证据见 [P8 检查点一](docs/P8-checkpoint1.md)、
 [检查点二](docs/P8-checkpoint2.md)、[检查点三](docs/P8-checkpoint3.md)、
 [检查点四](docs/P8-checkpoint4.md) 与 [检查点五](docs/P8-checkpoint5.md)。
 

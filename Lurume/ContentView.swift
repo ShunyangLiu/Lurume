@@ -137,13 +137,19 @@ struct ContentView: View {
                 get: { folderImportCoordinator.isPresented },
                 set: { if !$0 { folderImportCoordinator.dismiss() } }
             )) {
-                FolderImportWizardView(coordinator: folderImportCoordinator)
+                FolderImportWizardView(
+                    coordinator: folderImportCoordinator,
+                    undoManager: undoManager
+                )
             }
             .sheet(isPresented: Binding(
                 get: { zoteroImportCoordinator.isPresented },
                 set: { if !$0 { zoteroImportCoordinator.dismiss() } }
             )) {
-                ZoteroImportWizardView(coordinator: zoteroImportCoordinator)
+                ZoteroImportWizardView(
+                    coordinator: zoteroImportCoordinator,
+                    undoManager: undoManager
+                )
             }
             .alert(
                 "Lurume",

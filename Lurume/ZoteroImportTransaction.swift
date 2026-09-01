@@ -803,7 +803,33 @@ enum ZoteroImportCandidateBuilder {
             guard row.isIncluded else { return false }
             return !row.requiresCopy || prepared.copiedFiles[row.source] != nil
         }
-        let neededCollectionIDs = Set(successfulRows.flatMap(\.collectionIDs))
+        var neededCollectionIDs = Set(successfulRows.flatMap(\.collectionIDs))
+        var parentIDByCollectionID = Dictionary(
+            uniqueKeysWithValues: existingCollections.compactMap { collection in
+                collection.parentID.map { (collection.id, $0) }
+            }
+        )
+        for row in preview.collections {
+            guard let action = row.action else { continue }
+            switch action {
+            case let .create(id, _, parentID):
+                if let parentID {
+                    parentIDByCollectionID[id] = parentID
+                } else {
+                    parentIDByCollectionID.removeValue(forKey: id)
+                }
+            case .reuse:
+                break
+            }
+        }
+        var pendingCollectionIDs = Array(neededCollectionIDs)
+        while let collectionID = pendingCollectionIDs.popLast() {
+            if let parentID = parentIDByCollectionID[collectionID],
+                neededCollectionIDs.insert(parentID).inserted
+            {
+                pendingCollectionIDs.append(parentID)
+            }
+        }
         var collections = existingCollections
         var createdCollections = 0
         var reusedCollectionIDs: Set<UUID> = []

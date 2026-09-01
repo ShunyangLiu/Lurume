@@ -2,9 +2,9 @@ import AppKit
 import SwiftUI
 
 struct FolderImportWizardView: View {
-    @Environment(\.undoManager) private var undoManager
     @EnvironmentObject private var libraryStore: LibraryStore
     @ObservedObject var coordinator: FolderImportCoordinator
+    let undoManager: UndoManager?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {

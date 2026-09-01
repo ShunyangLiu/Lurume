@@ -103,10 +103,42 @@ enum ZoteroPathAuthorization {
     static func restoreDirectory(bookmarkData: Data, readOnly: Bool) throws
         -> ZoteroAuthorizedDirectory
     {
-        let resolved = try SecurityScopedFile.resolve(bookmarkData: bookmarkData)
-        let didStartAccessing = resolved.url.startAccessingSecurityScopedResource()
-        defer { if didStartAccessing { resolved.url.stopAccessingSecurityScopedResource() } }
-        return try authorizeDirectory(at: resolved.url, readOnly: readOnly)
+        let reference = try SecurityScopedFile.resolve(bookmarkData: bookmarkData)
+        let accessURL = reference.url
+        let didStartAccessing = accessURL.startAccessingSecurityScopedResource()
+        defer { if didStartAccessing { accessURL.stopAccessingSecurityScopedResource() } }
+
+        let selected = accessURL.standardizedFileURL
+        let values = try selected.resourceValues(forKeys: [
+            .isDirectoryKey,
+            .isSymbolicLinkKey,
+            .isAliasFileKey,
+            .isPackageKey,
+        ])
+        guard values.isDirectory == true,
+            values.isSymbolicLink != true,
+            values.isAliasFile != true,
+            values.isPackage != true
+        else {
+            throw ZoteroImportAuthorizationError.invalidDirectory
+        }
+        let resolvedPath = selected.resolvingSymlinksInPath().standardizedFileURL
+        let refreshedBookmark: Data
+        do {
+            refreshedBookmark = try SecurityScopedFile.makeBookmark(
+                for: accessURL,
+                readOnly: readOnly
+            )
+        } catch {
+            throw ZoteroImportAuthorizationError.bookmarkUnavailable
+        }
+        return ZoteroAuthorizedDirectory(
+            selectedURL: accessURL,
+            resolvedURL: resolvedPath,
+            identity: try FileIdentity(url: resolvedPath),
+            bookmarkData: refreshedBookmark,
+            readOnly: readOnly
+        )
     }
 
     static func authorizedRoot(

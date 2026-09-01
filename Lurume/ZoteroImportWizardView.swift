@@ -1,13 +1,10 @@
 import AppKit
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct ZoteroImportWizardView: View {
     @EnvironmentObject private var libraryStore: LibraryStore
     @ObservedObject var coordinator: ZoteroImportCoordinator
-    @Environment(\.undoManager) private var undoManager
-    @State private var isSourceImporterPresented = false
-    @State private var isTargetImporterPresented = false
+    let undoManager: UndoManager?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -44,24 +41,6 @@ struct ZoteroImportWizardView: View {
         .padding(20)
         .frame(width: 800, height: 680)
         .interactiveDismissDisabled(coordinator.isBusy)
-        .fileImporter(
-            isPresented: $isSourceImporterPresented,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false
-        ) { result in
-            if case let .success(urls) = result, let url = urls.first {
-                coordinator.addSourceDirectory(url)
-            }
-        }
-        .fileImporter(
-            isPresented: $isTargetImporterPresented,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false
-        ) { result in
-            if case let .success(urls) = result, let url = urls.first {
-                coordinator.selectTargetDirectory(url)
-            }
-        }
     }
 
     private var header: some View {
@@ -225,9 +204,10 @@ struct ZoteroImportWizardView: View {
     private var authorizationControls: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
-                Button(coordinator.sourceDirectoryNames.isEmpty ? "选择 Zotero 数据目录…" : "添加外部附件目录…") {
-                    isSourceImporterPresented = true
-                }
+                Button(
+                    coordinator.sourceDirectoryNames.isEmpty ? "选择 Zotero 数据目录…" : "添加外部附件目录…",
+                    action: selectSourceDirectory
+                )
                 if coordinator.sourceDirectoryNames.isEmpty {
                     Text("尚未授权来源")
                         .foregroundStyle(.secondary)
@@ -238,7 +218,7 @@ struct ZoteroImportWizardView: View {
                 }
             }
             HStack {
-                Button("选择 Lurume 目标目录…") { isTargetImporterPresented = true }
+                Button("选择 Lurume 目标目录…", action: selectTargetDirectory)
                 Text(coordinator.targetDirectoryName ?? "尚未选择目标")
                     .lineLimit(1)
                     .foregroundStyle(.secondary)
@@ -250,6 +230,43 @@ struct ZoteroImportWizardView: View {
             }
         }
         .font(.callout)
+    }
+
+    private func selectSourceDirectory() {
+        selectDirectory(
+            title: "选择 Zotero 数据目录",
+            prompt: "授权来源",
+            canCreateDirectories: false
+        ) { coordinator.addSourceDirectory($0) }
+    }
+
+    private func selectTargetDirectory() {
+        selectDirectory(
+            title: "选择 Lurume 目标目录",
+            prompt: "选择目标",
+            canCreateDirectories: true
+        ) { coordinator.selectTargetDirectory($0) }
+    }
+
+    private func selectDirectory(
+        title: String,
+        prompt: String,
+        canCreateDirectories: Bool,
+        completion: @escaping (URL) -> Void
+    ) {
+        DispatchQueue.main.async {
+            let panel = NSOpenPanel()
+            panel.title = title
+            panel.prompt = prompt
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.allowsMultipleSelection = false
+            panel.canCreateDirectories = canCreateDirectories
+            panel.resolvesAliases = true
+
+            guard panel.runModal() == .OK, let url = panel.urls.first else { return }
+            completion(url)
+        }
     }
 
     private var preparingFilesView: some View {

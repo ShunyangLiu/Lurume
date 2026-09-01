@@ -479,6 +479,69 @@ final class P8ZoteroTransactionTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: copied.finalURL.path))
     }
 
+    func testCandidateIncludesUnreferencedAncestorCollections() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceRootURL = root.appendingPathComponent("source", isDirectory: true)
+        let targetRootURL = root.appendingPathComponent("target", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceRootURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: targetRootURL, withIntermediateDirectories: true)
+        let sourceURL = sourceRootURL.appendingPathComponent("paper.pdf")
+        try writePDF(sourceURL)
+
+        var nestedMigration = migration(sourceURL: sourceURL)
+        let parent = nestedMigration.plan.collections[0]
+        let childSource = ImportSourceIdentity.zoteroCollection(
+            library: ZoteroLibraryIdentity(type: "user", id: 0),
+            collectionKey: "COLL2",
+            serverID: "fixture"
+        )
+        nestedMigration.plan.collections.append(
+            PlannedImportCollection(
+                source: childSource,
+                name: "子集",
+                parentSource: parent.source
+            )
+        )
+        nestedMigration.plan.papers[0].collectionSources = [childSource]
+        nestedMigration.plannedCollectionCount = 2
+
+        let inspected = try await FolderImportScanner.inspectAuthorizedPDF(at: sourceURL)
+        let paperSource = nestedMigration.plan.papers[0].source
+        var options = ZoteroCopyPreviewOptions()
+        options.createdCollectionIDs[parent.source] = UUID()
+        options.createdCollectionIDs[childSource] = UUID()
+        options.createdPaperIDs[paperSource] = UUID()
+        let copyPreview = ZoteroCopyPreviewBuilder.build(
+            migration: nestedMigration,
+            inspectedFiles: [paperSource: inspected],
+            existingPapers: [],
+            existingCollections: [],
+            options: options,
+            authorizationDiagnostics: []
+        )
+        let target = try authorized(targetRootURL, readOnly: false)
+        let prepared = try await ZoteroImportTransactionExecutor.prepare(
+            preview: copyPreview,
+            target: target,
+            journalStore: ZoteroImportJournalStore(
+                fileURL: root.appendingPathComponent("transaction.json")
+            )
+        ) { _, _ in }
+        defer { try? prepared.rollback() }
+
+        let candidate = ZoteroImportCandidateBuilder.build(
+            preview: copyPreview,
+            prepared: prepared,
+            existingPapers: [],
+            existingCollections: []
+        )
+        XCTAssertEqual(candidate.collections.count, 2)
+        XCTAssertNil(CollectionHierarchy.validationIssue(in: candidate.collections))
+        let child = try XCTUnwrap(candidate.collections.first { $0.name == "子集" })
+        XCTAssertNotNil(child.parentID)
+    }
+
     func testRollbackAndRecoveryRemoveOnlyProvenTransactionFiles() async throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
