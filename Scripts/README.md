@@ -22,15 +22,18 @@ Universal Release, creates and mounts a DMG, signs the DMG/appcast/release
 notes, verifies every signature and writes an immutable manifest under
 `build/releases/v<version>/`. It does not contact or modify GitHub.
 
-The Release and mounted-DMG checks also require exactly one embedded
-`LurumeTranslationService.xpc`, verify its strict signature, `arm64`/`x86_64`
-architectures, macOS 15 deployment target and exact bundle identifier, and
-reject file, Keychain, Mach lookup, server, device, personal-information or
-debug entitlements. It also rejects the fixed P7 localhost fixture text, result,
-placeholder key and endpoint if they appear in the production executables. The
-main App must remain sandboxed without generic network client access. Release
-preparation and publishing never call a translation API or read the user's
-translation API Key.
+The Release and mounted-DMG checks require exactly two Lurume-owned XPCs:
+`LurumeTranslationService.xpc` and `LurumeZoteroImportService.xpc`. Each is
+checked independently for strict signing, `arm64`/`x86_64` architectures,
+macOS 15 deployment target, exact bundle identity and a network-only sandbox
+policy with no file, Keychain, Mach lookup, server, device,
+personal-information or debug entitlements. The production executables are
+also scanned for fixed P7/P8 localhost fixture text, keys, paths and outputs.
+The main App must remain sandboxed, have only user-selected read-write file
+access for explicit import choices, and have no generic network client or broad
+directory access. Release preparation and publishing never start Zotero, scan
+an import directory, call a translation API or read the user's translation API
+Key.
 
 Use `--preflight-only` to validate source inputs without building or reading the
 private key.

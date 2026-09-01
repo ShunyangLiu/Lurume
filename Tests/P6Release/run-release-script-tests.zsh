@@ -96,6 +96,51 @@ for lurume_fixture_marker in \
         "prefix $lurume_fixture_marker suffix"
 done
 
+lurume_minimal_main_entitlements='<key>com.apple.security.app-sandbox</key><true/><key>com.apple.security.files.user-selected.read-write</key><true/>'
+lurume_verify_main_app_entitlements "$lurume_minimal_main_entitlements"
+expect_failure \
+    '主 App 缺少读写选择权限' \
+    lurume_verify_main_app_entitlements \
+    '<key>com.apple.security.app-sandbox</key><true/>'
+expect_failure \
+    '主 App 残留 read-only' \
+    lurume_verify_main_app_entitlements \
+    "$lurume_minimal_main_entitlements<key>com.apple.security.files.user-selected.read-only</key><true/>"
+expect_failure \
+    '主 App 意外获得通用网络' \
+    lurume_verify_main_app_entitlements \
+    "$lurume_minimal_main_entitlements<key>com.apple.security.network.client</key><true/>"
+expect_failure \
+    '主 App 意外获得 Downloads 访问' \
+    lurume_verify_main_app_entitlements \
+    "$lurume_minimal_main_entitlements<key>com.apple.security.files.downloads.read-write</key><true/>"
+
+lurume_minimal_zotero_entitlements='<key>com.apple.security.app-sandbox</key><true/><key>com.apple.security.network.client</key><true/>'
+lurume_verify_zotero_xpc_entitlements "$lurume_minimal_zotero_entitlements"
+expect_failure \
+    'Zotero XPC 缺少网络权限' \
+    lurume_verify_zotero_xpc_entitlements \
+    '<key>com.apple.security.app-sandbox</key><true/>'
+expect_failure \
+    'Zotero XPC 意外获得文件权限' \
+    lurume_verify_zotero_xpc_entitlements \
+    "$lurume_minimal_zotero_entitlements<key>com.apple.security.files.user-selected.read-write</key><true/>"
+expect_failure \
+    'Zotero XPC 意外获得 Keychain' \
+    lurume_verify_zotero_xpc_entitlements \
+    "$lurume_minimal_zotero_entitlements<key>keychain-access-groups</key><array/>"
+lurume_verify_zotero_fixture_text 'production zotero strings'
+for lurume_fixture_marker in \
+    'LURUME_ZOTERO_FAKE_SERVER' \
+    'fixture-does-not-exist' \
+    'PARENT1' \
+    'PDF1'; do
+    expect_failure \
+        "Zotero Release 包含夹具 $lurume_fixture_marker" \
+        lurume_verify_zotero_fixture_text \
+        "prefix $lurume_fixture_marker suffix"
+done
+
 mkdir -p "$lurume_work_dir/preflight/Scripts/lib" \
     "$lurume_work_dir/preflight/release-notes" \
     "$lurume_work_dir/preflight/Lurume.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"

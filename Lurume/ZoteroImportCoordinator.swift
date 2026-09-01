@@ -6,6 +6,7 @@ struct ZoteroMigrationPreview: Equatable, Sendable {
         var attachmentKey: String
         var title: String
         var fileName: String
+        var sourceURL: URL
         var collectionNames: [String]
         var disposition: ImportDisposition
     }
@@ -135,6 +136,10 @@ final class ZoteroImportCoordinator: ObservableObject {
         case selecting
         case scanning
         case preview
+        case preparingFiles
+        case ready
+        case copying
+        case completed
         case failed
         case cancelled
     }
@@ -147,6 +152,13 @@ final class ZoteroImportCoordinator: ObservableObject {
     @Published private(set) var importsWholeLibrary = true
     @Published private(set) var scannedItemCount = 0
     @Published private(set) var preview: ZoteroMigrationPreview?
+    @Published private(set) var copyPreview: ZoteroCopyPreview?
+    @Published private(set) var report: ZoteroImportReport?
+    @Published private(set) var sourceDirectoryNames: [String] = []
+    @Published private(set) var targetDirectoryName: String?
+    @Published private(set) var fileProgressCount = 0
+    @Published private(set) var fileProgressTotal = 0
+    @Published private(set) var copiedByteCount: Int64 = 0
     @Published private(set) var failureMessage: String?
 
     private static let pageSize = 100
@@ -156,13 +168,25 @@ final class ZoteroImportCoordinator: ObservableObject {
     private var workTask: Task<Void, Never>?
     private var generation = UUID()
     private var existingPapers: [PaperRecord] = []
+    private var existingCollections: [CollectionRecord] = []
+    private var sourceDirectories: [ZoteroAuthorizedDirectory] = []
+    private var sourceAccesses: [SecurityScopedAccess] = []
+    private var targetDirectory: ZoteroAuthorizedDirectory?
+    private var targetAccess: SecurityScopedAccess?
+    private var bookmarkStore: ZoteroDirectoryBookmarkStore?
+    private var journalStore: ZoteroImportJournalStore?
+    private var copyOptions = ZoteroCopyPreviewOptions()
+    private var inspectedFiles: [ImportSourceIdentity: FolderVerifiedFile] = [:]
+    private var authorizationDiagnostics: [ZoteroCopyDiagnostic] = []
 
     init(sender: any ZoteroImportRequestSending = ZoteroImportXPCClient()) {
         executor = ZoteroRequestExecutor(sender: sender)
     }
 
     var isPresented: Bool { phase != .idle }
-    var isBusy: Bool { phase == .connecting || phase == .scanning }
+    var isBusy: Bool {
+        phase == .connecting || phase == .scanning || phase == .preparingFiles || phase == .copying
+    }
     var canScanSelection: Bool {
         phase == .selecting && (importsWholeLibrary || !selectedCollectionKeys.isEmpty)
     }
@@ -170,11 +194,39 @@ final class ZoteroImportCoordinator: ObservableObject {
         libraries.first(where: { $0.stableID == selectedLibraryID })
     }
 
+    var unauthorizedAttachmentCount: Int {
+        guard let preview else { return 0 }
+        return preview.rows.lazy.filter { row in
+            !self.sourceDirectories.contains { root in
+                ZoteroPathAuthorization.isDescendant(row.sourceURL, of: root.resolvedURL)
+            }
+        }.count
+    }
+
+    var canPrepareCopyPreview: Bool {
+        phase == .preview && !sourceDirectories.isEmpty && targetDirectory != nil
+    }
+
+    func begin(store: LibraryStore) {
+        bookmarkStore = store.zoteroDirectoryBookmarkStore
+        journalStore = store.zoteroImportJournalStore
+        restoreSavedDirectories()
+        begin(existingPapers: store.papers, existingCollections: store.collections)
+    }
+
     func begin(existingPapers: [PaperRecord]) {
+        begin(existingPapers: existingPapers, existingCollections: [])
+    }
+
+    private func begin(
+        existingPapers: [PaperRecord],
+        existingCollections: [CollectionRecord]
+    ) {
         retireWork()
         let current = UUID()
         generation = current
         self.existingPapers = existingPapers
+        self.existingCollections = existingCollections
         libraries = []
         selectedLibraryID = nil
         collections = []
@@ -182,6 +234,9 @@ final class ZoteroImportCoordinator: ObservableObject {
         importsWholeLibrary = true
         scannedItemCount = 0
         preview = nil
+        copyPreview = nil
+        report = nil
+        copyOptions = ZoteroCopyPreviewOptions()
         failureMessage = nil
         phase = .connecting
         workTask = Task { [weak self] in
@@ -327,12 +382,253 @@ final class ZoteroImportCoordinator: ObservableObject {
         }
     }
 
+    func addSourceDirectory(_ url: URL) {
+        guard phase == .preview || phase == .ready else { return }
+        do {
+            let access = SecurityScopedAccess(url: url)
+            let directory = try ZoteroPathAuthorization.authorizeDirectory(at: url, readOnly: true)
+            if let targetDirectory {
+                try ZoteroPathAuthorization.validateNoOverlap(
+                    sourceRoots: sourceDirectories + [directory],
+                    target: targetDirectory
+                )
+            }
+            if !sourceDirectories.contains(where: { $0.identity.identifiesSameFile(as: directory.identity) }) {
+                sourceDirectories.append(directory)
+                sourceAccesses.append(access)
+            }
+            try persistDirectoryBookmarks()
+            refreshDirectoryNames()
+            if phase == .ready { invalidatePreparedCopyPreview() }
+        } catch {
+            failureMessage = error.localizedDescription
+        }
+    }
+
+    func selectTargetDirectory(_ url: URL) {
+        guard phase == .preview || phase == .ready else { return }
+        do {
+            let access = SecurityScopedAccess(url: url)
+            let directory = try ZoteroPathAuthorization.authorizeDirectory(at: url, readOnly: false)
+            try ZoteroPathAuthorization.validateNoOverlap(
+                sourceRoots: sourceDirectories,
+                target: directory
+            )
+            targetDirectory = directory
+            targetAccess = access
+            try persistDirectoryBookmarks()
+            refreshDirectoryNames()
+            if phase == .ready { invalidatePreparedCopyPreview() }
+        } catch {
+            failureMessage = error.localizedDescription
+        }
+    }
+
+    func prepareCopyPreview() {
+        guard canPrepareCopyPreview,
+              let migration = preview,
+              let targetDirectory else { return }
+        do {
+            try ZoteroPathAuthorization.validateNoOverlap(
+                sourceRoots: sourceDirectories,
+                target: targetDirectory
+            )
+        } catch {
+            failureMessage = error.localizedDescription
+            return
+        }
+        retireWork()
+        let current = UUID()
+        generation = current
+        phase = .preparingFiles
+        fileProgressCount = 0
+        fileProgressTotal = migration.rows.count
+        failureMessage = nil
+        let roots = sourceDirectories
+        workTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await Task.detached {
+                    var files: [ImportSourceIdentity: FolderVerifiedFile] = [:]
+                    var diagnostics: [ZoteroCopyDiagnostic] = []
+                    for (index, row) in migration.rows.enumerated() {
+                        try Task.checkCancellation()
+                        guard let source = Self.sourceIdentity(for: row, in: migration.plan) else { continue }
+                        do {
+                            guard try ZoteroPathAuthorization.authorizedRoot(
+                                containing: row.sourceURL,
+                                roots: roots
+                            ) != nil else {
+                                diagnostics.append(ZoteroCopyDiagnostic(
+                                    fileName: row.fileName,
+                                    kind: .unauthorized
+                                ))
+                                await MainActor.run {
+                                    guard self.generation == current else { return }
+                                    self.fileProgressCount = index + 1
+                                }
+                                continue
+                            }
+                            files[source] = try await FolderImportScanner.inspectAuthorizedPDF(at: row.sourceURL)
+                        } catch is CancellationError {
+                            throw CancellationError()
+                        } catch let error as FolderFileVerificationError where error == .changedAfterPreview {
+                            diagnostics.append(ZoteroCopyDiagnostic(
+                                fileName: row.fileName,
+                                kind: .sourceChanged
+                            ))
+                        } catch {
+                            diagnostics.append(ZoteroCopyDiagnostic(
+                                fileName: row.fileName,
+                                kind: .sourceUnreadable
+                            ))
+                        }
+                        await MainActor.run {
+                            guard self.generation == current else { return }
+                            self.fileProgressCount = index + 1
+                        }
+                    }
+                    return (files, diagnostics)
+                }.value
+                try Task.checkCancellation()
+                guard generation == current else { return }
+                inspectedFiles = result.0
+                authorizationDiagnostics = result.1
+                guard !inspectedFiles.isEmpty else {
+                    throw ZoteroImportTransactionError.noImportableFiles
+                }
+                ensureStableCopyOptionIDs(for: migration.plan)
+                rebuildCopyPreview()
+                phase = .ready
+            } catch is CancellationError {
+                guard generation == current else { return }
+                phase = .cancelled
+            } catch {
+                guard generation == current else { return }
+                failureMessage = error.localizedDescription
+                phase = .failed
+            }
+            if generation == current { workTask = nil }
+        }
+    }
+
+    func setCopyPaperIncluded(_ included: Bool, source: ImportSourceIdentity) {
+        guard phase == .ready else { return }
+        if included { copyOptions.excludedSources.remove(source) }
+        else { copyOptions.excludedSources.insert(source) }
+        rebuildCopyPreview()
+    }
+
+    func setChangedSourceImportedAsNew(_ importedAsNew: Bool, source: ImportSourceIdentity) {
+        guard phase == .ready else { return }
+        if importedAsNew { copyOptions.importChangedSourcesAsNew.insert(source) }
+        else { copyOptions.importChangedSourcesAsNew.remove(source) }
+        rebuildCopyPreview()
+    }
+
+    func setCopyTargetParentID(_ id: UUID?) {
+        guard phase == .ready else { return }
+        copyOptions.targetParentID = id
+        rebuildCopyPreview()
+    }
+
+    func setCopyCollectionMergeTarget(_ targetID: UUID?, source: ImportSourceIdentity) {
+        guard phase == .ready else { return }
+        copyOptions.mergedCollectionTargets[source] = targetID
+        rebuildCopyPreview()
+    }
+
+    func confirmCopy(store: LibraryStore, undoManager: UndoManager?) {
+        guard phase == .ready,
+              let copyPreview,
+              copyPreview.includedPaperCount > 0,
+              let targetDirectory,
+              let journalStore else { return }
+        retireWork()
+        let current = UUID()
+        generation = current
+        phase = .copying
+        fileProgressCount = 0
+        fileProgressTotal = copyPreview.copiedPaperCount
+        copiedByteCount = 0
+        failureMessage = nil
+        let basePapers = existingPapers
+        let baseCollections = existingCollections
+        workTask = Task { [weak self] in
+            guard let self else { return }
+            var prepared: ZoteroPreparedTransaction?
+            do {
+                prepared = try await Task.detached {
+                    try await ZoteroImportTransactionExecutor.prepare(
+                        preview: copyPreview,
+                        target: targetDirectory,
+                        journalStore: journalStore
+                    ) { count, bytes in
+                        Task { @MainActor [weak self] in
+                            guard let self, generation == current else { return }
+                            fileProgressCount = count
+                            copiedByteCount = bytes
+                        }
+                    }
+                }.value
+                try Task.checkCancellation()
+                guard generation == current, let prepared else {
+                    throw CancellationError()
+                }
+                let candidate = ZoteroImportCandidateBuilder.build(
+                    preview: copyPreview,
+                    prepared: prepared,
+                    existingPapers: basePapers,
+                    existingCollections: baseCollections
+                )
+                try store.applyZoteroImport(
+                    candidate,
+                    expectedPapers: basePapers,
+                    expectedCollections: baseCollections,
+                    undoManager: undoManager
+                )
+                report = candidate.report
+                existingPapers = candidate.papers
+                existingCollections = candidate.collections
+                phase = .completed
+                do {
+                    try await Task.detached { try prepared.markPublishedAndClean() }.value
+                } catch {
+                    // 快照已原子保存，此时绝不能回滚其引用的 PDF。
+                    // 保留日志，下次启动会用已发布快照证明归属后安全清理。
+                    guard generation == current else { return }
+                    failureMessage = "迁移已保存，但事务清理未完成；Lurume 会在下次启动时安全恢复。"
+                }
+            } catch is CancellationError {
+                if let prepared {
+                    try? await Task.detached { try prepared.rollback() }.value
+                }
+                guard generation == current else { return }
+                phase = .cancelled
+            } catch {
+                if let prepared {
+                    try? await Task.detached { try prepared.rollback() }.value
+                }
+                guard generation == current else { return }
+                failureMessage = error.localizedDescription
+                phase = .failed
+            }
+            if generation == current { workTask = nil }
+        }
+    }
+
     func backToSelection() {
-        guard phase == .preview || phase == .failed || phase == .cancelled else { return }
+        guard phase == .preview || phase == .ready || phase == .failed || phase == .cancelled else { return }
         retireWork()
         preview = nil
+        copyPreview = nil
         failureMessage = nil
         phase = .selecting
+    }
+
+    func backToAuthorization() {
+        guard phase == .ready else { return }
+        invalidatePreparedCopyPreview()
     }
 
     func cancel() {
@@ -342,7 +638,11 @@ final class ZoteroImportCoordinator: ObservableObject {
     }
 
     func dismiss() {
-        retireWork()
+        let previousTask = workTask
+        let previousSourceAccesses = sourceAccesses
+        let previousTargetAccess = targetAccess
+        previousTask?.cancel()
+        workTask = nil
         generation = UUID()
         phase = .idle
         libraries = []
@@ -351,9 +651,27 @@ final class ZoteroImportCoordinator: ObservableObject {
         importsWholeLibrary = true
         selectedLibraryID = nil
         preview = nil
+        copyPreview = nil
+        report = nil
         failureMessage = nil
         serverID = nil
         existingPapers = []
+        existingCollections = []
+        inspectedFiles = [:]
+        authorizationDiagnostics = []
+        sourceDirectories = []
+        sourceAccesses = []
+        targetDirectory = nil
+        targetAccess = nil
+        sourceDirectoryNames = []
+        targetDirectoryName = nil
+        if previousTask != nil || !previousSourceAccesses.isEmpty || previousTargetAccess != nil {
+            Task { @MainActor in
+                _ = await previousTask?.result
+                withExtendedLifetime(previousSourceAccesses) {}
+                withExtendedLifetime(previousTargetAccess) {}
+            }
+        }
     }
 
     private func fetchAllLibraries(serverID: String) async throws -> [ZoteroServiceLibrary] {
@@ -550,7 +868,12 @@ final class ZoteroImportCoordinator: ObservableObject {
         let collectionNameByKey = Dictionary(uniqueKeysWithValues: collections.map { ($0.key, $0.name) })
 
         var attachmentsByParent: [String?: [ZoteroAttachmentDescriptor]] = [:]
-        var rowSeed: [(attachment: ZoteroServiceItem, fileName: String, parent: ZoteroServiceItem?)] = []
+        var rowSeed: [(
+            attachment: ZoteroServiceItem,
+            fileName: String,
+            fileURL: URL,
+            parent: ZoteroServiceItem?
+        )] = []
         var unavailableCount = 0
         for attachment in eligibleAttachments {
             try Task.checkCancellation()
@@ -587,7 +910,7 @@ final class ZoteroImportCoordinator: ObservableObject {
                     fingerprint: nil
                 )
                 attachmentsByParent[attachment.parentItem, default: []].append(descriptor)
-                rowSeed.append((attachment, fileName, parent))
+                rowSeed.append((attachment, fileName, fileURL, parent))
             } catch let error as ZoteroImportRemoteError where shouldSkipAttachment(error) {
                 unavailableCount += 1
             }
@@ -655,6 +978,7 @@ final class ZoteroImportCoordinator: ObservableObject {
                 attachmentKey: seed.attachment.key,
                 title: title,
                 fileName: seed.fileName,
+                sourceURL: seed.fileURL,
                 collectionNames: collectionNames,
                 disposition: disposition
             )
@@ -731,6 +1055,89 @@ final class ZoteroImportCoordinator: ObservableObject {
             language: item.language,
             abstractText: item.abstractNote
         )
+    }
+
+    private func restoreSavedDirectories() {
+        sourceDirectories = []
+        sourceAccesses = []
+        targetDirectory = nil
+        targetAccess = nil
+        guard let bookmarkStore, let saved = try? bookmarkStore.load() else {
+            refreshDirectoryNames()
+            return
+        }
+        for bookmark in saved.sourceBookmarks {
+            guard let directory = try? ZoteroPathAuthorization.restoreDirectory(
+                bookmarkData: bookmark,
+                readOnly: true
+            ) else { continue }
+            sourceDirectories.append(directory)
+            sourceAccesses.append(SecurityScopedAccess(url: directory.selectedURL))
+        }
+        if let bookmark = saved.targetBookmark,
+           let directory = try? ZoteroPathAuthorization.restoreDirectory(
+                bookmarkData: bookmark,
+                readOnly: false
+           ),
+           (try? ZoteroPathAuthorization.validateNoOverlap(
+                sourceRoots: sourceDirectories,
+                target: directory
+           )) != nil {
+            targetDirectory = directory
+            targetAccess = SecurityScopedAccess(url: directory.selectedURL)
+        }
+        refreshDirectoryNames()
+        try? persistDirectoryBookmarks()
+    }
+
+    private func persistDirectoryBookmarks() throws {
+        try bookmarkStore?.save(ZoteroDirectoryBookmarkSet(
+            sourceBookmarks: sourceDirectories.map(\.bookmarkData),
+            targetBookmark: targetDirectory?.bookmarkData
+        ))
+    }
+
+    private func refreshDirectoryNames() {
+        sourceDirectoryNames = sourceDirectories.map(\.displayName)
+        targetDirectoryName = targetDirectory?.displayName
+    }
+
+    private func invalidatePreparedCopyPreview() {
+        copyPreview = nil
+        inspectedFiles = [:]
+        authorizationDiagnostics = []
+        phase = .preview
+    }
+
+    private func ensureStableCopyOptionIDs(for plan: LibraryImportPlan) {
+        for collection in plan.collections where copyOptions.createdCollectionIDs[collection.source] == nil {
+            copyOptions.createdCollectionIDs[collection.source] = UUID()
+        }
+        for paper in plan.papers where copyOptions.createdPaperIDs[paper.source] == nil {
+            copyOptions.createdPaperIDs[paper.source] = UUID()
+        }
+    }
+
+    private func rebuildCopyPreview() {
+        guard let preview else { return }
+        copyPreview = ZoteroCopyPreviewBuilder.build(
+            migration: preview,
+            inspectedFiles: inspectedFiles,
+            existingPapers: existingPapers,
+            existingCollections: existingCollections,
+            options: copyOptions,
+            authorizationDiagnostics: authorizationDiagnostics
+        )
+    }
+
+    nonisolated private static func sourceIdentity(
+        for row: ZoteroMigrationPreview.PaperRow,
+        in plan: LibraryImportPlan
+    ) -> ImportSourceIdentity? {
+        plan.papers.first { paper in
+            guard case let .zoteroAttachment(_, _, key, _) = paper.source else { return false }
+            return key == row.attachmentKey
+        }?.source
     }
 
     private func retireWork() {

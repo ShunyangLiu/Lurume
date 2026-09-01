@@ -31,8 +31,8 @@ Lurume 是一款面向 Apple 平台的开源、轻量、原生学术论文阅读
 3. 放行只需一次，之后可以正常双击打开。
 
 > Lurume 目前尚未加入 Apple Developer 计划，因此安装包未经过公证，首次打开需要上述
-> 手动放行。应用经过 App Sandbox 沙箱保护，只拥有你明确选择打开的 PDF 的只读权限，
-> 不会修改你的任何文件。
+> 手动放行。应用经过 App Sandbox 沙箱保护，只能访问你通过系统选择器明确授权的
+> PDF 或目录。Lurume 不修改导入来源 PDF；Zotero 迁移只向你单独选择的目标目录写入副本。
 
 系统要求：macOS 15 或更新版本，Apple Silicon 与 Intel 芯片均可。
 
@@ -83,11 +83,13 @@ P5 的文献集、独立文献库模式、批量整理和删除语义详见
 [P6 检查点四实现记录](docs/P6-checkpoint4.md)。P7 的范围见
 [P7 原生大模型翻译计划](docs/P7-plan.md)；最终实现、真实服务验证和受控故障替代验收见
 [P7 检查点四记录](docs/P7-checkpoint4.md)。下一阶段的批量文件夹导入、嵌套文献集和 Zotero
-本地迁移边界见 [P8 批量文件夹导入与 Zotero 迁移计划](docs/P8-plan.md)。P8 检查点一已完成
-schema v5、v1–v4 迁移、嵌套文献集纯模型和无 I/O 导入规划器；检查点二已完成
-嵌套来源树、递归展示/计数/删除与撤销、文献集拖放移动、分区结构化元数据编辑器和
-扩展搜索。证据见 [P8 检查点一记录](docs/P8-checkpoint1.md) 与
-[P8 检查点二记录](docs/P8-checkpoint2.md)；真实目录扫描与 Zotero 接入尚未开始。
+本地迁移边界见 [P8 批量文件夹导入与 Zotero 迁移计划](docs/P8-plan.md)。P8 检查点一至四已完成
+schema v5 与旧库迁移、嵌套文献集、文件夹原位批量导入，以及只读 Zotero Local API
+专用 XPC。检查点五已实现用户明确授权的来源/目标目录、不覆盖的暂存复制、双端哈希、
+事务日志、崩溃恢复、重导冲突决定和批量撤销；真实 Zotero 隔离测试库的人工验收仍需在用户
+明确选择后完成。证据见 [P8 检查点一](docs/P8-checkpoint1.md)、
+[检查点二](docs/P8-checkpoint2.md)、[检查点三](docs/P8-checkpoint3.md)、
+[检查点四](docs/P8-checkpoint4.md) 与 [检查点五](docs/P8-checkpoint5.md)。
 
 使用 Xcode 26.3 或更新版本打开 `Lurume.xcodeproj`，选择 `Lurume` scheme 即可构建运行。
 工程最低支持 macOS 15；运行时第三方依赖仅有系统框架无法替代的 Sparkle 更新基础设施。

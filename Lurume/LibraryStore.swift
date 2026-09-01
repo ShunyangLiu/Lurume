@@ -61,6 +61,7 @@ final class LibraryStore: ObservableObject {
         self.persistence = persistence
         self.metadataReader = metadataReader
         load()
+        recoverInterruptedZoteroImport()
     }
 
     convenience init() {
@@ -591,6 +592,37 @@ final class LibraryStore: ObservableObject {
         )
     }
 
+    func applyZoteroImport(
+        _ candidate: ZoteroImportCandidate,
+        expectedPapers: [PaperRecord],
+        expectedCollections: [CollectionRecord],
+        undoManager: UndoManager?
+    ) throws {
+        guard papers == expectedPapers, collections == expectedCollections else {
+            throw ZoteroImportTransactionError.libraryChanged
+        }
+        try applyOrganizationChange(
+            papers: candidate.papers,
+            collections: candidate.collections,
+            undoManager: undoManager,
+            actionName: "Zotero 迁移（撤销不删除已复制 PDF）"
+        )
+    }
+
+    var zoteroImportJournalStore: ZoteroImportJournalStore {
+        ZoteroImportJournalStore(
+            fileURL: persistence.fileURL.deletingLastPathComponent()
+                .appendingPathComponent("zotero-import-transaction.json")
+        )
+    }
+
+    var zoteroDirectoryBookmarkStore: ZoteroDirectoryBookmarkStore {
+        ZoteroDirectoryBookmarkStore(
+            fileURL: persistence.fileURL.deletingLastPathComponent()
+                .appendingPathComponent("zotero-import-directories.json")
+        )
+    }
+
     func selectPaper(id: UUID?) {
         guard selectedPaperID != id else { return }
         if persistenceDisabled {
@@ -823,6 +855,21 @@ final class LibraryStore: ObservableObject {
             }
         } catch {
             disablePersistence(because: error)
+        }
+    }
+
+    private func recoverInterruptedZoteroImport() {
+        guard !persistenceDisabled else { return }
+        do {
+            if try ZoteroImportRecovery.recoverIfNeeded(
+                journalStore: zoteroImportJournalStore,
+                snapshot: snapshot
+            ) {
+                presentedError = "已安全恢复上次未完成的 Zotero 迁移。"
+            }
+        } catch {
+            // 保守恢复失败时保持文献库可用，但不自动删除任何无法证明归属的文件。
+            presentedError = error.localizedDescription
         }
     }
 

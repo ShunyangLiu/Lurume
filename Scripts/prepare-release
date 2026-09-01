@@ -189,11 +189,9 @@ lurume_info="$lurume_app/Contents/Info.plist"
 [[ "$(plutil -extract SUPublicEDKey raw "$lurume_info")" == '/5cS7YkTp8GbUq0Vt88J/+pRD/rl5yO1zxCvVRatGes=' ]] || lurume_release_error 'App 更新公钥不一致' || exit 5
 
 lurume_entitlements="$(codesign -d --entitlements - "$lurume_app" 2>&1)"
-[[ "$lurume_entitlements" == *'com.apple.security.app-sandbox'* ]] || lurume_release_error '缺少 App Sandbox entitlement' || exit 5
 [[ "$lurume_entitlements" == *'app.lurume.Lurume-spks'* && "$lurume_entitlements" == *'app.lurume.Lurume-spki'* ]] || lurume_release_error '缺少 Sparkle 安装 entitlement' || exit 5
-[[ "$lurume_entitlements" != *'com.apple.security.network.client'* ]] || lurume_release_error '主 App 不得拥有通用网络权限' || exit 5
-[[ "$lurume_entitlements" != *'com.apple.security.get-task-allow'* ]] || lurume_release_error 'Release 主 App 不得包含 get-task-allow' || exit 5
-lurume_verify_translation_xpc "$lurume_app" || exit 5
+lurume_verify_main_app_entitlements "$lurume_entitlements" || exit 5
+lurume_verify_embedded_lurume_xpcs "$lurume_app" || exit 5
 
 lurume_archive_dir="$lurume_work_dir/archive"
 lurume_dmg_root="$lurume_work_dir/dmg-root"
@@ -213,7 +211,9 @@ hdiutil attach -quiet -readonly -nobrowse -mountpoint "$lurume_dmg_mount" "$luru
 codesign --verify --deep --strict "$lurume_dmg_mount/Lurume.app"
 [[ "$(plutil -extract CFBundleShortVersionString raw "$lurume_dmg_mount/Lurume.app/Contents/Info.plist")" == "$lurume_version" ]] || lurume_release_error 'DMG 内 App 版本不一致' || exit 5
 [[ "$(lipo -archs "$lurume_dmg_mount/Lurume.app/Contents/MacOS/Lurume")" == *arm64* && "$(lipo -archs "$lurume_dmg_mount/Lurume.app/Contents/MacOS/Lurume")" == *x86_64* ]] || lurume_release_error 'DMG 内 App 不是 Universal' || exit 5
-lurume_verify_translation_xpc "$lurume_dmg_mount/Lurume.app" || exit 5
+lurume_mounted_entitlements="$(codesign -d --entitlements - "$lurume_dmg_mount/Lurume.app" 2>&1)"
+lurume_verify_main_app_entitlements "$lurume_mounted_entitlements" || exit 5
+lurume_verify_embedded_lurume_xpcs "$lurume_dmg_mount/Lurume.app" || exit 5
 hdiutil detach "$lurume_dmg_mount" -quiet
 lurume_dmg_mount=''
 

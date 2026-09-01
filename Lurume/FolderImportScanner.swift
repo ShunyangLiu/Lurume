@@ -339,6 +339,28 @@ struct FolderImportScanner: FolderImportScanning, Sendable {
             bookmarkData: bookmarkData
         )
     }
+
+    /// 检查一个已由用户授权根覆盖的 Zotero PDF。调用方仍须先完成授权根后代校验。
+    static func inspectAuthorizedPDF(
+        at url: URL,
+        bufferSize: Int = defaultBufferSize
+    ) async throws -> FolderVerifiedFile {
+        let start = try observation(for: url)
+        let hash = try hashAndValidatePDF(at: url, bufferSize: max(4_096, bufferSize))
+        let end = try observation(for: url)
+        guard start == end, hash.byteCount == end.byteCount else {
+            throw FolderFileVerificationError.changedAfterPreview
+        }
+        return FolderVerifiedFile(
+            identity: end.identity,
+            fingerprint: PDFContentFingerprint(
+                sha256: hash.sha256,
+                byteCount: end.byteCount,
+                modificationDate: end.modificationDate
+            ),
+            bookmarkData: nil
+        )
+    }
 }
 
 private extension FolderImportScanner {
@@ -593,6 +615,16 @@ private extension FolderImportScanner {
     static func observation(for url: URL) throws -> FileObservation {
         // FileManager attributes are fetched afresh. URL resource values may be cached on the
         // URL instance, which would hide a mutation between the scan and verification passes.
+        let referenceValues = try url.resourceValues(forKeys: [
+            .isRegularFileKey,
+            .isSymbolicLinkKey,
+            .isAliasFileKey,
+        ])
+        guard referenceValues.isRegularFile == true,
+              referenceValues.isSymbolicLink != true,
+              referenceValues.isAliasFile != true else {
+            throw FolderFileVerificationError.changedAfterPreview
+        }
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         guard attributes[.type] as? FileAttributeType == .typeRegular,
               let fileSize = (attributes[.size] as? NSNumber)?.int64Value,

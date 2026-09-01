@@ -971,7 +971,7 @@ struct ContentView: View {
     }
 
     private func presentZoteroMigration() {
-        zoteroImportCoordinator.begin(existingPapers: libraryStore.papers)
+        zoteroImportCoordinator.begin(store: libraryStore)
     }
 
     private func handleFolderImport(_ result: Result<[URL], Error>) {

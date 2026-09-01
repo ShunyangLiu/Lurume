@@ -18,7 +18,9 @@
 		1C5328D3EE846F748110BDEC /* ZoteroImportXPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DDFA11351CA55E04D422B01 /* ZoteroImportXPCProtocol.swift */; };
 		1D1E1300196BD224FE89A00F /* TextNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969EC9C892796AB815567020 /* TextNormalizerTests.swift */; };
 		1D4430F27C7263188FC213E4 /* FolderImportTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 555A210A28D6F92DE8F57FAA /* FolderImportTransaction.swift */; };
+		205AD866107A886EAA92EE81 /* P8ZoteroTransactionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC3AEEC47850CAD1D41191E /* P8ZoteroTransactionTests.swift */; };
 		2127A41C5EBC3A230F573908 /* TranslationRequestOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B1E8C5AAC4A05692CCB495 /* TranslationRequestOperation.swift */; };
+		2227179797C8823B64A226EA /* ZoteroImportTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4CFEA4F57F7E8D2B977F96A /* ZoteroImportTransaction.swift */; };
 		24F9D19682C67BFEFB015DAC /* TranslationInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */; };
 		26062E05558C3FE60C36C4B0 /* TranslationXPCConnectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADC9C439BE92821AED7C642 /* TranslationXPCConnectionPolicy.swift */; };
 		26FF117388587C1AE13E85A6 /* TranslationXPCConnectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADC9C439BE92821AED7C642 /* TranslationXPCConnectionPolicy.swift */; };
@@ -62,6 +64,7 @@
 		7C14BD13DAF4EF1684DA77C6 /* ZoteroImportXPCConnectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B2944D9C3F184043CD9D895 /* ZoteroImportXPCConnectionPolicy.swift */; };
 		7E10AC773AD3045C05059C26 /* TranslationControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AC352337307455A20A17D1A /* TranslationControllerTests.swift */; };
 		8226C9EA96CDAE79A9037711 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 3E5A34989D0B107DE3DBA0F3 /* Sparkle */; };
+		82E279C2F1232A9F52048A83 /* ZoteroImportAuthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FD9E72182171E98BCF9C525 /* ZoteroImportAuthorization.swift */; };
 		832317642703EDFE268ECA0D /* TranslationXPCConnectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADC9C439BE92821AED7C642 /* TranslationXPCConnectionPolicy.swift */; };
 		857E7290FA8B82984C4A3DE4 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38933BBA2EDB5594525C5540 /* main.swift */; };
 		86654EDA264C87B8116DD5EF /* TranslationXPCConnectionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8903F807C3C628B22038F66 /* TranslationXPCConnectionPolicyTests.swift */; };
@@ -202,6 +205,7 @@
 		390A1F1BF533AFA28CCFD10F /* Credits.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = Credits.html; sourceTree = "<group>"; };
 		3ACD942D2A49387866E3E97E /* LurumeTranslationProbe.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LurumeTranslationProbe.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3C0C186E21CE73620E1ECB1C /* PDFNavigationSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFNavigationSidebar.swift; sourceTree = "<group>"; };
+		3FD9E72182171E98BCF9C525 /* ZoteroImportAuthorization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoteroImportAuthorization.swift; sourceTree = "<group>"; };
 		4162D6E87B60ECDCF319814E /* ZoteroImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoteroImportCoordinator.swift; sourceTree = "<group>"; };
 		451E4AC55AABA630D088790D /* SecurityScopedFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedFile.swift; sourceTree = "<group>"; };
 		4ACA72A5E79BC8728F19084D /* TranslationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationController.swift; sourceTree = "<group>"; };
@@ -245,9 +249,11 @@
 		9AABCAEA8379FB217EF98010 /* LibrarySchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySchema.swift; sourceTree = "<group>"; };
 		9ED4F28F3AC041E0B7DD85EF /* ZoteroImportServiceCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ZoteroImportServiceCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20C3BF4B7E2E5A5F0024822 /* TranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationService.swift; sourceTree = "<group>"; };
+		A4CFEA4F57F7E8D2B977F96A /* ZoteroImportTransaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoteroImportTransaction.swift; sourceTree = "<group>"; };
 		AB955026060739BD5916EF09 /* ImportCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportCommands.swift; sourceTree = "<group>"; };
 		AE34817476A47CB79EE52E19 /* ZoteroImportService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ZoteroImportService.entitlements; sourceTree = "<group>"; };
 		AF9CA75918F1517CF9434D8D /* LibraryTableInteractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryTableInteractionTests.swift; sourceTree = "<group>"; };
+		AFC3AEEC47850CAD1D41191E /* P8ZoteroTransactionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = P8ZoteroTransactionTests.swift; sourceTree = "<group>"; };
 		B1CA5FB5868E0A8EDB1056D6 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		B332936519E7741B917213C1 /* FileIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIdentityTests.swift; sourceTree = "<group>"; };
 		B43B08E498537804DB3769E8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -432,7 +438,9 @@
 				87B7F5D98EF6A4B100711620 /* TranslationInspector.swift */,
 				6662DB14AB725B65D5107D51 /* TranslationXPCClient.swift */,
 				EB67A6A41839515674054B2B /* UpdaterController.swift */,
+				3FD9E72182171E98BCF9C525 /* ZoteroImportAuthorization.swift */,
 				4162D6E87B60ECDCF319814E /* ZoteroImportCoordinator.swift */,
+				A4CFEA4F57F7E8D2B977F96A /* ZoteroImportTransaction.swift */,
 				5C243547A0A3A00604D4C51C /* ZoteroImportWizardView.swift */,
 				69B756115E8CF6D3EA802039 /* ZoteroImportXPCClient.swift */,
 				002933A34CD2A16535238505 /* InfoPlist.strings */,
@@ -490,6 +498,7 @@
 				094B182E8B2F8F86CF178DFB /* P8FolderImportTests.swift */,
 				5ED65E36600BE3C5B70D402A /* P8ImportPlanningTests.swift */,
 				5A6ED549FB633F5C0CB50C62 /* P8LibraryModelTests.swift */,
+				AFC3AEEC47850CAD1D41191E /* P8ZoteroTransactionTests.swift */,
 				BC5F48DA0E16EBAC5F6646BE /* PaperMetadataTests.swift */,
 				09C68C64D3676F502236BD86 /* PaperRemovalCoordinatorTests.swift */,
 				04E0646022AA5A1039AD2D3F /* ReaderModeTransitionTests.swift */,
@@ -757,6 +766,7 @@
 				5F823BEAA253B1DB3F31FD1D /* P8FolderImportTests.swift in Sources */,
 				6F0E29AEE8442D65C1A6CA48 /* P8ImportPlanningTests.swift in Sources */,
 				4C9FCD0E24A6DF7390C6E52B /* P8LibraryModelTests.swift in Sources */,
+				205AD866107A886EAA92EE81 /* P8ZoteroTransactionTests.swift in Sources */,
 				6C93CF0C527FC9C095C471D4 /* PaperMetadataTests.swift in Sources */,
 				D9E8C3A77EE0A76B56701542 /* PaperRemovalCoordinatorTests.swift in Sources */,
 				A5DE3609DC3C9F2CAD5718E8 /* ReaderModeTransitionTests.swift in Sources */,
@@ -890,7 +900,9 @@
 				26FF117388587C1AE13E85A6 /* TranslationXPCConnectionPolicy.swift in Sources */,
 				9DF2CBAF36DF36B28F9F6365 /* TranslationXPCProtocol.swift in Sources */,
 				EB7D92CC26B4FE6453148D55 /* UpdaterController.swift in Sources */,
+				82E279C2F1232A9F52048A83 /* ZoteroImportAuthorization.swift in Sources */,
 				05817962FB8A476549B94C01 /* ZoteroImportCoordinator.swift in Sources */,
+				2227179797C8823B64A226EA /* ZoteroImportTransaction.swift in Sources */,
 				D1D1F6DEA3BE1F67552F8369 /* ZoteroImportWizardView.swift in Sources */,
 				68318B9CCF47542349BF2137 /* ZoteroImportXPCClient.swift in Sources */,
 				7C14BD13DAF4EF1684DA77C6 /* ZoteroImportXPCConnectionPolicy.swift in Sources */,

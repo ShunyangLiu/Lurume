@@ -6,14 +6,15 @@ struct ResolvedFileReference: Sendable {
 }
 
 enum SecurityScopedFile {
-    static let bookmarkCreationOptions: URL.BookmarkCreationOptions = [
-        .withSecurityScope,
-        .securityScopeAllowOnlyReadAccess,
-    ]
-
     static func makeBookmark(for url: URL) throws -> Data {
-        try url.bookmarkData(
-            options: bookmarkCreationOptions,
+        try makeBookmark(for: url, readOnly: true)
+    }
+
+    static func makeBookmark(for url: URL, readOnly: Bool) throws -> Data {
+        var options: URL.BookmarkCreationOptions = [.withSecurityScope]
+        if readOnly { options.insert(.securityScopeAllowOnlyReadAccess) }
+        return try url.bookmarkData(
+            options: options,
             includingResourceValuesForKeys: [
                 .volumeUUIDStringKey,
                 .documentIdentifierKey,
