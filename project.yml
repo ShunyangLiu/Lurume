@@ -67,8 +67,8 @@ targets:
         PRODUCT_NAME: Lurume
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "-"
-        CURRENT_PROJECT_VERSION: 4
-        MARKETING_VERSION: 0.0.4
+        CURRENT_PROJECT_VERSION: 5
+        MARKETING_VERSION: 0.0.5
 
   LurumeTranslationService:
     type: xpc-service
