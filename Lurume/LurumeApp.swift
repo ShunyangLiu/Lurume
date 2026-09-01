@@ -30,6 +30,9 @@ struct LurumeApp: App {
                 Button("导入文件夹…") {
                     NotificationCenter.default.post(name: .lurumeImportFolder, object: nil)
                 }
+                Button("从 Zotero 迁移…") {
+                    NotificationCenter.default.post(name: .lurumeImportZotero, object: nil)
+                }
                 Divider()
             }
 

@@ -19,6 +19,7 @@ struct ContentView: View {
     @EnvironmentObject private var updaterController: UpdaterController
     @StateObject private var pdfController = PDFReaderController()
     @StateObject private var folderImportCoordinator = FolderImportCoordinator()
+    @StateObject private var zoteroImportCoordinator = ZoteroImportCoordinator()
     @State private var isImporterPresented = false
     @State private var importerPurpose: FileImporterPurpose?
     @State private var importerAllowedContentTypes: [UTType] = [.pdf]
@@ -137,6 +138,12 @@ struct ContentView: View {
                 set: { if !$0 { folderImportCoordinator.dismiss() } }
             )) {
                 FolderImportWizardView(coordinator: folderImportCoordinator)
+            }
+            .sheet(isPresented: Binding(
+                get: { zoteroImportCoordinator.isPresented },
+                set: { if !$0 { zoteroImportCoordinator.dismiss() } }
+            )) {
+                ZoteroImportWizardView(coordinator: zoteroImportCoordinator)
             }
             .alert(
                 "Lurume",
@@ -304,6 +311,10 @@ struct ContentView: View {
                 guard !libraryStore.persistenceDisabled else { return }
                 presentFolderImporter()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .lurumeImportZotero)) { _ in
+                guard !libraryStore.persistenceDisabled else { return }
+                presentZoteroMigration()
+            }
             .overlay {
                 if appSettings.mainWindowMode == .reading {
                     FileDropReceiver { urls in
@@ -467,6 +478,16 @@ struct ContentView: View {
             .buttonStyle(.borderless)
             .help("导入文件夹")
             .accessibilityLabel("导入文件夹")
+            .disabled(libraryStore.persistenceDisabled)
+
+            Button {
+                presentZoteroMigration()
+            } label: {
+                Image(systemName: "arrow.trianglehead.2.clockwise.rotate.90")
+            }
+            .buttonStyle(.borderless)
+            .help("从 Zotero 迁移")
+            .accessibilityLabel("从 Zotero 迁移")
             .disabled(libraryStore.persistenceDisabled)
         }
         .padding(.horizontal, 12)
@@ -947,6 +968,10 @@ struct ContentView: View {
         importerAllowedContentTypes = [.folder]
         importerAllowsMultipleSelection = false
         isImporterPresented = true
+    }
+
+    private func presentZoteroMigration() {
+        zoteroImportCoordinator.begin(existingPapers: libraryStore.papers)
     }
 
     private func handleFolderImport(_ result: Result<[URL], Error>) {

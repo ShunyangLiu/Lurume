@@ -59,6 +59,8 @@ targets:
       - package: Sparkle
       - target: LurumeTranslationService
         embed: true
+      - target: LurumeZoteroImportService
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.lurume.Lurume
@@ -100,6 +102,38 @@ targets:
         MARKETING_VERSION: 1.0.0
         SKIP_INSTALL: YES
 
+  LurumeZoteroImportService:
+    type: xpc-service
+    platform: macOS
+    sources:
+      - path: Shared
+      - path: ZoteroImportServiceCore
+      - path: ZoteroImportService
+    info:
+      path: ZoteroImportService/Info.plist
+      properties:
+        CFBundleDisplayName: Lurume Zotero Import Service
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        XPCService:
+          ServiceType: Application
+    entitlements:
+      path: ZoteroImportService/ZoteroImportService.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.lurume.Lurume.ZoteroImportService
+        PRODUCT_NAME: LurumeZoteroImportService
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 1.0.0
+        SKIP_INSTALL: YES
+
   LurumeTests:
     type: bundle.unit-test
     platform: macOS
@@ -122,6 +156,20 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.lurume.TranslationServiceCoreTests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""
+
+  ZoteroImportServiceCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Shared
+      - path: ZoteroImportServiceCore
+      - path: Tests/ZoteroImportServiceCoreTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.lurume.ZoteroImportServiceCoreTests
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: ""
         BUNDLE_LOADER: ""
@@ -204,12 +252,15 @@ schemes:
         Lurume: all
         LurumeTests: [test]
         TranslationServiceCoreTests: [test]
+        ZoteroImportServiceCoreTests: [test]
     test:
       environmentVariables:
         LURUME_TRANSLATION_FAKE_SERVER: $(LURUME_TRANSLATION_FAKE_SERVER)
+        LURUME_ZOTERO_FAKE_SERVER: $(LURUME_ZOTERO_FAKE_SERVER)
       targets:
         - LurumeTests
         - TranslationServiceCoreTests
+        - ZoteroImportServiceCoreTests
     run:
       config: Debug
     archive:
