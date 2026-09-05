@@ -855,7 +855,7 @@ struct ContentView: View {
 
     private func leaveReadingMode() {
         ReadingSessionBoundary(
-            flushPendingPageSave: libraryStore.flushPendingSave,
+            flushPendingPageSave: { libraryStore.flushPendingSave() },
             closeNoteEditor: pdfController.closeNoteEditor,
             detachReader: pdfController.detach,
             releaseSecurityScope: {
@@ -869,8 +869,11 @@ struct ContentView: View {
     private func configureUpdateInstallationBoundary() {
         // Retain the save boundary even if the window closes before the app quits.
         terminationController.prepareForTermination = { [libraryStore, pdfController] in
-            libraryStore.flushPendingSave()
-            return pdfController.prepareNotesForExit()
+            ApplicationTerminationSaveBoundary(
+                flushPendingLibrarySave: libraryStore.flushPendingSave,
+                confirmDiscardingLibraryChanges: LurumeTerminationController.confirmDiscardingLibraryChanges,
+                prepareNotesForExit: pdfController.prepareNotesForExit
+            ).prepareForTermination()
         }
         updaterController.mayRelaunch = { [weak terminationController] in
             guard let terminationController else { return true }
@@ -879,7 +882,7 @@ struct ContentView: View {
         updaterController.prepareForInstallation = { [weak libraryStore, weak pdfController] in
             guard let libraryStore, let pdfController else { return }
             UpdateInstallationSaveBoundary(
-                flushPendingLibrarySave: libraryStore.flushPendingSave,
+                flushPendingLibrarySave: { libraryStore.flushPendingSave() },
                 closeNoteEditor: pdfController.closeNoteEditor
             ).prepareForInstallation()
         }

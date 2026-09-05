@@ -154,12 +154,14 @@ final class HighlightStore: ObservableObject {
         undoManager: UndoManager?,
         actionName: String
     ) -> Bool {
+        // Undo may hold the creation-time value; preserve any notes edited since then.
+        guard let current = highlight(id: record.id) else { return false }
         var updated = highlights
         updated.removeAll { $0.id == record.id }
         guard saveAndPublish(updated) else { return false }
         undoManager?.registerUndo(withTarget: self) { [weak undoManager] store in
             _ = store.add(
-                record,
+                current,
                 undoManager: undoManager,
                 actionName: actionName
             )

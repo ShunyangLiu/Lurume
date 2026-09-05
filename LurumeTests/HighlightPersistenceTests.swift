@@ -137,6 +137,53 @@ final class HighlightPersistenceTests: XCTestCase {
     }
 
     @MainActor
+    func testUndoingCreationAndRedoingKeepsLatestSavedNoteAndMarker() throws {
+        let persistence = HighlightPersistence(fileURL: try temporaryFileURL())
+        let store = HighlightStore(persistence: persistence)
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        let record = try makeRecord()
+        undoManager.beginUndoGrouping()
+        XCTAssertNotNil(store.toggle(record, undoManager: undoManager))
+        undoManager.endUndoGrouping()
+
+        for revision in 1...2 {
+            let position = try XCTUnwrap(HighlightPoint(cgPoint: CGPoint(x: 120 * revision, y: 40)))
+            XCTAssertTrue(store.updateNote(id: record.id, text: "Saved revision \(revision)",
+                                           modifiedAt: Date(timeIntervalSince1970: Double(1_710_000_000 + revision))))
+            XCTAssertTrue(store.updateNoteMarkerPosition(id: record.id, position: position))
+            let expected = try XCTUnwrap(store.highlight(id: record.id))
+            undoManager.undo()
+            XCTAssertNil(store.highlight(id: record.id))
+            undoManager.redo()
+            XCTAssertEqual(store.highlight(id: record.id), expected)
+            XCTAssertEqual(try persistence.load().snapshot.highlights, [expected])
+        }
+    }
+
+    @MainActor
+    func testRedoingDeletionThenUndoingKeepsNoteEditedAfterFirstUndo() throws {
+        let persistence = HighlightPersistence(fileURL: try temporaryFileURL())
+        let store = HighlightStore(persistence: persistence)
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        let record = try makeRecord()
+        XCTAssertNotNil(store.toggle(record, undoManager: nil))
+        XCTAssertTrue(store.updateNote(id: record.id, text: "Before deletion"))
+        undoManager.beginUndoGrouping()
+        XCTAssertTrue(store.remove(id: record.id, undoManager: undoManager))
+        undoManager.endUndoGrouping()
+        undoManager.undo()
+        XCTAssertTrue(store.updateNote(id: record.id, text: "Edited after restoration",
+                                       modifiedAt: Date(timeIntervalSince1970: 1_710_000_000)))
+        let expected = try XCTUnwrap(store.highlight(id: record.id))
+        undoManager.redo()
+        undoManager.undo()
+        XCTAssertEqual(store.highlight(id: record.id), expected)
+        XCTAssertEqual(try persistence.load().snapshot.highlights, [expected])
+    }
+
+    @MainActor
     func testFailedSaveDoesNotPublishMutation() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("Lurume-HighlightTests-\(UUID().uuidString)")

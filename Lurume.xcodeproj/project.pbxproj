@@ -89,6 +89,7 @@
 		A5DE3609DC3C9F2CAD5718E8 /* ReaderModeTransitionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04E0646022AA5A1039AD2D3F /* ReaderModeTransitionTests.swift */; };
 		A73E9083CB324645CFF43590 /* SecurityScopedFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 451E4AC55AABA630D088790D /* SecurityScopedFile.swift */; };
 		AD0510193C70C076364F0BF3 /* ModelTranslationConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13D4FB732F27567ED56D6D05 /* ModelTranslationConfiguration.swift */; };
+		AFA9221623EC339A1315698A /* LibrarySaveSafetyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D831557D3FC647DADCAD9420 /* LibrarySaveSafetyTests.swift */; };
 		B13C920775B082B1C331ED5F /* OpenAIChatCompletions.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC5484C864E05733C0A97EE0 /* OpenAIChatCompletions.swift */; };
 		B1AE1C81032365A6F314978A /* HighlightModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFEAA76699D454EB7F711760 /* HighlightModels.swift */; };
 		B3A6453CEE80C6372F7053A8 /* TranslationXPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 032EC53B9158647738493AB6 /* TranslationXPCProtocol.swift */; };
@@ -270,6 +271,7 @@
 		D5CEDBC108CC9BF9AF43AC88 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D5F0A993439697CA78EE2982 /* LurumeZoteroImportService.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = LurumeZoteroImportService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		D73B627EB34ED8B5CEBCB05B /* FolderImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderImportCoordinator.swift; sourceTree = "<group>"; };
+		D831557D3FC647DADCAD9420 /* LibrarySaveSafetyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySaveSafetyTests.swift; sourceTree = "<group>"; };
 		D8903F807C3C628B22038F66 /* TranslationXPCConnectionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationXPCConnectionPolicyTests.swift; sourceTree = "<group>"; };
 		DC99175073F30FE9C56F0DC9 /* ModelTranslationSettingsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTranslationSettingsController.swift; sourceTree = "<group>"; };
 		E0325E1A53B306B4E070020D /* LibraryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryModels.swift; sourceTree = "<group>"; };
@@ -492,6 +494,7 @@
 				06D06AF433F711F03E4F7B6E /* LibraryDragDropTests.swift */,
 				6E489A1C10FD4AE7E9A33154 /* LibraryOrganizationTests.swift */,
 				50CE51B033570DB20B180628 /* LibraryPersistenceTests.swift */,
+				D831557D3FC647DADCAD9420 /* LibrarySaveSafetyTests.swift */,
 				AF9CA75918F1517CF9434D8D /* LibraryTableInteractionTests.swift */,
 				1B229DB5333C8E1D46A0AB95 /* LurumeSmokeTests.swift */,
 				FFBCE235CDCC1C9AC3DC27B0 /* ModelTranslationConfigurationTests.swift */,
@@ -760,6 +763,7 @@
 				F24CFB0CECD00A02EF38F9D5 /* LibraryDragDropTests.swift in Sources */,
 				2845DD09521799EA1249F0AE /* LibraryOrganizationTests.swift in Sources */,
 				3BA0251DCE1AE33611F16C6E /* LibraryPersistenceTests.swift in Sources */,
+				AFA9221623EC339A1315698A /* LibrarySaveSafetyTests.swift in Sources */,
 				A1B77B1E421B37A01DA3BA39 /* LibraryTableInteractionTests.swift in Sources */,
 				8A612497C2D39BFFBC3CD179 /* LurumeSmokeTests.swift in Sources */,
 				8C76D856E19DC6EC27287901 /* ModelTranslationConfigurationTests.swift in Sources */,
@@ -1023,13 +1027,13 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				INFOPLIST_FILE = Lurume/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.7;
+				MARKETING_VERSION = 0.0.8;
 				PRODUCT_BUNDLE_IDENTIFIER = app.lurume.Lurume;
 				PRODUCT_NAME = Lurume;
 				SDKROOT = macosx;
@@ -1144,13 +1148,13 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				INFOPLIST_FILE = Lurume/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.7;
+				MARKETING_VERSION = 0.0.8;
 				PRODUCT_BUNDLE_IDENTIFIER = app.lurume.Lurume;
 				PRODUCT_NAME = Lurume;
 				SDKROOT = macosx;

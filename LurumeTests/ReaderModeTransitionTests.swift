@@ -57,7 +57,7 @@ final class ReaderModeTransitionTests: XCTestCase {
         let store = LibraryStore(persistence: persistence)
         store.updatePageIndex(27, for: paper.id)
         let boundary = ReadingSessionBoundary(
-            flushPendingPageSave: store.flushPendingSave,
+            flushPendingPageSave: { store.flushPendingSave() },
             closeNoteEditor: {},
             detachReader: {},
             releaseSecurityScope: {}

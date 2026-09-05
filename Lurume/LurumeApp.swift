@@ -70,6 +70,16 @@ struct LurumeApp: App {
 final class LurumeTerminationController: NSObject, ObservableObject, NSApplicationDelegate {
     var prepareForTermination: (() -> Bool)?
 
+    static func confirmDiscardingLibraryChanges() -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "文献库仍有未保存的修改"
+        alert.informativeText = "无法保存文献库。继续退出会丢失尚未保存的标题、阅读进度等修改。请先返回检查磁盘空间或目录权限，并记录需要保留的内容。"
+        alert.addButton(withTitle: "返回检查")
+        alert.addButton(withTitle: "丢弃未保存修改并退出")
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         return prepareForTermination?() == false ? .terminateCancel : .terminateNow
     }

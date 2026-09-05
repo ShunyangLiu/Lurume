@@ -50,6 +50,7 @@ final class LibraryStore: ObservableObject {
 
     private let persistence: LibraryPersistence
     private let metadataReader: any PaperMetadataReading
+    private var lastSavedSnapshot: LibrarySnapshot = .empty
     private var pageSaveTask: Task<Void, Never>?
     private var pdfImportTask: Task<Void, Never>?
     private var pdfImportRequestID = UUID()
@@ -816,26 +817,39 @@ final class LibraryStore: ObservableObject {
 
         let identity = try FileIdentity(url: url)
         let bookmarkData = try SecurityScopedFile.makeBookmark(for: url)
-        papers[index].replaceFileReference(
+        var updatedPapers = papers
+        updatedPapers[index].replaceFileReference(
             identity: identity,
             bookmarkData: bookmarkData,
             originalFileName: url.lastPathComponent
         )
+        try commit(
+            papers: updatedPapers,
+            collections: collections,
+            selectedPaperID: selectedPaperID
+        )
         unavailablePaperIDs.remove(id)
-        try saveNow()
     }
 
     // MARK: - 持久化
 
-    func flushPendingSave() {
+    var hasUnsavedChanges: Bool {
+        !persistenceDisabled && snapshot != lastSavedSnapshot
+    }
+
+    @discardableResult
+    func flushPendingSave() -> Bool {
         pageSaveTask?.cancel()
         pageSaveTask = nil
-        persistReportingErrors()
+        // A read-only library or an unchanged snapshot has no pending user changes to lose.
+        guard hasUnsavedChanges else { return true }
+        return persistReportingErrors()
     }
 
     private func load() {
         do {
             let loaded = try persistence.load()
+            lastSavedSnapshot = loaded.snapshot
             papers = loaded.snapshot.papers
             collections = loaded.snapshot.collections
             let repairedCurrentRecords = papers.indices.reduce(into: false) { repaired, index in
@@ -848,7 +862,7 @@ final class LibraryStore: ObservableObject {
             }
             if loaded.migratedFromLegacy || repairedCurrentRecords {
                 do {
-                    try persistence.save(snapshot)
+                    try saveNow()
                 } catch {
                     disablePersistence(because: error)
                 }
@@ -885,7 +899,9 @@ final class LibraryStore: ObservableObject {
 
     private func saveNow() throws {
         try requireWritableLibrary()
-        try persistence.save(snapshot)
+        let candidate = snapshot
+        try persistence.save(candidate)
+        lastSavedSnapshot = candidate
     }
 
     private func commit(
@@ -901,6 +917,7 @@ final class LibraryStore: ObservableObject {
             selectedPaperID: updatedSelectedPaperID
         )
         try persistence.save(candidate)
+        lastSavedSnapshot = candidate
         papers = updatedPapers
         collections = updatedCollections
         selectedPaperID = updatedSelectedPaperID
@@ -980,12 +997,15 @@ final class LibraryStore: ObservableObject {
         )
     }
 
-    private func persistReportingErrors() {
-        guard !persistenceDisabled else { return }
+    @discardableResult
+    private func persistReportingErrors() -> Bool {
+        guard !persistenceDisabled else { return false }
         do {
             try saveNow()
+            return true
         } catch {
             presentedError = error.localizedDescription
+            return false
         }
     }
 

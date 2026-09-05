@@ -75,3 +75,18 @@ struct ReadingSessionBoundary {
         releaseSecurityScope()
     }
 }
+
+/// Ordinary quit and updater relaunch must both honor failed library saves.
+@MainActor
+struct ApplicationTerminationSaveBoundary {
+    let flushPendingLibrarySave: () -> Bool
+    let confirmDiscardingLibraryChanges: () -> Bool
+    let prepareNotesForExit: () -> Bool
+
+    func prepareForTermination() -> Bool {
+        guard flushPendingLibrarySave() || confirmDiscardingLibraryChanges() else {
+            return false
+        }
+        return prepareNotesForExit()
+    }
+}
