@@ -3,16 +3,16 @@
     <channel>
         <title>Lurume</title>
         <item>
-            <title>0.0.6</title>
-            <pubDate>Sat, 05 Sep 2026 11:10:29 +0800</pubDate>
-            <sparkle:version>6</sparkle:version>
-            <sparkle:shortVersionString>0.0.6</sparkle:shortVersionString>
+            <title>0.0.7</title>
+            <pubDate>Sat, 05 Sep 2026 12:23:46 +0800</pubDate>
+            <sparkle:version>7</sparkle:version>
+            <sparkle:shortVersionString>0.0.7</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-            <sparkle:releaseNotesLink sparkle:edSignature="SWd0ZuQVlaMQ1ifenqCOluKpbw/aH8yMbpeUQdpQbOmzLtU0+9b0KaWw94flajyp5GnMnZEKBxqOHBg6WV+2CA==" sparkle:length="1239">https://shunyangliu.github.io/Lurume/release-notes/Lurume-0.0.6.md</sparkle:releaseNotesLink>
-            <enclosure url="https://github.com/ShunyangLiu/Lurume/releases/download/v0.0.6/Lurume-0.0.6.dmg" length="6956063" type="application/octet-stream" sparkle:edSignature="89KJcYCz/rX8U4zWtsJi7NDoD9m3S2ROdTsa/Yi+JE0uUreuuzulOGAQrARKi83EcCMNyO8mcezfyWILUFLTBQ=="/>
+            <sparkle:releaseNotesLink sparkle:edSignature="BswMYsLgw29+5b1YTGwyAUY5JNlmQsLNZhDQJvhhMzdHUv0ZajWW3V2q0aWLNUWO0SgOZyU4CHiuDJ76ghkTBA==" sparkle:length="1299">https://shunyangliu.github.io/Lurume/release-notes/Lurume-0.0.7.md</sparkle:releaseNotesLink>
+            <enclosure url="https://github.com/ShunyangLiu/Lurume/releases/download/v0.0.7/Lurume-0.0.7.dmg" length="7033886" type="application/octet-stream" sparkle:edSignature="gZa5iFKzOAxU+5sEegWOEu9jFJy+D6bI3gvgq6ICU5c1nHCMcJaN+jtuurCRQEEGh1P+SNvI5qylY64to/+dCA=="/>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: 5caqp8sh/qeLdZzb0/1V0P0b7pmfTv8Fp9XT9q+mzQN2Y67GHVX8WcRTUQtiMB+3lu5jpOPBmz19oFv8e9jEDQ==
+edSignature: ZxlKMOIdVniMDS8s/QHO5qE9fRIzmzxvaEAaI1sti0XMive0IZwplyG7CABAmNWS/ev4988RTLy7oSOcB/jWDQ==
 length: 1057
 -->
