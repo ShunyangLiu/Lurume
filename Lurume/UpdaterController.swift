@@ -26,8 +26,29 @@ struct UpdateInstallationSaveBoundary {
 }
 
 @MainActor
-private final class LurumeUpdaterDelegate: NSObject, SPUUpdaterDelegate {
+final class LurumeUpdaterDelegate: NSObject, SPUUpdaterDelegate {
     var prepareForInstallation: (() -> Void)?
+    var mayRelaunch: (() -> Bool)?
+    var pendingRelaunch: (() -> Void)?
+    var onRelaunchPostponed: (() -> Void)?
+
+    func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem,
+                 untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
+        postponeRelaunchIfNeeded(installHandler)
+    }
+
+    func postponeRelaunchIfNeeded(_ installHandler: @escaping () -> Void) -> Bool {
+        guard mayRelaunch?() == false else { return false }
+        pendingRelaunch = installHandler
+        onRelaunchPostponed?()
+        return true
+    }
+
+    func resumePendingRelaunch() {
+        guard let resume = pendingRelaunch, mayRelaunch?() != false else { return }
+        pendingRelaunch = nil
+        resume()
+    }
 
     func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
         prepareForInstallation?()
@@ -40,6 +61,9 @@ private final class LurumeUpdaterDelegate: NSObject, SPUUpdaterDelegate {
 final class UpdaterController: ObservableObject {
     @Published private(set) var canCheckForUpdates = false
     @Published private(set) var automaticallyChecksForUpdates = false
+    @Published private(set) var hasPendingRelaunch = false
+
+    var updateActionTitle: String { hasPendingRelaunch ? "继续安装更新…" : "检查更新…" }
 
     private(set) var standardController: SPUStandardUpdaterController?
     private let engine: any UpdateEngine
@@ -52,6 +76,11 @@ final class UpdaterController: ObservableObject {
         set { sparkleDelegate?.prepareForInstallation = newValue }
     }
 
+    var mayRelaunch: (() -> Bool)? {
+        get { sparkleDelegate?.mayRelaunch }
+        set { sparkleDelegate?.mayRelaunch = newValue }
+    }
+
     init(startingUpdater: Bool = true) {
         let sparkleDelegate = LurumeUpdaterDelegate()
         let standardController = SPUStandardUpdaterController(
@@ -62,6 +91,7 @@ final class UpdaterController: ObservableObject {
         self.standardController = standardController
         self.sparkleDelegate = sparkleDelegate
         engine = standardController.updater
+        sparkleDelegate.onRelaunchPostponed = { [weak self] in self?.synchronizeState() }
 
         synchronizeState()
         observeSparkleState(standardController.updater)
@@ -79,6 +109,11 @@ final class UpdaterController: ObservableObject {
     }
 
     func checkForUpdates() {
+        if sparkleDelegate?.pendingRelaunch != nil {
+            sparkleDelegate?.resumePendingRelaunch()
+            synchronizeState()
+            return
+        }
         guard canCheckForUpdates else { return }
         engine.checkForUpdates()
     }
@@ -90,7 +125,8 @@ final class UpdaterController: ObservableObject {
     }
 
     func synchronizeState() {
-        canCheckForUpdates = engine.canCheckForUpdates
+        hasPendingRelaunch = sparkleDelegate?.pendingRelaunch != nil
+        canCheckForUpdates = hasPendingRelaunch || engine.canCheckForUpdates
         automaticallyChecksForUpdates = engine.automaticallyChecksForUpdates
     }
 
@@ -100,7 +136,7 @@ final class UpdaterController: ObservableObject {
             options: [.new]
         ) { [weak self] updater, _ in
             MainActor.assumeIsolated {
-                self?.canCheckForUpdates = updater.canCheckForUpdates
+                self?.synchronizeState()
             }
         }
         automaticChecksObservation = updater.observe(

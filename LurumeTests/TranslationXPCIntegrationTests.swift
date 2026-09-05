@@ -3,6 +3,31 @@ import XCTest
 @testable import Lurume
 
 final class TranslationXPCIntegrationTests: XCTestCase {
+    func testLateInvalidationOrInterruptionCannotFailNewConnection() throws {
+        let factory = StubConnectionFactory()
+        let client = TranslationXPCClient(makeConnection: { factory.make() })
+        let events = StubEventRecorder()
+        let first = stubRequest("first")
+        try client.start(first) { events.append($0) }
+        let old = try XCTUnwrap(factory.connections.first)
+        let delayedInvalidation = old.invalidationHandler
+        let delayedInterruption = old.interruptionHandler
+        client.receive(TranslationXPCEvent(requestID: "first", kind: "completed"))
+        try client.start(stubRequest("second")) { events.append($0) }
+        delayedInvalidation?()
+        delayedInterruption?()
+        XCTAssertTrue(client.hasActiveConnectionForTesting)
+        XCTAssertEqual(events.kinds, ["completed"])
+        client.receive(TranslationXPCEvent(requestID: "second", kind: "completed"))
+        XCTAssertEqual(events.kinds, ["completed", "completed"])
+    }
+
+    private func stubRequest(_ id: String) -> TranslationXPCRequest {
+        TranslationXPCRequest(requestID: id, endpoint: "http://127.0.0.1:1/v1/chat/completions",
+            model: "fixture", systemPrompt: "Translate", selectedText: "test", apiKey: nil,
+            streamsResponse: true)
+    }
+
     func testEmbeddedServiceStartsAndRepliesToPing() throws {
         let client = TranslationXPCTestClient()
         defer { client.invalidate() }
@@ -164,6 +189,38 @@ final class TranslationXPCIntegrationTests: XCTestCase {
         }
         return url
     }
+}
+
+private final class StubConnectionFactory: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [StubXPCConnection] = []
+    var connections: [StubXPCConnection] { lock.withLock { values } }
+    func make() -> NSXPCConnection {
+        let value = StubXPCConnection(serviceName: "app.lurume.test.no-service")
+        lock.withLock { values.append(value) }
+        return value
+    }
+}
+
+private final class StubXPCConnection: NSXPCConnection, @unchecked Sendable {
+    private let service = StubTranslationService()
+    override func resume() {}
+    override func invalidate() {}
+    override var remoteObjectProxy: Any { service }
+    override func remoteObjectProxyWithErrorHandler(_ handler: @escaping (Error) -> Void) -> Any { service }
+}
+
+private final class StubTranslationService: NSObject, TranslationXPCServiceProtocol {
+    func start(_ request: TranslationXPCRequest, withReply reply: @escaping (Bool) -> Void) { reply(true) }
+    func cancel(requestID: String) {}
+    func ping(withReply reply: @escaping (String) -> Void) { reply("ready") }
+}
+
+private final class StubEventRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String] = []
+    var kinds: [String] { lock.withLock { values } }
+    func append(_ event: TranslationXPCEvent) { lock.withLock { values.append(event.kind) } }
 }
 
 private struct EmptyTranslationAPIKeyStore: TranslationAPIKeyStoring {

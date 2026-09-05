@@ -300,7 +300,10 @@ struct LibraryPersistence: Sendable {
             return .empty
         }
 
-        let data = try Data(contentsOf: fileURL)
+        return try Self.decode(Data(contentsOf: fileURL))
+    }
+
+    private static func decode(_ data: Data) throws -> LoadedLibrary {
         let version = try Self.decoder.decode(LibraryVersionEnvelope.self, from: data).schemaVersion
         switch version {
         case LibrarySchema.currentVersion:
@@ -340,6 +343,9 @@ struct LibraryPersistence: Sendable {
             withIntermediateDirectories: true
         )
         let data = try Self.encoder.encode(snapshot)
+        try SnapshotBackup.preservePrevious(at: fileURL, replacingWith: data, fileManager: fileManager) {
+            _ = try Self.decode($0)
+        }
         try data.write(to: fileURL, options: .atomic)
     }
 
@@ -441,5 +447,19 @@ struct LibraryPersistence: Sendable {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
+    }
+}
+
+/// Keep the previous validated snapshot beside the primary file. Repeated no-op saves
+/// do not rotate it, and an unreadable/corrupt primary cannot overwrite a good backup.
+enum SnapshotBackup {
+    static func preservePrevious(at url: URL, replacingWith newData: Data,
+                                 fileManager: FileManager = .default,
+                                 validate: (Data) throws -> Void) throws {
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        let previous = try Data(contentsOf: url)
+        guard previous != newData else { return }
+        try validate(previous)
+        try previous.write(to: url.appendingPathExtension("previous"), options: .atomic)
     }
 }

@@ -90,6 +90,38 @@ final class OpenAIChatCompletionsTests: XCTestCase {
         XCTAssertEqual(try OpenAIChatCompletionResponseParser.parseText(from: data), "译文")
     }
 
+    func testIncompleteResponsePreservesTextButRejectsSuccess() throws {
+        for (reason, expected) in [("length", TranslationServiceError.outputTruncated),
+                                   ("content_filter", .contentFiltered), ("tool_calls", .invalidResponse)] {
+            let data = try JSONSerialization.data(withJSONObject: ["choices": [
+                ["message": ["content": "partial"], "finish_reason": reason]
+            ]])
+            let result = try OpenAIChatCompletionResponseParser.parse(from: data)
+            XCTAssertEqual(result.text, "partial")
+            XCTAssertEqual(result.error, expected)
+            XCTAssertThrowsError(try OpenAIChatCompletionResponseParser.parseText(from: data)) {
+                XCTAssertEqual($0 as? TranslationServiceError, expected)
+            }
+        }
+    }
+
+    func testTruncatedStreamPreservesDeltaEvenInSameNetworkChunk() throws {
+        var parser = OpenAIChatCompletionSSEParser()
+        let stream = "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"},\"finish_reason\":\"length\"}]}\n\n"
+            + "data: [DONE]\n\n"
+        let events = try parser.append(Data(stream.utf8))
+        XCTAssertEqual(events.first, .delta("partial"))
+        XCTAssertTrue(events.contains(.failed(.outputTruncated)))
+        XCTAssertFalse(events.contains(.finished))
+        XCTAssertEqual(try parser.finish(), [.failed(.outputTruncated)])
+    }
+
+    func testFinalUnterminatedFramePreservesTextAndFailure() throws {
+        var parser = OpenAIChatCompletionSSEParser()
+        _ = try parser.append(Data("data: {\"choices\":[{\"delta\":{\"content\":\"partial\"},\"finish_reason\":\"content_filter\"}]}".utf8))
+        XCTAssertEqual(try parser.finish(), [.delta("partial"), .failed(.contentFiltered)])
+    }
+
     func testNonStreamingResponseRejectsNonTextContent() {
         let data = Data(#"{"choices":[{"message":{"content":[{"type":"text","text":"译文"}]}}]}"#.utf8)
         XCTAssertThrowsError(try OpenAIChatCompletionResponseParser.parseText(from: data)) { error in

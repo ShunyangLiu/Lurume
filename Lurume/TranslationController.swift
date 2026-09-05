@@ -520,6 +520,8 @@ final class TranslationController: ObservableObject {
                 from: request.sourceLanguage,
                 to: request.targetLanguage
             )
+            try Task.checkCancellation()
+            guard request.generation == generation else { throw CancellationError() }
             switch readiness {
             case .installed:
                 state = .translating
@@ -538,7 +540,8 @@ final class TranslationController: ObservableObject {
                     message: "系统语言资源准备超时，请检查系统下载状态后重试。"
                 )
                 try await performer.prepare()
-                guard !Task.isCancelled else { throw CancellationError() }
+                try Task.checkCancellation()
+                guard request.generation == generation else { throw CancellationError() }
                 state = .translating
                 scheduleSystemTranslationTimeout(
                     after: systemTimeoutPolicy.translation,
@@ -887,6 +890,7 @@ final class TranslationController: ObservableObject {
         performer: any TranslationPerforming,
         message: String
     ) {
+        guard request.generation == generation else { return }
         systemTranslationTimeoutTask?.cancel()
         systemTranslationTimeoutTask = Task { [weak self] in
             try? await Task.sleep(for: duration)

@@ -81,6 +81,18 @@ final class LibraryPersistenceTests: XCTestCase {
         XCTAssertFalse(loaded.migratedFromLegacy)
     }
 
+    func testMigrationKeepsValidatedLegacyBackupAndNoOpSaveDoesNotRotateIt() throws {
+        let url = makeTempFileURL("library.json")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        try writeLegacyJSON(legacySnapshot(), to: url)
+        let legacy = try Data(contentsOf: url)
+        let persistence = LibraryPersistence(fileURL: url)
+        let migrated = try persistence.load().snapshot
+        try persistence.save(migrated)
+        try persistence.save(migrated)
+        XCTAssertEqual(try Data(contentsOf: url.appendingPathExtension("previous")), legacy)
+    }
+
     func testMissingFileLoadsEmptySnapshot() throws {
         let fileURL = makeTempFileURL("library.json")
 

@@ -676,6 +676,67 @@ final class TranslationControllerTests: XCTestCase {
         XCTAssertFalse(controller.isInspectorPresented)
     }
 
+    func testCancelledAppleReadinessCannotRestoreClearedState() async {
+        for readiness in [TranslationReadiness.installed, .downloadable] {
+            let controller = makeController()
+            let performer = GatedReadinessPerformer()
+            let target = Locale.Language(identifier: "zh-Hans")
+            controller.receiveSelection(PDFSelectionEvent(rawText: "Old selection", pageIndex: 0),
+                paperID: UUID(), paperName: "Paper", automaticTranslation: false, targetLanguage: target)
+            controller.requestTranslation(targetLanguage: target)
+            let task = Task { await controller.perform(using: performer) }
+            while !(await performer.isWaiting) { await Task.yield() }
+            controller.clear()
+            await performer.release(readiness)
+            await task.value
+            XCTAssertEqual(controller.state, .idle)
+            XCTAssertFalse(controller.isTranslationActive)
+            let calls = await performer.workCalls
+            XCTAssertEqual(calls, 0)
+        }
+    }
+
+    func testOldAppleReadinessCannotCancelNewRequestWatchdog() async throws {
+        let controller = TranslationController(sourceLanguageRecognizer: FixedSourceLanguageRecognizer(),
+            systemTimeoutPolicy: SystemTranslationTimeoutPolicy(readiness: .seconds(1),
+                translation: .milliseconds(30), resourcePreparation: .seconds(1)))
+        let old = GatedReadinessPerformer()
+        let target = Locale.Language(identifier: "zh-Hans")
+        controller.receiveSelection(PDFSelectionEvent(rawText: "Old selection", pageIndex: 0),
+            paperID: UUID(), paperName: "Paper", automaticTranslation: false, targetLanguage: target)
+        controller.requestTranslation(targetLanguage: target)
+        let oldTask = Task { await controller.perform(using: old) }
+        while !(await old.isWaiting) { await Task.yield() }
+        controller.requestTranslation(targetLanguage: target)
+        let newer = HangingTranslationPerformer()
+        let newTask = Task { await controller.perform(using: newer) }
+        try await waitUntil { controller.state == .translating }
+        await old.release(.installed)
+        await oldTask.value
+        try await waitUntil { controller.state == .failed("系统翻译响应超时，请重试。") }
+        XCTAssertEqual(controller.state, .failed("系统翻译响应超时，请重试。"))
+        controller.stopTranslation()
+        await newTask.value
+    }
+
+    func testInterruptedModelOutputIsRetainedButNeverCached() async throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        let preferences = try modelPreferences(originConfirmed: true)
+        receiveModelSelection("Long selection", controller: controller, preferences: preferences)
+        controller.requestTranslation(preferences: preferences)
+        let request = try await waitForModelRequest(sender)
+        sender.emit(TranslationXPCEvent(requestID: request.requestID, kind: "delta", text: "半截译文"))
+        sender.emit(TranslationXPCEvent(requestID: request.requestID, kind: "failed",
+            errorCode: "output_truncated", message: "译文达到输出上限。"))
+        try await waitUntil { controller.state == .interrupted("译文达到输出上限。") }
+        XCTAssertEqual(controller.translatedText, "半截译文")
+        XCTAssertTrue(controller.canRetryModelTranslation)
+        controller.requestTranslation(preferences: preferences)
+        _ = try await waitForModelRequest(sender, count: 2)
+        XCTAssertEqual(sender.requestCount, 2)
+    }
+
     private func makeController() -> TranslationController {
         TranslationController(sourceLanguageRecognizer: FixedSourceLanguageRecognizer())
     }
@@ -746,6 +807,24 @@ final class TranslationControllerTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(5))
         }
         XCTFail("Timed out waiting for asynchronous translation state")
+    }
+}
+
+private actor GatedReadinessPerformer: TranslationPerforming {
+    private var continuation: CheckedContinuation<TranslationReadiness, Never>?
+    private(set) var workCalls = 0
+    var isWaiting: Bool { continuation != nil }
+    func readiness(from source: Locale.Language, to target: Locale.Language) async -> TranslationReadiness {
+        await withCheckedContinuation { continuation = $0 }
+    }
+    func release(_ readiness: TranslationReadiness) {
+        continuation?.resume(returning: readiness)
+        continuation = nil
+    }
+    func prepare() async throws { workCalls += 1 }
+    func translate(_ text: String) async throws -> TranslationOutput {
+        workCalls += 1
+        return TranslationOutput(targetText: "Stale")
     }
 }
 

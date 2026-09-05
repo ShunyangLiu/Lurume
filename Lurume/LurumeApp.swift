@@ -2,11 +2,13 @@ import SwiftUI
 
 @main
 struct LurumeApp: App {
+    @NSApplicationDelegateAdaptor(LurumeTerminationController.self) private var terminationController
     @StateObject private var updaterController = UpdaterController()
     @StateObject private var libraryStore = LibraryStore()
     @StateObject private var appSettings = AppSettings()
     @StateObject private var translationController = TranslationController()
     @StateObject private var highlightStore = HighlightStore()
+    @StateObject private var pdfController = PDFReaderController(noteDraftStore: .applicationDefault())
 
     var body: some Scene {
         Window("Lurume", id: "main") {
@@ -15,7 +17,9 @@ struct LurumeApp: App {
                 .environmentObject(appSettings)
                 .environmentObject(translationController)
                 .environmentObject(highlightStore)
+                .environmentObject(pdfController)
                 .environmentObject(updaterController)
+                .environmentObject(terminationController)
                 .onDisappear {
                     libraryStore.flushPendingSave()
                 }
@@ -37,7 +41,7 @@ struct LurumeApp: App {
             }
 
             CommandGroup(after: .appInfo) {
-                Button("检查更新…") {
+                Button(updaterController.updateActionTitle) {
                     updaterController.checkForUpdates()
                 }
                 .disabled(!updaterController.canCheckForUpdates)
@@ -59,5 +63,14 @@ struct LurumeApp: App {
                 .environmentObject(appSettings)
                 .environmentObject(updaterController)
         }
+    }
+}
+
+@MainActor
+final class LurumeTerminationController: NSObject, ObservableObject, NSApplicationDelegate {
+    var prepareForTermination: (() -> Bool)?
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        return prepareForTermination?() == false ? .terminateCancel : .terminateNow
     }
 }

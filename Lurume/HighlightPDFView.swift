@@ -290,18 +290,23 @@ final class HighlightNoteDraftModel: ObservableObject {
     @Published var text: String {
         didSet {
             guard !readOnly else { return }
+            requiresRecoveryReview = false
+            recoveryMessage = nil
             onDraftChanged(text)
             scheduleSave()
         }
     }
     @Published private(set) var saveError: String?
+    @Published private(set) var recoveryMessage: String?
 
     let readOnly: Bool
     private var lastSavedText: String?
     private let save: (String?) -> Bool
     private let onDraftChanged: (String) -> Void
     private let onSaveSucceeded: () -> Void
+    private let onSaveFailed: () -> String
     private var saveTask: Task<Void, Never>?
+    private var requiresRecoveryReview = false
 
     init(
         text: String,
@@ -309,13 +314,18 @@ final class HighlightNoteDraftModel: ObservableObject {
         readOnly: Bool,
         save: @escaping (String?) -> Bool,
         onDraftChanged: @escaping (String) -> Void,
-        onSaveSucceeded: @escaping () -> Void
+        onSaveSucceeded: @escaping () -> Void,
+        onSaveFailed: @escaping () -> String = { "无法保存笔记，草稿会保留到本次运行结束。" },
+        recoveryMessage: String? = nil
     ) {
         self.text = text
         self.readOnly = readOnly
         self.save = save
         self.onDraftChanged = onDraftChanged
         self.onSaveSucceeded = onSaveSucceeded
+        self.onSaveFailed = onSaveFailed
+        self.recoveryMessage = recoveryMessage
+        requiresRecoveryReview = recoveryMessage != nil && Self.normalized(text) != Self.normalized(persistedText)
         lastSavedText = Self.normalized(persistedText)
     }
 
@@ -326,20 +336,32 @@ final class HighlightNoteDraftModel: ObservableObject {
     func flush() {
         saveTask?.cancel()
         saveTask = nil
-        guard !readOnly else { return }
+        guard !readOnly, !requiresRecoveryReview else { return }
         let candidate = Self.normalized(text)
         guard candidate != lastSavedText else {
             saveError = nil
+            recoveryMessage = nil
             onSaveSucceeded()
             return
         }
         if save(candidate) {
             lastSavedText = candidate
             saveError = nil
+            recoveryMessage = nil
             onSaveSucceeded()
         } else {
-            saveError = "无法保存笔记，草稿会保留到本次运行结束。"
+            saveError = onSaveFailed()
         }
+    }
+
+    func acceptRecoveredDraft() {
+        requiresRecoveryReview = false
+        flush()
+    }
+
+    func discardRecoveredDraft() {
+        text = lastSavedText ?? ""
+        flush()
     }
 
     private func scheduleSave() {
@@ -409,6 +431,16 @@ private struct HighlightNotePopoverView: View {
                 Label(saveError, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.red)
+            } else if let recoveryMessage = model.recoveryMessage {
+                Label(recoveryMessage, systemImage: "arrow.counterclockwise")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if !model.readOnly {
+                    HStack {
+                        Button("保存恢复草稿") { model.acceptRecoveredDraft() }
+                        Button("保留原笔记") { model.discardRecoveredDraft() }
+                    }
+                }
             } else if model.readOnly {
                 Text("高亮数据处于只读状态。")
                     .font(.caption)

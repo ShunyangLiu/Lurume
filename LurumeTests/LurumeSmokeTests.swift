@@ -122,7 +122,7 @@ final class LurumeSmokeTests: XCTestCase {
     }
 
     @MainActor
-    func testPDFSearchNavigatesAndWrapsThroughMatches() throws {
+    func testPDFSearchNavigatesAndWrapsThroughMatches() async throws {
         let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta alpha"))
         let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
         pdfView.document = document
@@ -132,7 +132,7 @@ final class LurumeSmokeTests: XCTestCase {
         controller.searchText = "alpha"
 
         controller.search()
-
+        try await waitForSearch(controller)
         XCTAssertEqual(controller.searchResultCount, 2)
         XCTAssertEqual(controller.currentSearchResultIndex, 0)
         XCTAssertEqual(controller.searchResultLabel, "1 / 2")
@@ -178,6 +178,7 @@ final class LurumeSmokeTests: XCTestCase {
         XCTAssertNil(pdfView.highlightedSelections)
 
         controller.nextSearchResult()
+        try await waitForSearch(controller)
         XCTAssertEqual(controller.searchResultCount, 1, "输入后立即按 Return 也应先执行新搜索")
         XCTAssertEqual(controller.currentSearchResultIndex, 0)
         XCTAssertEqual(controller.searchResultLabel, "1 / 1")
@@ -394,7 +395,7 @@ final class LurumeSmokeTests: XCTestCase {
     }
 
     @MainActor
-    func testPDFSearchResultCannotBeSavedAsUserHighlight() throws {
+    func testPDFSearchResultCannotBeSavedAsUserHighlight() async throws {
         let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta"))
         let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
         pdfView.document = document
@@ -403,8 +404,46 @@ final class LurumeSmokeTests: XCTestCase {
         controller.searchText = "alpha"
 
         controller.search()
-
+        try await waitForSearch(controller)
         XCTAssertNil(controller.makeHighlightCandidate(paperID: UUID()))
+    }
+
+    @MainActor
+    func testAsyncSearchCancelsOldQueryAndClearsOnDetach() async throws {
+        let document = try XCTUnwrap(makeSearchablePDF(pages: Array(repeating: "alpha beta alpha", count: 20)))
+        let view = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        view.document = document
+        let controller = PDFReaderController()
+        controller.attach(view)
+        controller.searchText = "alpha"
+        controller.search()
+        XCTAssertTrue(controller.isSearching)
+        controller.searchText = "beta"
+        controller.search()
+        try await waitForSearch(controller)
+        XCTAssertEqual(controller.activeSearchQuery, "beta")
+        XCTAssertEqual(controller.searchResultCount, 20)
+        controller.searchText = "alpha"
+        controller.previousSearchResult()
+        try await waitForSearch(controller)
+        XCTAssertEqual(controller.currentSearchResultIndex, 39)
+        controller.searchText = "alpha"
+        controller.clearSearchResults()
+        controller.search()
+        controller.detach()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(controller.isSearching)
+        XCTAssertNil(controller.activeSearchQuery)
+        XCTAssertEqual(controller.searchResultCount, 0)
+    }
+
+    @MainActor
+    private func waitForSearch(_ controller: PDFReaderController) async throws {
+        for _ in 0..<400 {
+            if !controller.isSearching { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("PDF search did not finish")
     }
 
     @MainActor

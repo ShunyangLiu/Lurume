@@ -220,6 +220,7 @@ extension TranslationRequestOperation: URLSessionDataDelegate, URLSessionTaskDel
                     scheduleStreamIdleTimeout()
                 }
                 for event in events {
+                    guard !isFinished else { return }
                     switch event {
                     case let .delta(text):
                         emit(kind: "delta", text: text)
@@ -230,6 +231,8 @@ extension TranslationRequestOperation: URLSessionDataDelegate, URLSessionTaskDel
                             return
                         }
                         finishSuccessfully()
+                    case let .failed(error):
+                        finish(with: error)
                     }
                 }
             } catch let error as TranslationServiceError {
@@ -271,7 +274,13 @@ extension TranslationRequestOperation: URLSessionDataDelegate, URLSessionTaskDel
         do {
             if request.streamsResponse {
                 for event in try parser.finish() {
-                    if case .finished = event {
+                    switch event {
+                    case let .delta(text):
+                        emit(kind: "delta", text: text)
+                    case let .failed(error):
+                        finish(with: error)
+                        return
+                    case .finished:
                         guard parser.receivedText else {
                             finish(with: .nonTextResponse)
                             return
@@ -284,9 +293,13 @@ extension TranslationRequestOperation: URLSessionDataDelegate, URLSessionTaskDel
                 }
                 finishSuccessfully()
             } else {
-                let text = try OpenAIChatCompletionResponseParser.parseText(from: responseData)
-                emit(kind: "delta", text: text)
-                finishSuccessfully()
+                let response = try OpenAIChatCompletionResponseParser.parse(from: responseData)
+                if !response.text.isEmpty { emit(kind: "delta", text: response.text) }
+                if let error = response.error {
+                    finish(with: error)
+                } else {
+                    finishSuccessfully()
+                }
             }
         } catch let error as TranslationServiceError {
             finish(with: error)

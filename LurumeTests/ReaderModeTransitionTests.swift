@@ -109,6 +109,31 @@ final class ReaderModeTransitionTests: XCTestCase {
     }
 
     @MainActor
+    func testTerminationHonorsUnsavedNoteBoundary() {
+        let controller = LurumeTerminationController()
+        controller.prepareForTermination = { false }
+        XCTAssertEqual(controller.applicationShouldTerminate(NSApplication.shared), .terminateCancel)
+        controller.prepareForTermination = { true }
+        XCTAssertEqual(controller.applicationShouldTerminate(NSApplication.shared), .terminateNow)
+    }
+
+    @MainActor
+    func testUpdateRelaunchWaitsForSaveApprovalAndResumesOnce() {
+        let delegate = LurumeUpdaterDelegate()
+        var mayExit = false
+        var installed = 0
+        delegate.mayRelaunch = { mayExit }
+        XCTAssertTrue(delegate.postponeRelaunchIfNeeded { installed += 1 })
+        delegate.resumePendingRelaunch()
+        XCTAssertEqual(installed, 0)
+        mayExit = true
+        delegate.resumePendingRelaunch()
+        delegate.resumePendingRelaunch()
+        XCTAssertEqual(installed, 1)
+        XCTAssertNil(delegate.pendingRelaunch)
+    }
+
+    @MainActor
     func testSecurityScopedAccessStopsExactlyOnceAfterRelease() {
         let startCount = LockedCounter()
         let stopCount = LockedCounter()

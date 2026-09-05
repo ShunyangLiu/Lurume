@@ -10,30 +10,35 @@ protocol TranslationRequestSending: Sendable {
 
 enum TranslationXPCClientError: LocalizedError {
     case unavailable
-
-    var errorDescription: String? {
-        "无法启动翻译服务。"
-    }
+    var errorDescription: String? { "无法启动翻译服务。" }
 }
 
 final class TranslationXPCClient: NSObject, TranslationXPCClientProtocol, TranslationRequestSending,
     @unchecked Sendable {
-    private let connectionLock = NSLock()
-    private var connection: NSXPCConnection?
-    private let lock = NSLock()
-    private var handlers: [String: @Sendable (TranslationXPCEvent) -> Void] = [:]
+    private struct Connection {
+        let id: UUID
+        let value: NSXPCConnection
+    }
+    private struct RequestHandler {
+        let connectionID: UUID
+        let receive: @Sendable (TranslationXPCEvent) -> Void
+    }
 
-    override init() {
+    // Connection identity and request ownership change in one critical section.
+    // An old connection's late invalidation must never fail a newer connection.
+    private let lock = NSLock()
+    private var connection: Connection?
+    private var handlers: [String: RequestHandler] = [:]
+    private let makeConnection: @Sendable () -> NSXPCConnection
+
+    init(makeConnection: @escaping @Sendable () -> NSXPCConnection = {
+        NSXPCConnection(serviceName: TranslationXPCConstants.serviceName)
+    }) {
+        self.makeConnection = makeConnection
         super.init()
     }
 
-    deinit {
-        connectionLock.lock()
-        let activeConnection = connection
-        connection = nil
-        connectionLock.unlock()
-        activeConnection?.invalidate()
-    }
+    deinit { connection?.value.invalidate() }
 
     func start(
         _ request: TranslationXPCRequest,
@@ -44,135 +49,98 @@ final class TranslationXPCClient: NSObject, TranslationXPCClientProtocol, Transl
             lock.unlock()
             throw TranslationXPCClientError.unavailable
         }
-        handlers[request.requestID] = eventHandler
+        let connection = connectionForUseWhileLocked()
+        handlers[request.requestID] = RequestHandler(connectionID: connection.id, receive: eventHandler)
         lock.unlock()
 
-        let connection = connectionForUse()
-        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ [weak self] _ in
-            self?.fail(requestID: request.requestID)
+        guard let proxy = connection.value.remoteObjectProxyWithErrorHandler({ [weak self] _ in
+            self?.fail(requestID: request.requestID, connectionID: connection.id)
         }) as? TranslationXPCServiceProtocol else {
-            removeHandler(requestID: request.requestID)
+            fail(requestID: request.requestID, connectionID: connection.id)
             throw TranslationXPCClientError.unavailable
         }
         proxy.start(request) { [weak self] accepted in
-            if !accepted {
-                self?.fail(requestID: request.requestID)
-            }
+            if !accepted { self?.fail(requestID: request.requestID, connectionID: connection.id) }
         }
     }
 
     func cancel(requestID: String) {
-        removeHandler(requestID: requestID)
-        connectionLock.lock()
-        let activeConnection = connection
-        connectionLock.unlock()
-        (activeConnection?.remoteObjectProxy as? TranslationXPCServiceProtocol)?
-            .cancel(requestID: requestID)
-        invalidateConnectionIfIdle()
+        lock.lock()
+        guard let handler = handlers.removeValue(forKey: requestID) else {
+            lock.unlock()
+            return
+        }
+        let activeConnection = connection?.id == handler.connectionID ? connection?.value : nil
+        let idleConnection = detachIdleConnectionWhileLocked()
+        lock.unlock()
+        (activeConnection?.remoteObjectProxy as? TranslationXPCServiceProtocol)?.cancel(requestID: requestID)
+        idleConnection?.invalidate()
     }
 
     func receive(_ event: TranslationXPCEvent) {
         lock.lock()
         let handler = handlers[event.requestID]
-        if Self.terminalKinds.contains(event.kind) {
-            handlers[event.requestID] = nil
-        }
+        let terminal = Self.terminalKinds.contains(event.kind)
+        if terminal { handlers[event.requestID] = nil }
+        let idleConnection = terminal ? detachIdleConnectionWhileLocked() : nil
         lock.unlock()
-        handler?(event)
-        if Self.terminalKinds.contains(event.kind) {
-            invalidateConnectionIfIdle()
-        }
-    }
-
-    private func fail(requestID: String) {
-        lock.lock()
-        let handler = handlers.removeValue(forKey: requestID)
-        lock.unlock()
-        handler?(
-            TranslationXPCEvent(
-                requestID: requestID,
-                kind: "failed",
-                errorCode: "xpc_unavailable",
-                message: "翻译服务连接已中断。"
-            )
-        )
-        invalidateConnectionIfIdle()
-    }
-
-    private func failAllActiveRequests() {
-        lock.lock()
-        let activeHandlers = handlers
-        handlers.removeAll()
-        lock.unlock()
-        for (requestID, handler) in activeHandlers {
-            handler(
-                TranslationXPCEvent(
-                    requestID: requestID,
-                    kind: "failed",
-                    errorCode: "xpc_unavailable",
-                    message: "翻译服务连接已中断。"
-                )
-            )
-        }
-        invalidateConnectionIfIdle()
-    }
-
-    private func removeHandler(requestID: String) {
-        lock.lock()
-        handlers[requestID] = nil
-        lock.unlock()
-    }
-
-    private func connectionForUse() -> NSXPCConnection {
-        connectionLock.lock()
-        defer { connectionLock.unlock() }
-        if let connection { return connection }
-
-        let newConnection = NSXPCConnection(serviceName: TranslationXPCConstants.serviceName)
-        newConnection.remoteObjectInterface = NSXPCInterface(with: TranslationXPCServiceProtocol.self)
-        newConnection.exportedInterface = NSXPCInterface(with: TranslationXPCClientProtocol.self)
-        newConnection.exportedObject = self
-        newConnection.interruptionHandler = { [weak self] in
-            self?.failAllActiveRequests()
-        }
-        newConnection.invalidationHandler = { [weak self, weak newConnection] in
-            self?.clearConnectionIfCurrent(newConnection)
-            self?.failAllActiveRequests()
-        }
-        connection = newConnection
-        newConnection.resume()
-        return newConnection
-    }
-
-    private func clearConnectionIfCurrent(_ invalidatedConnection: NSXPCConnection?) {
-        connectionLock.lock()
-        if connection === invalidatedConnection {
-            connection = nil
-        }
-        connectionLock.unlock()
-    }
-
-    private func invalidateConnectionIfIdle() {
-        connectionLock.lock()
-        lock.lock()
-        guard handlers.isEmpty else {
-            lock.unlock()
-            connectionLock.unlock()
-            return
-        }
-        let idleConnection = connection
-        connection = nil
-        lock.unlock()
-        connectionLock.unlock()
+        handler?.receive(event)
         idleConnection?.invalidate()
     }
 
-    #if DEBUG
-    var hasActiveConnectionForTesting: Bool {
-        connectionLock.lock()
-        defer { connectionLock.unlock() }
-        return connection != nil
+    private func fail(requestID: String, connectionID: UUID) {
+        lock.lock()
+        guard let handler = handlers[requestID], handler.connectionID == connectionID else {
+            lock.unlock()
+            return
+        }
+        handlers[requestID] = nil
+        let idleConnection = detachIdleConnectionWhileLocked()
+        lock.unlock()
+        handler.receive(Self.failure(requestID: requestID))
+        idleConnection?.invalidate()
     }
+
+    private func connectionDidEnd(_ id: UUID) {
+        lock.lock()
+        let affected = handlers.filter { $0.value.connectionID == id }
+        for requestID in affected.keys { handlers[requestID] = nil }
+        let endedConnection = connection?.id == id ? connection?.value : nil
+        if connection?.id == id { connection = nil }
+        lock.unlock()
+        for (requestID, handler) in affected { handler.receive(Self.failure(requestID: requestID)) }
+        endedConnection?.invalidate()
+    }
+
+    private func connectionForUseWhileLocked() -> Connection {
+        if let connection { return connection }
+        let id = UUID()
+        let value = makeConnection()
+        value.remoteObjectInterface = NSXPCInterface(with: TranslationXPCServiceProtocol.self)
+        value.exportedInterface = NSXPCInterface(with: TranslationXPCClientProtocol.self)
+        value.exportedObject = self
+        value.interruptionHandler = { [weak self] in self?.connectionDidEnd(id) }
+        value.invalidationHandler = { [weak self] in self?.connectionDidEnd(id) }
+        let newConnection = Connection(id: id, value: value)
+        connection = newConnection
+        value.resume()
+        return newConnection
+    }
+
+    private func detachIdleConnectionWhileLocked() -> NSXPCConnection? {
+        guard let connection,
+              !handlers.values.contains(where: { $0.connectionID == connection.id }) else { return nil }
+        self.connection = nil
+        return connection.value
+    }
+
+    private static func failure(requestID: String) -> TranslationXPCEvent {
+        TranslationXPCEvent(requestID: requestID, kind: "failed", errorCode: "xpc_unavailable",
+            message: "翻译服务连接已中断。")
+    }
+
+    #if DEBUG
+    var hasActiveConnectionForTesting: Bool { lock.withLock { connection != nil } }
     #endif
 
     private static let terminalKinds: Set<String> = ["completed", "failed", "cancelled"]

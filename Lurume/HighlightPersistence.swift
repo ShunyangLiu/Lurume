@@ -29,14 +29,8 @@ struct HighlightPersistence: Sendable {
     }
 
     static func applicationDefault(fileManager: FileManager = .default) throws -> Self {
-        guard let applicationSupport = fileManager.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first else {
-            throw CocoaError(.fileNoSuchFile)
-        }
-        let directory = applicationSupport
-            .appendingPathComponent("Lurume", isDirectory: true)
+        let directory = try LibraryPersistence.applicationDefault(fileManager: fileManager)
+            .fileURL.deletingLastPathComponent()
         return Self(fileURL: directory.appendingPathComponent("highlights.json"))
     }
 
@@ -85,6 +79,12 @@ struct HighlightPersistence: Sendable {
             withIntermediateDirectories: true
         )
         let data = try Self.encoder.encode(snapshot)
+        try SnapshotBackup.preservePrevious(at: fileURL, replacingWith: data, fileManager: fileManager) {
+            let previous = try Self.decoder.decode(HighlightSnapshot.self, from: $0)
+            guard [HighlightSchema.previousVersion, HighlightSchema.currentVersion].contains(previous.schemaVersion) else {
+                throw HighlightPersistenceError.unsupportedSchema(found: previous.schemaVersion)
+            }
+        }
         try data.write(to: fileURL, options: .atomic)
     }
 
@@ -99,5 +99,47 @@ struct HighlightPersistence: Sendable {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
+    }
+}
+
+/// Separate recovery storage: a failed primary save must not destroy the user's draft.
+@MainActor
+final class HighlightNoteDraftStore {
+    private(set) var drafts: [UUID: String] = [:]
+    private(set) var loadError: Error?
+    private let fileURL: URL?
+
+    init(fileURL: URL? = nil) {
+        self.fileURL = fileURL
+        guard let fileURL, FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        do {
+            drafts = try JSONDecoder().decode([UUID: String].self, from: Data(contentsOf: fileURL))
+        } catch {
+            // Never overwrite a recovery file that we could not read.
+            loadError = error
+        }
+    }
+
+    static func applicationDefault() -> HighlightNoteDraftStore {
+        let url = try? HighlightPersistence.applicationDefault().fileURL
+            .deletingLastPathComponent().appendingPathComponent("note-drafts.json")
+        return HighlightNoteDraftStore(fileURL: url)
+    }
+
+    func set(_ text: String, for id: UUID) { drafts[id] = text }
+    @discardableResult
+    func remove(_ id: UUID) -> Bool { drafts.removeValue(forKey: id) != nil }
+
+    @discardableResult
+    func persist() -> Bool {
+        guard loadError == nil, let fileURL else { return false }
+        do {
+            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true)
+            try JSONEncoder().encode(drafts).write(to: fileURL, options: .atomic)
+            return true
+        } catch {
+            return false
+        }
     }
 }

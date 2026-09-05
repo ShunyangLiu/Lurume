@@ -1,6 +1,19 @@
 import PDFKit
 import SwiftUI
 
+// NotificationCenter delivers these on OperationQueue.main. PDFKit selections are only
+// inspected on the main actor; the wrapper bridges that documented queue boundary.
+private struct PDFSearchMatch: @unchecked Sendable {
+    let selection: PDFSelection
+    let documentID: ObjectIdentifier
+}
+
+private final class PDFSearchObservations: @unchecked Sendable {
+    let tokens: [NSObjectProtocol]
+    init(_ tokens: [NSObjectProtocol]) { self.tokens = tokens }
+    deinit { tokens.forEach(NotificationCenter.default.removeObserver) }
+}
+
 struct PDFSelectionEvent: Equatable, Sendable {
     let rawText: String
     let pageIndex: Int
@@ -37,6 +50,7 @@ final class PDFReaderController: ObservableObject {
     @Published private(set) var searchResultCount = 0
     @Published private(set) var currentSearchResultIndex: Int?
     @Published private(set) var activeSearchQuery: String?
+    @Published private(set) var isSearching = false
     @Published var currentHighlightID: UUID? {
         didSet {
             guard currentHighlightID != oldValue else { return }
@@ -51,6 +65,11 @@ final class PDFReaderController: ObservableObject {
 
     weak var pdfView: PDFView?
     private var searchResults: [PDFSelection] = []
+    private var searchGeneration = 0
+    private var searchObservers: PDFSearchObservations?
+    private weak var searchingDocument: PDFDocument?
+    private var searchPublishTask: Task<Void, Never>?
+    private var selectsLastResultWhenSearchEnds = false
     private var renderedHighlights: [HighlightRecord] = []
     private weak var renderedHighlightDocument: PDFDocument?
     private var highlightAnnotations: [PDFAnnotation] = []
@@ -63,7 +82,41 @@ final class PDFReaderController: ObservableObject {
     private var noteEditingEnabled = true
     private var noteEditorSession: HighlightNoteEditorSession?
     private var noteEditorInitialViewport: CGRect?
-    private var unsavedNoteDrafts: [UUID: String] = [:]
+    private let noteDraftStore: HighlightNoteDraftStore
+    @Published var noteSaveWarning: String?
+
+    init(noteDraftStore: HighlightNoteDraftStore = HighlightNoteDraftStore()) {
+        self.noteDraftStore = noteDraftStore
+        if noteDraftStore.loadError != nil {
+            noteSaveWarning = "恢复草稿文件无法读取，原文件已保留。请先备份应用数据。"
+        }
+    }
+
+    /// Called before ordinary termination and before an updater-driven restart.
+    func prepareNotesForExit() -> Bool {
+        closeNoteEditor()
+        // Recovered drafts must be reviewed in their editor, not silently applied on exit.
+        guard !noteDraftStore.drafts.isEmpty else { return true }
+        let durable = noteDraftStore.persist()
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "还有 \(noteDraftStore.drafts.count) 条笔记草稿未保存"
+        alert.informativeText = durable
+            ? "恢复草稿已保存到本机。继续退出后，下次打开对应笔记可以恢复并核对。"
+            : "笔记和恢复草稿均未能写入磁盘。继续退出会丢失尚未保存的内容，请先返回复制备份。"
+        alert.addButton(withTitle: "返回检查")
+        alert.addButton(withTitle: durable ? "保留草稿并退出" : "丢弃草稿并退出")
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+
+    func discardNoteDrafts(for highlightIDs: Set<UUID>) {
+        var removed = false
+        for id in highlightIDs { removed = noteDraftStore.remove(id) || removed }
+        guard removed else { return }
+        if !noteDraftStore.persist() {
+            noteSaveWarning = "旧恢复草稿未能清理，请检查应用数据目录的可写状态。"
+        }
+    }
 
     var pageCountLabel: String {
         guard pageCount > 0 else { return "/ —" }
@@ -72,8 +125,8 @@ final class PDFReaderController: ObservableObject {
 
     var searchResultLabel: String? {
         guard activeSearchQuery != nil else { return nil }
-        guard let currentSearchResultIndex else { return "0 / 0" }
-        return "\(currentSearchResultIndex + 1) / \(searchResultCount)"
+        let progress = isSearching ? " · 搜索中" : ""
+        return "\(currentSearchResultIndex.map { $0 + 1 } ?? 0) / \(searchResultCount)\(progress)"
     }
 
     var canNavigateSearchResults: Bool {
@@ -82,6 +135,7 @@ final class PDFReaderController: ObservableObject {
 
     func attach(_ pdfView: PDFView) {
         guard self.pdfView !== pdfView else { return }
+        clearSearchResults()
         removeRenderedHighlights()
         self.pdfView = pdfView
         if document !== pdfView.document {
@@ -146,10 +200,56 @@ final class PDFReaderController: ObservableObject {
 
         clearSearchResults()
         activeSearchQuery = query
-        searchResults = document.findString(query, withOptions: .caseInsensitive)
+        isSearching = true
+        searchingDocument = document
+        let generation = searchGeneration
+        let center = NotificationCenter.default
+        searchObservers = PDFSearchObservations([
+            center.addObserver(forName: .PDFDocumentDidFindMatch, object: document, queue: .main) {
+                [weak self] notification in
+                guard let selection = notification.userInfo?["PDFDocumentFoundSelection"] as? PDFSelection,
+                      let document = notification.object as? PDFDocument else { return }
+                let match = PDFSearchMatch(selection: selection, documentID: ObjectIdentifier(document))
+                MainActor.assumeIsolated {
+                    guard let self, self.searchGeneration == generation,
+                          let currentDocument = self.pdfView?.document,
+                          ObjectIdentifier(currentDocument) == match.documentID else { return }
+                    self.searchResults.append(match.selection)
+                    self.scheduleSearchPublication()
+                }
+            },
+            center.addObserver(forName: .PDFDocumentDidEndFind, object: document, queue: .main) {
+                [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.searchGeneration == generation else { return }
+                    self.isSearching = false
+                    self.publishSearchResults()
+                }
+            }
+        ])
+        document.beginFindString(query, withOptions: .caseInsensitive)
+    }
+
+    private func scheduleSearchPublication() {
+        guard searchPublishTask == nil else { return }
+        searchPublishTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+            self?.publishSearchResults()
+        }
+    }
+
+    private func publishSearchResults() {
+        searchPublishTask?.cancel()
+        searchPublishTask = nil
         searchResultCount = searchResults.count
-        if !searchResults.isEmpty {
+        if !isSearching, selectsLastResultWhenSearchEnds, !searchResults.isEmpty {
+            selectsLastResultWhenSearchEnds = false
+            showSearchResult(at: searchResults.count - 1)
+        } else if currentSearchResultIndex == nil, !searchResults.isEmpty, !selectsLastResultWhenSearchEnds {
             showSearchResult(at: 0)
+        } else if let index = currentSearchResultIndex {
+            updateSearchHighlights(currentIndex: index)
         }
     }
 
@@ -163,7 +263,9 @@ final class PDFReaderController: ObservableObject {
 
     func previousSearchResult() {
         if refreshSearchIfNeeded() {
-            if !searchResults.isEmpty {
+            if isSearching {
+                selectsLastResultWhenSearchEnds = true
+            } else if !searchResults.isEmpty {
                 showSearchResult(at: searchResults.count - 1)
             }
             return
@@ -179,6 +281,14 @@ final class PDFReaderController: ObservableObject {
     }
 
     func clearSearchResults() {
+        selectsLastResultWhenSearchEnds = false
+        searchGeneration += 1
+        searchPublishTask?.cancel()
+        searchPublishTask = nil
+        searchObservers = nil
+        searchingDocument?.cancelFindString()
+        searchingDocument = nil
+        isSearching = false
         let shouldClearCurrentSelection = isCurrentSearchSelection(pdfView?.currentSelection)
         searchResults = []
         if searchResultCount != 0 {
@@ -429,22 +539,32 @@ final class PDFReaderController: ObservableObject {
         closeNoteEditor()
         guard let pdfViewRect = noteMarkerAnchorRect(for: highlight.id) else { return }
         let documentRect = pdfView.convert(pdfViewRect, to: documentView)
-        let initialText = unsavedNoteDrafts[highlight.id] ?? highlight.noteText ?? ""
+        let recoveredDraft = noteDraftStore.drafts[highlight.id]
+        let initialText = recoveredDraft ?? highlight.noteText ?? ""
         let model = HighlightNoteDraftModel(
             text: initialText,
             persistedText: highlight.noteText ?? "",
             readOnly: readOnly,
-            save: { [weak self] text in
-                guard save(text) else { return false }
-                self?.unsavedNoteDrafts.removeValue(forKey: highlight.id)
-                return true
-            },
+            save: save,
             onDraftChanged: { [weak self] text in
-                self?.unsavedNoteDrafts[highlight.id] = text
+                self?.noteDraftStore.set(text, for: highlight.id)
             },
             onSaveSucceeded: { [weak self] in
-                self?.unsavedNoteDrafts.removeValue(forKey: highlight.id)
-            }
+                guard let self else { return }
+                guard self.noteDraftStore.remove(highlight.id) else { return }
+                if !self.noteDraftStore.persist() {
+                    self.noteSaveWarning = "笔记已保存，但旧恢复草稿未能清理，请先备份应用数据。"
+                }
+            },
+            onSaveFailed: { [weak self] in
+                guard let self else { return "无法保存笔记。" }
+                let durable = self.noteDraftStore.persist()
+                let message = durable ? "笔记保存失败，已保留可恢复草稿。"
+                    : "笔记和恢复草稿均保存失败，请勿退出应用，先复制笔记备份。"
+                self.noteSaveWarning = message
+                return message
+            },
+            recoveryMessage: recoveredDraft == nil ? nil : "已恢复未保存草稿，请核对后保存；原笔记尚未改动。"
         )
         let session = HighlightNoteEditorSession(
             highlightID: highlight.id,
@@ -509,20 +629,25 @@ final class PDFReaderController: ObservableObject {
 
     private func showSearchResult(at index: Int) {
         guard searchResults.indices.contains(index), let pdfView else { return }
+        selectsLastResultWhenSearchEnds = false
         currentSearchResultIndex = index
-        for (resultIndex, selection) in searchResults.enumerated() {
-            selection.color = resultIndex == index
-                ? .selectedTextBackgroundColor
-                : .systemYellow.withAlphaComponent(0.5)
-        }
+        updateSearchHighlights(currentIndex: index)
         let currentResult = searchResults[index]
-        let otherResults = searchResults.enumerated().compactMap { resultIndex, selection in
-            resultIndex == index ? nil : selection
-        }
-        pdfView.highlightedSelections = otherResults.isEmpty ? nil : otherResults
         pdfView.setCurrentSelection(currentResult, animate: true)
         pdfView.go(to: currentResult)
         centerSelection(currentResult, in: pdfView)
+    }
+
+    private func updateSearchHighlights(currentIndex: Int) {
+        // Bound PDFKit overlay work for very common terms while retaining every result for navigation.
+        var otherResults: [PDFSelection] = []
+        for (index, selection) in searchResults.enumerated() where index != currentIndex {
+            otherResults.append(selection)
+            if otherResults.count == 500 { break }
+        }
+        for selection in otherResults { selection.color = .systemYellow.withAlphaComponent(0.5) }
+        searchResults[currentIndex].color = .selectedTextBackgroundColor
+        pdfView?.highlightedSelections = otherResults.isEmpty ? nil : otherResults
     }
 
     private func selection(for highlight: HighlightRecord) -> PDFSelection? {

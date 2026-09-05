@@ -4,6 +4,8 @@ enum TranslationServiceError: Error, Equatable {
     case invalidRequest
     case invalidResponse
     case nonTextResponse
+    case outputTruncated
+    case contentFiltered
     case http(status: Int)
     case frameTooLarge
     case streamEndedEarly
@@ -18,6 +20,8 @@ enum TranslationServiceError: Error, Equatable {
         case .invalidRequest: "invalid_request"
         case .invalidResponse: "invalid_response"
         case .nonTextResponse: "non_text_response"
+        case .outputTruncated: "output_truncated"
+        case .contentFiltered: "content_filtered"
         case .http: "http"
         case .frameTooLarge: "frame_too_large"
         case .streamEndedEarly: "stream_ended_early"
@@ -37,6 +41,10 @@ enum TranslationServiceError: Error, Equatable {
             "服务返回了无法解析的响应。"
         case .nonTextResponse:
             "服务没有返回文本译文。"
+        case .outputTruncated:
+            "译文达到服务输出长度上限，内容不完整。请缩短选区，或关闭低延迟翻译参数后重试。"
+        case .contentFiltered:
+            "服务因内容过滤停止生成，译文可能不完整。"
         case let .http(status):
             switch status {
             case 401, 403:
@@ -135,6 +143,12 @@ struct OpenAIChatCompletionRequestBuilder {
 
 struct OpenAIChatCompletionResponseParser {
     static func parseText(from data: Data) throws -> String {
+        let response = try parse(from: data)
+        if let error = response.error { throw error }
+        return response.text
+    }
+
+    static func parse(from data: Data) throws -> (text: String, error: TranslationServiceError?) {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = root["choices"] as? [[String: Any]],
               let first = choices.first,
@@ -142,20 +156,34 @@ struct OpenAIChatCompletionResponseParser {
         else {
             throw TranslationServiceError.invalidResponse
         }
+        let error = completionError(for: first["finish_reason"])
+        if let error {
+            return (message["content"] as? String ?? "", error)
+        }
         guard let content = message["content"] as? String else {
             throw TranslationServiceError.nonTextResponse
         }
         guard !content.isEmpty else {
             throw TranslationServiceError.nonTextResponse
         }
-        return content
+        return (content, nil)
     }
 
+    static func completionError(for reason: Any?) -> TranslationServiceError? {
+        guard let reason, !(reason is NSNull) else { return nil }
+        switch reason as? String {
+        case "stop": return nil
+        case "length": return .outputTruncated
+        case "content_filter": return .contentFiltered
+        default: return .invalidResponse
+        }
+    }
 }
 
 enum OpenAIStreamEvent: Equatable {
     case delta(String)
     case finished
+    case failed(TranslationServiceError)
 }
 
 struct OpenAIChatCompletionSSEParser {
@@ -165,6 +193,7 @@ struct OpenAIChatCompletionSSEParser {
     private(set) var receivedText = false
     private(set) var receivedCompletionMarker = false
     private(set) var acceptedDataFrameCount = 0
+    private var terminalError: TranslationServiceError?
 
     mutating func append(_ data: Data) throws -> [OpenAIStreamEvent] {
         buffer.append(data)
@@ -206,6 +235,7 @@ struct OpenAIChatCompletionSSEParser {
         guard receivedCompletionMarker else {
             throw TranslationServiceError.streamEndedEarly
         }
+        if let terminalError { return [.failed(terminalError)] }
         return []
     }
 
@@ -214,6 +244,7 @@ struct OpenAIChatCompletionSSEParser {
         receivedText = false
         receivedCompletionMarker = false
         acceptedDataFrameCount = 0
+        terminalError = nil
     }
 
     private func nextBoundary(in data: Data) -> Range<Data.Index>? {
@@ -249,7 +280,7 @@ struct OpenAIChatCompletionSSEParser {
         if payload == "[DONE]" {
             acceptedDataFrameCount += 1
             receivedCompletionMarker = true
-            return [.finished]
+            return terminalError.map { [.failed($0)] } ?? [.finished]
         }
         guard let payloadData = payload.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
@@ -269,6 +300,10 @@ struct OpenAIChatCompletionSSEParser {
         }
         if let finishReason = first["finish_reason"], !(finishReason is NSNull) {
             receivedCompletionMarker = true
+            if let error = OpenAIChatCompletionResponseParser.completionError(for: finishReason) {
+                terminalError = error
+                events.append(.failed(error))
+            }
         }
         return events
     }

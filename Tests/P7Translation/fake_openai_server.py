@@ -23,8 +23,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": {"message": "invalid JSON"}})
             return
 
-        if set(payload.keys()) != {"model", "messages", "stream"}:
+        required_fields = {"model", "messages", "stream"}
+        optional_fields = {"max_tokens", "temperature"}
+        if not required_fields <= set(payload) or set(payload) - required_fields - optional_fields:
             self._json(400, {"error": {"message": "unexpected request fields"}})
+            return
+        if ("max_tokens" in payload and not (isinstance(payload["max_tokens"], int) and 1 <= payload["max_tokens"] <= 8192)) or ("temperature" in payload and payload["temperature"] != 0):
+            self._json(400, {"error": {"message": "unexpected generation options"}})
             return
         fixture_messages = [
             {"role": "system", "content": "Translate the selected text."},
@@ -91,6 +96,12 @@ class Handler(BaseHTTPRequestHandler):
                 200,
                 {"choices": [{"message": {"role": "assistant", "content": "一次性译文"}}]},
             )
+        elif self.path == "/truncated-nonstream":
+            self._json(200, {"choices": [{"message": {"content": "partial"}, "finish_reason": "length"}]})
+        elif self.path == "/truncated-stream":
+            self._stream([b'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n'])
+        elif self.path == "/final-frame-stream":
+            self._stream([b'data: {"choices":[{"delta":{"content":"final text"},"finish_reason":"stop"}]}'])
         elif self.path == "/error/429":
             self._json(
                 429,

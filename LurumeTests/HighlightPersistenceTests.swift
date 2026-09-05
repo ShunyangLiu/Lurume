@@ -264,6 +264,76 @@ final class HighlightPersistenceTests: XCTestCase {
         XCTAssertEqual(saveSucceededCount, 2)
     }
 
+    @MainActor
+    func testFailedNoteDraftSurvivesRelaunchAndCanBeRemoved() throws {
+        let url = try temporaryFileURL().deletingLastPathComponent().appendingPathComponent("drafts.json")
+        let id = UUID()
+        let store = HighlightNoteDraftStore(fileURL: url)
+        store.set("未保存笔记", for: id)
+        XCTAssertTrue(store.persist())
+        let reopened = HighlightNoteDraftStore(fileURL: url)
+        XCTAssertEqual(reopened.drafts[id], "未保存笔记")
+        reopened.remove(id)
+        XCTAssertTrue(reopened.persist())
+        XCTAssertTrue(HighlightNoteDraftStore(fileURL: url).drafts.isEmpty)
+    }
+
+    @MainActor
+    func testCorruptRecoveryFileIsNeverOverwritten() throws {
+        let url = try temporaryFileURL()
+        let original = Data("unreadable recovery".utf8)
+        try original.write(to: url)
+        let store = HighlightNoteDraftStore(fileURL: url)
+        store.set("new draft", for: UUID())
+        XCTAssertNotNil(store.loadError)
+        XCTAssertFalse(store.persist())
+        XCTAssertEqual(try Data(contentsOf: url), original)
+    }
+
+    @MainActor
+    func testRecoveredDraftRequiresReviewBeforeOverwritingNote() {
+        var saved: [String?] = []
+        let model = HighlightNoteDraftModel(text: "recovered", persistedText: "original", readOnly: false,
+            save: { saved.append($0); return true }, onDraftChanged: { _ in }, onSaveSucceeded: {},
+            recoveryMessage: "Recovered")
+        model.flush()
+        XCTAssertTrue(saved.isEmpty)
+        model.acceptRecoveredDraft()
+        XCTAssertEqual(saved, ["recovered"])
+        XCTAssertNil(model.recoveryMessage)
+    }
+
+    @MainActor
+    func testRecoveryCanBeDiscardedWithoutChangingOriginalNote() {
+        var saveCount = 0
+        var clearCount = 0
+        let model = HighlightNoteDraftModel(text: "recovered", persistedText: "original", readOnly: false,
+            save: { _ in saveCount += 1; return true }, onDraftChanged: { _ in },
+            onSaveSucceeded: { clearCount += 1 }, recoveryMessage: "Recovered")
+        model.discardRecoveredDraft()
+        XCTAssertEqual(model.text, "original")
+        XCTAssertEqual(saveCount, 0)
+        XCTAssertEqual(clearCount, 1)
+    }
+
+    func testSnapshotBackupKeepsPreviousRevisionAndRejectsCorruptPrimary() throws {
+        let url = try temporaryFileURL()
+        let persistence = HighlightPersistence(fileURL: url)
+        let original = HighlightSnapshot.empty
+        try persistence.save(original)
+        let originalData = try Data(contentsOf: url)
+        let updated = HighlightSnapshot(schemaVersion: HighlightSchema.currentVersion, highlights: [try makeRecord()])
+        try persistence.save(updated)
+        try persistence.save(updated)
+        let backupURL = url.appendingPathExtension("previous")
+        XCTAssertEqual(try Data(contentsOf: backupURL), originalData)
+        let corrupt = Data("corrupt".utf8)
+        try corrupt.write(to: url)
+        XCTAssertThrowsError(try persistence.save(original))
+        XCTAssertEqual(try Data(contentsOf: url), corrupt)
+        XCTAssertEqual(try Data(contentsOf: backupURL), originalData)
+    }
+
     func testInvalidGeometryIsRejected() {
         XCTAssertNil(HighlightRect(cgRect: .zero))
         XCTAssertNil(

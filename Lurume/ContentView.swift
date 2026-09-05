@@ -17,7 +17,8 @@ struct ContentView: View {
     @EnvironmentObject private var translationController: TranslationController
     @EnvironmentObject private var highlightStore: HighlightStore
     @EnvironmentObject private var updaterController: UpdaterController
-    @StateObject private var pdfController = PDFReaderController()
+    @EnvironmentObject private var terminationController: LurumeTerminationController
+    @EnvironmentObject private var pdfController: PDFReaderController
     @StateObject private var folderImportCoordinator = FolderImportCoordinator()
     @StateObject private var zoteroImportCoordinator = ZoteroImportCoordinator()
     @State private var isImporterPresented = false
@@ -74,7 +75,7 @@ struct ContentView: View {
     }
 
     private var presentedError: String? {
-        highlightStore.presentedError ?? libraryStore.presentedError
+        pdfController.noteSaveWarning ?? highlightStore.presentedError ?? libraryStore.presentedError
     }
 
     private var readerInspectorPresented: Binding<Bool> {
@@ -866,6 +867,15 @@ struct ContentView: View {
     }
 
     private func configureUpdateInstallationBoundary() {
+        // Retain the save boundary even if the window closes before the app quits.
+        terminationController.prepareForTermination = { [libraryStore, pdfController] in
+            libraryStore.flushPendingSave()
+            return pdfController.prepareNotesForExit()
+        }
+        updaterController.mayRelaunch = { [weak terminationController] in
+            guard let terminationController else { return true }
+            return terminationController.prepareForTermination?() ?? true
+        }
         updaterController.prepareForInstallation = { [weak libraryStore, weak pdfController] in
             guard let libraryStore, let pdfController else { return }
             UpdateInstallationSaveBoundary(
@@ -1016,15 +1026,17 @@ struct ContentView: View {
 
     private func toggleCurrentHighlight() {
         guard let paper = libraryStore.selectedPaper,
-              let candidate = pdfController.makeHighlightCandidate(paperID: paper.id),
-              let result = highlightStore.toggle(candidate, undoManager: undoManager) else {
+              let candidate = pdfController.makeHighlightCandidate(paperID: paper.id) else {
             return
         }
+        pdfController.closeNoteEditor()
+        guard let result = highlightStore.toggle(candidate, undoManager: undoManager) else { return }
 
         switch result {
         case let .added(record):
             pdfController.currentHighlightID = record.id
         case let .removed(record):
+            pdfController.discardNoteDrafts(for: [record.id])
             if pdfController.currentHighlightID == record.id {
                 pdfController.currentHighlightID = nil
             }
@@ -1042,7 +1054,9 @@ struct ContentView: View {
         guard let paperID = libraryStore.selectedPaperID else { return }
         let ordered = highlightStore.highlights(for: paperID)
         let removedIndex = ordered.firstIndex { $0.id == id }
+        pdfController.closeNoteEditor()
         guard highlightStore.remove(id: id, undoManager: undoManager) else { return }
+        pdfController.discardNoteDrafts(for: [id])
 
         if pdfController.currentHighlightID == id {
             let remaining = highlightStore.highlights(for: paperID)
@@ -1081,6 +1095,8 @@ struct ContentView: View {
     }
 
     private func removePapers(_ ids: Set<UUID>) {
+        let removedHighlightIDs = Set(highlightStore.highlights.filter { ids.contains($0.paperID) }.map(\.id))
+        pdfController.closeNoteEditor()
         let coordinator = PaperRemovalCoordinator(
             libraryStore: libraryStore,
             highlightStore: highlightStore
@@ -1094,6 +1110,7 @@ struct ContentView: View {
         for id in ids {
             translationController.paperRemoved(id)
         }
+        pdfController.discardNoteDrafts(for: removedHighlightIDs)
         libraryModeSelection.subtract(ids)
         if appSettings.mainWindowMode == .reading {
             openSelectedPaper()
@@ -1112,6 +1129,7 @@ struct ContentView: View {
     }
 
     private func clearPresentedErrors() {
+        pdfController.noteSaveWarning = nil
         highlightStore.presentedError = nil
         libraryStore.presentedError = nil
     }

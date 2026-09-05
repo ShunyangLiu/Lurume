@@ -2,6 +2,23 @@ import Foundation
 import XCTest
 
 final class P7TranslationNetworkOperationTests: XCTestCase {
+    func testTruncatedResponsesRetainTextAndNeverEmitCompleted() throws {
+        for (path, streaming) in [("/truncated-stream", true), ("/truncated-nonstream", false)] {
+            let result = try runOperation(endpoint: fakeEndpoint(path: path), streamsResponse: streaming,
+                policy: TranslationTimeoutPolicy(firstByte: 1, streamIdle: 1, nonStreamingTotal: 2))
+            XCTAssertEqual(result.compactMap(\.text).joined(), "partial")
+            XCTAssertEqual(result.last?.errorCode, "output_truncated")
+            XCTAssertFalse(result.contains { $0.kind == "completed" })
+        }
+    }
+
+    func testFinalFrameWithoutSeparatorStillDeliversText() throws {
+        let result = try runOperation(endpoint: fakeEndpoint(path: "/final-frame-stream"), streamsResponse: true,
+            policy: TranslationTimeoutPolicy(firstByte: 1, streamIdle: 1, nonStreamingTotal: 2))
+        XCTAssertEqual(result.compactMap(\.text).joined(), "final text")
+        XCTAssertEqual(result.last?.kind, "completed")
+    }
+
     func testHeartbeatCommentsCannotPreventFirstFrameTimeout() throws {
         let result = try runOperation(
             endpoint: fakeEndpoint(path: "/heartbeats"),
