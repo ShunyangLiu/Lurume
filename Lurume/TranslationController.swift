@@ -14,7 +14,14 @@ struct TranslationOutput: Equatable, Sendable {
 
 protocol TranslationPerforming: AnyObject, Sendable {
     func readiness(from source: Locale.Language, to target: Locale.Language) async -> TranslationReadiness
+    func prepare() async throws
     func translate(_ text: String) async throws -> TranslationOutput
+    func cancel()
+}
+
+extension TranslationPerforming {
+    func prepare() async throws {}
+    func cancel() {}
 }
 
 protocol TranslationAvailabilityChecking: Sendable {
@@ -74,6 +81,28 @@ final class SystemTranslationPerformer: TranslationPerforming, @unchecked Sendab
         let response = try await session.translate(text)
         return TranslationOutput(targetText: response.targetText)
     }
+
+    func prepare() async throws {
+        try await session.prepareTranslation()
+    }
+
+    func cancel() {
+        if #available(macOS 26.0, *) {
+            session.cancel()
+        }
+    }
+}
+
+struct SystemTranslationTimeoutPolicy: Equatable, Sendable {
+    static let production = Self(
+        readiness: .seconds(15),
+        translation: .seconds(30),
+        resourcePreparation: .seconds(300)
+    )
+
+    let readiness: Duration
+    let translation: Duration
+    let resourcePreparation: Duration
 }
 
 struct TranslationSelection: Equatable, Sendable {
@@ -135,6 +164,7 @@ struct TranslationConfigurationIdentity: Equatable, Sendable {
     let baseURL: String?
     let model: String?
     let streamsResponse: Bool?
+    let optimizesForTranslation: Bool?
     let prompt: String?
 }
 
@@ -218,6 +248,7 @@ struct TranslationCacheKey: Hashable, Sendable {
     let engine: TranslationEngine
     let baseURL: String?
     let model: String?
+    let optimizesForTranslation: Bool?
     let prompt: String?
 
     static func apple(
@@ -232,6 +263,7 @@ struct TranslationCacheKey: Hashable, Sendable {
             engine: .apple,
             baseURL: nil,
             model: nil,
+            optimizesForTranslation: nil,
             prompt: nil
         )
     }
@@ -249,6 +281,7 @@ struct TranslationCacheKey: Hashable, Sendable {
             engine: .customModel,
             baseURL: configuration.configuration.baseURL,
             model: configuration.configuration.model,
+            optimizesForTranslation: configuration.configuration.optimizesForTranslation,
             prompt: configuration.configuration.prompt
         )
     }
@@ -269,6 +302,8 @@ final class TranslationController: ObservableObject {
     private var generation = 0
     private var debounceTask: Task<Void, Never>?
     private var activeTranslationTask: Task<TranslationOutput, Error>?
+    private var activeSystemPerformer: (any TranslationPerforming)?
+    private var systemTranslationTimeoutTask: Task<Void, Never>?
     private var pendingAppleRequest: AppleRequestContext?
     private var pendingModelConsent: ModelRequestContext?
     private var activeModelRequest: ModelRequestContext?
@@ -283,22 +318,27 @@ final class TranslationController: ObservableObject {
     private let availabilityChecker: any TranslationAvailabilityChecking
     private let keyStore: any TranslationAPIKeyStoring
     private let modelRequestSender: any TranslationRequestSending
+    private let systemTimeoutPolicy: SystemTranslationTimeoutPolicy
 
     init(
         sourceLanguageRecognizer: any SourceLanguageRecognizing = NaturalLanguageSourceRecognizer(),
         availabilityChecker: any TranslationAvailabilityChecking = SystemTranslationAvailabilityChecker(),
         keyStore: any TranslationAPIKeyStoring = KeychainTranslationAPIKeyStore(),
-        modelRequestSender: any TranslationRequestSending = TranslationXPCClient()
+        modelRequestSender: any TranslationRequestSending = TranslationXPCClient(),
+        systemTimeoutPolicy: SystemTranslationTimeoutPolicy = .production
     ) {
         self.sourceLanguageRecognizer = sourceLanguageRecognizer
         self.availabilityChecker = availabilityChecker
         self.keyStore = keyStore
         self.modelRequestSender = modelRequestSender
+        self.systemTimeoutPolicy = systemTimeoutPolicy
     }
 
     deinit {
         debounceTask?.cancel()
+        activeSystemPerformer?.cancel()
         activeTranslationTask?.cancel()
+        systemTranslationTimeoutTask?.cancel()
         activeModelPreparationTask?.cancel()
         deltaFlushTask?.cancel()
         fallbackAvailabilityTask?.cancel()
@@ -307,9 +347,14 @@ final class TranslationController: ObservableObject {
         }
     }
 
-    var isModelTranslationActive: Bool {
-        guard case .customModel = resultSource else { return false }
-        return state == .connecting || state == .streaming
+    var isTranslationActive: Bool {
+        if pendingAppleRequest != nil { return true }
+        return switch state {
+        case .connecting, .translating, .streaming, .resourcesNeeded:
+            true
+        default:
+            false
+        }
     }
 
     var canRetryModelTranslation: Bool {
@@ -343,7 +388,7 @@ final class TranslationController: ObservableObject {
         )
         guard newSelection != selection else { return }
 
-        cancelWorkForNewGeneration()
+        cancelWorkForNewGeneration(preservingAppleConfiguration: preferences.engine == .apple)
         selection = newSelection
         translatedText = nil
         resultSource = nil
@@ -381,7 +426,7 @@ final class TranslationController: ObservableObject {
         revealInspector: Bool = true
     ) {
         if revealInspector { isInspectorPresented = true }
-        cancelWorkForNewGeneration()
+        cancelWorkForNewGeneration(preservingAppleConfiguration: preferences.engine == .apple)
         guard let selection else { return }
         lastPreferences = preferences
         translatedText = nil
@@ -427,6 +472,19 @@ final class TranslationController: ObservableObject {
     }
 
     func stopTranslation() {
+        if activeSystemPerformer != nil || activeTranslationTask != nil || pendingAppleRequest != nil {
+            generation += 1
+            activeSystemPerformer?.cancel()
+            activeSystemPerformer = nil
+            activeTranslationTask?.cancel()
+            activeTranslationTask = nil
+            systemTranslationTimeoutTask?.cancel()
+            systemTranslationTimeoutTask = nil
+            pendingAppleRequest = nil
+            configuration = nil
+            state = .failed("系统翻译已停止。")
+            return
+        }
         guard activeModelRequest != nil || activeModelPreparationTask != nil else { return }
         let hadPartialText = translatedText?.isEmpty == false || !pendingModelDelta.isEmpty
         flushPendingModelDelta()
@@ -449,6 +507,13 @@ final class TranslationController: ObservableObject {
         guard let request = pendingAppleRequest,
               request.generation == generation else { return }
         pendingAppleRequest = nil
+        activeSystemPerformer = performer
+        scheduleSystemTranslationTimeout(
+            after: systemTimeoutPolicy.readiness,
+            request: request,
+            performer: performer,
+            message: "检查系统翻译语言资源超时，请重试。"
+        )
 
         let task = Task { @MainActor in
             let readiness = await performer.readiness(
@@ -458,8 +523,29 @@ final class TranslationController: ObservableObject {
             switch readiness {
             case .installed:
                 state = .translating
+                scheduleSystemTranslationTimeout(
+                    after: systemTimeoutPolicy.translation,
+                    request: request,
+                    performer: performer,
+                    message: "系统翻译响应超时，请重试。"
+                )
             case .downloadable:
                 state = .resourcesNeeded
+                scheduleSystemTranslationTimeout(
+                    after: systemTimeoutPolicy.resourcePreparation,
+                    request: request,
+                    performer: performer,
+                    message: "系统语言资源准备超时，请检查系统下载状态后重试。"
+                )
+                try await performer.prepare()
+                guard !Task.isCancelled else { throw CancellationError() }
+                state = .translating
+                scheduleSystemTranslationTimeout(
+                    after: systemTimeoutPolicy.translation,
+                    request: request,
+                    performer: performer,
+                    message: "系统翻译响应超时，请重试。"
+                )
             case .unsupported:
                 throw TranslationControllerError.unsupportedLanguagePair
             }
@@ -485,7 +571,10 @@ final class TranslationController: ObservableObject {
         }
 
         if request.generation == generation {
+            systemTranslationTimeoutTask?.cancel()
+            systemTranslationTimeoutTask = nil
             activeTranslationTask = nil
+            activeSystemPerformer = nil
         }
     }
 
@@ -567,6 +656,7 @@ final class TranslationController: ObservableObject {
                 target: targetLanguage
             )
         }
+        scheduleSystemTranslationActivationTimeout(for: request)
     }
 
     private func prepareModelTranslation(
@@ -651,7 +741,15 @@ final class TranslationController: ObservableObject {
             ),
             selectedText: context.selection.normalizedText,
             apiKey: apiKey?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-            streamsResponse: context.configuration.configuration.streamsResponse
+            streamsResponse: context.configuration.configuration.streamsResponse,
+            maximumOutputTokens: context.configuration.configuration.optimizesForTranslation
+                ? ModelTranslationGenerationOptions.outputTokenLimit(
+                    for: context.selection.normalizedText
+                )
+                : nil,
+            temperature: context.configuration.configuration.optimizesForTranslation
+                ? ModelTranslationGenerationOptions.temperature
+                : nil
         )
         do {
             try modelRequestSender.start(request) { [weak self] event in
@@ -783,12 +881,59 @@ final class TranslationController: ObservableObject {
         preferences.sourceLanguage ?? sourceLanguageRecognizer.language(for: selection.languageSample)
     }
 
-    private func cancelWorkForNewGeneration() {
+    private func scheduleSystemTranslationTimeout(
+        after duration: Duration,
+        request: AppleRequestContext,
+        performer: any TranslationPerforming,
+        message: String
+    ) {
+        systemTranslationTimeoutTask?.cancel()
+        systemTranslationTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(for: duration)
+            guard !Task.isCancelled,
+                  let self,
+                  request.generation == self.generation,
+                  self.activeSystemPerformer != nil
+            else { return }
+            performer.cancel()
+            self.activeTranslationTask?.cancel()
+            self.activeTranslationTask = nil
+            self.activeSystemPerformer = nil
+            self.systemTranslationTimeoutTask = nil
+            self.configuration = nil
+            self.generation += 1
+            self.state = .failed(message)
+        }
+    }
+
+    private func scheduleSystemTranslationActivationTimeout(for request: AppleRequestContext) {
+        systemTranslationTimeoutTask?.cancel()
+        let duration = systemTimeoutPolicy.readiness
+        systemTranslationTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(for: duration)
+            guard !Task.isCancelled,
+                  let self,
+                  request.generation == self.generation,
+                  self.pendingAppleRequest?.generation == request.generation
+            else { return }
+            self.pendingAppleRequest = nil
+            self.systemTranslationTimeoutTask = nil
+            self.configuration = nil
+            self.generation += 1
+            self.state = .failed("系统翻译会话启动超时，请重试。")
+        }
+    }
+
+    private func cancelWorkForNewGeneration(preservingAppleConfiguration: Bool = false) {
         generation += 1
         debounceTask?.cancel()
         debounceTask = nil
+        activeSystemPerformer?.cancel()
+        activeSystemPerformer = nil
         activeTranslationTask?.cancel()
         activeTranslationTask = nil
+        systemTranslationTimeoutTask?.cancel()
+        systemTranslationTimeoutTask = nil
         pendingAppleRequest = nil
         pendingModelConsent = nil
         pendingOriginConsent = nil
@@ -803,7 +948,9 @@ final class TranslationController: ObservableObject {
         pendingModelDelta = ""
         fallbackAvailabilityTask?.cancel()
         fallbackAvailabilityTask = nil
-        configuration = nil
+        if !preservingAppleConfiguration {
+            configuration = nil
+        }
     }
 
     private struct AppleRequestContext {

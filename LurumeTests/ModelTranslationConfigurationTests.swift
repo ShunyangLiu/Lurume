@@ -10,6 +10,7 @@ final class ModelTranslationConfigurationTests: XCTestCase {
             XCTAssertEqual(settings.modelTranslationBaseURL, "https://api.openai.com/v1")
             XCTAssertEqual(settings.modelTranslationModel, "")
             XCTAssertTrue(settings.modelTranslationStreamsResponse)
+            XCTAssertTrue(settings.modelTranslationOptimizesForTranslation)
         }
     }
 
@@ -40,6 +41,25 @@ final class ModelTranslationConfigurationTests: XCTestCase {
             XCTAssertEqual(restored.modelTranslationBaseURL, "https://example.com/v1")
             XCTAssertEqual(restored.modelTranslationModel, "fixture-model")
             XCTAssertFalse(restored.modelTranslationStreamsResponse)
+            XCTAssertTrue(restored.modelTranslationOptimizesForTranslation)
+        }
+    }
+
+    func testTranslationOptimizationPreferencePersistsWhenDisabled() throws {
+        try withSettings { settings, defaults in
+            let validated = try ModelTranslationConfigurationValidator.validate(
+                baseURL: "https://example.com/v1",
+                model: "fixture-model",
+                streamsResponse: true,
+                optimizesForTranslation: false,
+                prompt: ModelTranslationConfiguration.defaultPrompt
+            )
+
+            settings.applyModelTranslationConfiguration(validated, engine: .customModel)
+            let restored = AppSettings(defaults: defaults)
+
+            XCTAssertFalse(restored.modelTranslationOptimizesForTranslation)
+            XCTAssertFalse(restored.modelTranslationConfiguration?.configuration.optimizesForTranslation ?? true)
         }
     }
 
@@ -285,8 +305,42 @@ final class ModelTranslationConfigurationTests: XCTestCase {
         XCTAssertEqual(request.selectedText, ModelTranslationConfiguration.connectionTestText)
         XCTAssertTrue(request.systemPrompt.contains("自动识别原文语言"))
         XCTAssertTrue(request.systemPrompt.contains("简体中文"))
+        XCTAssertEqual(request.maximumOutputTokens, 1_024)
+        XCTAssertEqual(request.temperature, 0)
         XCTAssertEqual(request.apiKey, "fixture-api-value")
         XCTAssertFalse(request.streamsResponse)
+    }
+
+    func testConnectionTestOmitsOptimizationFieldsWhenDisabled() throws {
+        let sender = RecordingTranslationRequestSender()
+        let controller = ModelTranslationSettingsController(
+            keyStore: FakeTranslationAPIKeyStore(),
+            requestSender: sender
+        )
+        controller.draftBaseURL = "https://example.com/v1"
+        controller.draftModel = "fixture-model"
+        controller.draftOptimizesForTranslation = false
+
+        controller.startConnectionTest(
+            sourceLanguageIdentifier: "en",
+            targetLanguageIdentifier: "zh-Hans"
+        )
+
+        let request = try XCTUnwrap(sender.lastRequest)
+        XCTAssertNil(request.maximumOutputTokens)
+        XCTAssertNil(request.temperature)
+    }
+
+    func testTranslationOutputBudgetScalesAndClamps() {
+        XCTAssertEqual(ModelTranslationGenerationOptions.outputTokenLimit(for: "short"), 1_024)
+        XCTAssertEqual(
+            ModelTranslationGenerationOptions.outputTokenLimit(for: String(repeating: "x", count: 4_000)),
+            3_000
+        )
+        XCTAssertEqual(
+            ModelTranslationGenerationOptions.outputTokenLimit(for: String(repeating: "x", count: 12_000)),
+            8_192
+        )
     }
 
     private func validated(

@@ -113,6 +113,10 @@ private struct TranslationSettingsView: View {
                     .accessibilityHint("从 macOS 钥匙串删除已保存的 API Key")
                 }
                 Toggle("流式输出", isOn: $modelSettings.draftStreamsResponse)
+                Toggle("低延迟翻译参数", isOn: $modelSettings.draftOptimizesForTranslation)
+                Text("开启后发送 temperature=0，并按选区长度限制最大输出；短文本使用与 Bob 翻译模式相近的 1,024 token 预算。若服务不支持这些可选参数，可关闭。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("学术翻译提示词") {

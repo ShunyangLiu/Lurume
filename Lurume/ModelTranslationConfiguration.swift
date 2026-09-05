@@ -35,7 +35,22 @@ struct ModelTranslationConfiguration: Equatable, Sendable {
     let baseURL: String
     let model: String
     let streamsResponse: Bool
+    let optimizesForTranslation: Bool
     let prompt: String
+}
+
+enum ModelTranslationGenerationOptions {
+    static let temperature = 0.0
+    static let minimumOutputTokens = 1_024
+    static let maximumOutputTokens = 8_192
+
+    static func outputTokenLimit(for text: String) -> Int {
+        // Bob's translation preset uses 1,024 tokens. Keep that fast path for the
+        // usual short selection, but grow the budget for longer academic passages
+        // so the 12,000-character input limit does not turn into silent truncation.
+        let lengthAdjustedLimit = (text.count * 3 + 3) / 4
+        return min(maximumOutputTokens, max(minimumOutputTokens, lengthAdjustedLimit))
+    }
 }
 
 struct ValidatedModelTranslationConfiguration: Equatable, Sendable {
@@ -135,6 +150,7 @@ enum ModelTranslationConfigurationValidator {
         baseURL rawBaseURL: String,
         model rawModel: String,
         streamsResponse: Bool,
+        optimizesForTranslation: Bool = true,
         prompt rawPrompt: String
     ) throws -> ValidatedModelTranslationConfiguration {
         let baseURL = rawBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -204,6 +220,7 @@ enum ModelTranslationConfigurationValidator {
             baseURL: normalizedBaseURL.absoluteString,
             model: model,
             streamsResponse: streamsResponse,
+            optimizesForTranslation: optimizesForTranslation,
             prompt: prompt
         )
         return ValidatedModelTranslationConfiguration(

@@ -93,7 +93,16 @@ struct OpenAIChatCompletionRequestBuilder {
             throw TranslationServiceError.invalidRequest
         }
 
-        let body: [String: Any] = [
+        if let maximumOutputTokens = request.maximumOutputTokens,
+           !(1...8_192).contains(maximumOutputTokens) {
+            throw TranslationServiceError.invalidRequest
+        }
+        if let temperature = request.temperature,
+           (!temperature.isFinite || !(0...2).contains(temperature)) {
+            throw TranslationServiceError.invalidRequest
+        }
+
+        var body: [String: Any] = [
             "model": request.model,
             "messages": [
                 ["role": "system", "content": request.systemPrompt],
@@ -101,6 +110,12 @@ struct OpenAIChatCompletionRequestBuilder {
             ],
             "stream": request.streamsResponse
         ]
+        if let maximumOutputTokens = request.maximumOutputTokens {
+            body["max_tokens"] = maximumOutputTokens
+        }
+        if let temperature = request.temperature {
+            body["temperature"] = temperature
+        }
         let bodyData = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
 
         var urlRequest = URLRequest(url: url)

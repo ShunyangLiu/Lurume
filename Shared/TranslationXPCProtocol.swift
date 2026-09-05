@@ -27,6 +27,8 @@ final class TranslationXPCRequest: NSObject, NSSecureCoding, @unchecked Sendable
     let selectedText: String
     let apiKey: String?
     let streamsResponse: Bool
+    let maximumOutputTokens: Int?
+    let temperature: Double?
 
     init(
         requestID: String,
@@ -35,7 +37,9 @@ final class TranslationXPCRequest: NSObject, NSSecureCoding, @unchecked Sendable
         systemPrompt: String,
         selectedText: String,
         apiKey: String?,
-        streamsResponse: Bool
+        streamsResponse: Bool,
+        maximumOutputTokens: Int? = nil,
+        temperature: Double? = nil
     ) {
         self.requestID = requestID
         self.endpoint = endpoint
@@ -44,6 +48,8 @@ final class TranslationXPCRequest: NSObject, NSSecureCoding, @unchecked Sendable
         self.selectedText = selectedText
         self.apiKey = apiKey
         self.streamsResponse = streamsResponse
+        self.maximumOutputTokens = maximumOutputTokens
+        self.temperature = temperature
     }
 
     required init?(coder: NSCoder) {
@@ -63,6 +69,14 @@ final class TranslationXPCRequest: NSObject, NSSecureCoding, @unchecked Sendable
         self.selectedText = selectedText
         self.apiKey = coder.decodeObject(of: NSString.self, forKey: "apiKey") as String?
         self.streamsResponse = coder.decodeBool(forKey: "streamsResponse")
+        self.maximumOutputTokens = (coder.decodeObject(
+            of: NSNumber.self,
+            forKey: "maximumOutputTokens"
+        ) as NSNumber?)?.intValue
+        self.temperature = (coder.decodeObject(
+            of: NSNumber.self,
+            forKey: "temperature"
+        ) as NSNumber?)?.doubleValue
     }
 
     func encode(with coder: NSCoder) {
@@ -75,6 +89,12 @@ final class TranslationXPCRequest: NSObject, NSSecureCoding, @unchecked Sendable
             coder.encode(apiKey as NSString, forKey: "apiKey")
         }
         coder.encode(streamsResponse, forKey: "streamsResponse")
+        if let maximumOutputTokens {
+            coder.encode(NSNumber(value: maximumOutputTokens), forKey: "maximumOutputTokens")
+        }
+        if let temperature {
+            coder.encode(NSNumber(value: temperature), forKey: "temperature")
+        }
     }
 }
 

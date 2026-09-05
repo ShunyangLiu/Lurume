@@ -1,7 +1,7 @@
 import XCTest
 
 final class OpenAIChatCompletionsTests: XCTestCase {
-    func testRequestContainsOnlyMinimumChatCompletionsFields() throws {
+    func testRequestContainsTranslationOptimizedChatCompletionsFields() throws {
         let request = TranslationXPCRequest(
             requestID: "request-1",
             endpoint: "https://example.test/v1/chat/completions",
@@ -9,7 +9,9 @@ final class OpenAIChatCompletionsTests: XCTestCase {
             systemPrompt: "Translate to Chinese.",
             selectedText: "Only this selection",
             apiKey: "test-placeholder-key",
-            streamsResponse: true
+            streamsResponse: true,
+            maximumOutputTokens: 1_024,
+            temperature: 0
         )
 
         let urlRequest = try OpenAIChatCompletionRequestBuilder.makeURLRequest(from: request)
@@ -17,9 +19,11 @@ final class OpenAIChatCompletionsTests: XCTestCase {
             JSONSerialization.jsonObject(with: try XCTUnwrap(urlRequest.httpBody)) as? [String: Any]
         )
 
-        XCTAssertEqual(Set(body.keys), ["model", "messages", "stream"])
+        XCTAssertEqual(Set(body.keys), ["model", "messages", "stream", "max_tokens", "temperature"])
         XCTAssertEqual(body["model"] as? String, "example-model")
         XCTAssertEqual(body["stream"] as? Bool, true)
+        XCTAssertEqual(body["max_tokens"] as? Int, 1_024)
+        XCTAssertEqual(body["temperature"] as? Double, 0)
         let messages = try XCTUnwrap(body["messages"] as? [[String: String]])
         XCTAssertEqual(messages, [
             ["role": "system", "content": "Translate to Chinese."],
@@ -33,9 +37,14 @@ final class OpenAIChatCompletionsTests: XCTestCase {
     func testEmptyAPIKeyIsNotSentAndNonStreamingAcceptsJSON() throws {
         let request = makeRequest(apiKey: "", streamsResponse: false)
         let urlRequest = try OpenAIChatCompletionRequestBuilder.makeURLRequest(from: request)
+        let body = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try XCTUnwrap(urlRequest.httpBody)) as? [String: Any]
+        )
 
         XCTAssertNil(urlRequest.value(forHTTPHeaderField: "Authorization"))
         XCTAssertEqual(urlRequest.value(forHTTPHeaderField: "Accept"), "application/json")
+        XCTAssertNil(body["max_tokens"])
+        XCTAssertNil(body["temperature"])
     }
 
     func testRequestBuilderRejectsUnsafeEndpointVariants() {
@@ -57,6 +66,19 @@ final class OpenAIChatCompletionsTests: XCTestCase {
                 apiKey: nil,
                 streamsResponse: true
             )
+            XCTAssertThrowsError(try OpenAIChatCompletionRequestBuilder.makeURLRequest(from: request)) {
+                XCTAssertEqual($0 as? TranslationServiceError, .invalidRequest)
+            }
+        }
+    }
+
+    func testRequestBuilderRejectsInvalidGenerationOptions() {
+        for request in [
+            makeRequest(maximumOutputTokens: 0, temperature: 0),
+            makeRequest(maximumOutputTokens: 8_193, temperature: 0),
+            makeRequest(maximumOutputTokens: 1_024, temperature: -0.1),
+            makeRequest(maximumOutputTokens: 1_024, temperature: 2.1),
+        ] {
             XCTAssertThrowsError(try OpenAIChatCompletionRequestBuilder.makeURLRequest(from: request)) {
                 XCTAssertEqual($0 as? TranslationServiceError, .invalidRequest)
             }
@@ -157,6 +179,22 @@ final class OpenAIChatCompletionsTests: XCTestCase {
         XCTAssertEqual(decoded.requestID, original.requestID)
         XCTAssertEqual(decoded.selectedText, original.selectedText)
         XCTAssertNil(decoded.apiKey)
+        XCTAssertNil(decoded.maximumOutputTokens)
+        XCTAssertNil(decoded.temperature)
+    }
+
+    func testSecureCodingRoundTripsGenerationOptions() throws {
+        let original = makeRequest(maximumOutputTokens: 2_048, temperature: 0)
+        let archived = try NSKeyedArchiver.archivedData(
+            withRootObject: original,
+            requiringSecureCoding: true
+        )
+        let decoded = try XCTUnwrap(
+            NSKeyedUnarchiver.unarchivedObject(ofClass: TranslationXPCRequest.self, from: archived)
+        )
+
+        XCTAssertEqual(decoded.maximumOutputTokens, 2_048)
+        XCTAssertEqual(decoded.temperature, 0)
     }
 
     private func makeRequest(apiKey: String?, streamsResponse: Bool) -> TranslationXPCRequest {
@@ -168,6 +206,24 @@ final class OpenAIChatCompletionsTests: XCTestCase {
             selectedText: "Selection",
             apiKey: apiKey,
             streamsResponse: streamsResponse
+        )
+    }
+
+
+    private func makeRequest(
+        maximumOutputTokens: Int?,
+        temperature: Double?
+    ) -> TranslationXPCRequest {
+        TranslationXPCRequest(
+            requestID: "request-options",
+            endpoint: "https://example.test/v1/chat/completions",
+            model: "example-model",
+            systemPrompt: "Translate.",
+            selectedText: "Selection",
+            apiKey: nil,
+            streamsResponse: true,
+            maximumOutputTokens: maximumOutputTokens,
+            temperature: temperature
         )
     }
 }

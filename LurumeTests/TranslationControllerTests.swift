@@ -123,8 +123,97 @@ final class TranslationControllerTests: XCTestCase {
         await controller.perform(using: performer)
 
         let recordedCalls = await performer.calls
-        XCTAssertEqual(recordedCalls, ["readiness", "translate"])
+        XCTAssertEqual(recordedCalls, ["readiness", "prepare", "translate"])
         XCTAssertEqual(controller.translatedText, "译文")
+    }
+
+    func testRepeatedAppleTranslationInvalidatesSameLanguageConfiguration() {
+        let controller = makeController()
+        let target = Locale.Language(identifier: "zh-Hans")
+        let preferences = TranslationRequestPreferences.apple(
+            targetLanguage: target,
+            sourceLanguage: Locale.Language(identifier: "en")
+        )
+
+        controller.receiveSelection(
+            PDFSelectionEvent(rawText: "First", pageIndex: 0),
+            paperID: UUID(),
+            paperName: "Paper",
+            automaticTranslation: false,
+            preferences: preferences
+        )
+        controller.requestTranslation(preferences: preferences)
+        let firstVersion = controller.configuration?.version
+
+        controller.receiveSelection(
+            PDFSelectionEvent(rawText: "Second", pageIndex: 0),
+            paperID: UUID(),
+            paperName: "Paper",
+            automaticTranslation: false,
+            preferences: preferences
+        )
+        controller.requestTranslation(preferences: preferences)
+
+        XCTAssertNotNil(firstVersion)
+        XCTAssertEqual(controller.configuration?.source?.minimalIdentifier, "en")
+        XCTAssertEqual(controller.configuration?.target?.minimalIdentifier, "zh")
+        XCTAssertGreaterThan(controller.configuration?.version ?? 0, firstVersion ?? 0)
+    }
+
+    func testAppleTranslationTimeoutCancelsSessionAndAllowsRetry() async {
+        let performer = HangingTranslationPerformer()
+        let controller = TranslationController(
+            sourceLanguageRecognizer: FixedSourceLanguageRecognizer(),
+            systemTimeoutPolicy: SystemTranslationTimeoutPolicy(
+                readiness: .seconds(1),
+                translation: .milliseconds(20),
+                resourcePreparation: .seconds(1)
+            )
+        )
+        let target = Locale.Language(identifier: "zh-Hans")
+        controller.receiveSelection(
+            PDFSelectionEvent(rawText: "Original", pageIndex: 0),
+            paperID: UUID(),
+            paperName: "Paper",
+            automaticTranslation: false,
+            targetLanguage: target
+        )
+        controller.requestTranslation(targetLanguage: target)
+
+        await controller.perform(using: performer)
+
+        XCTAssertEqual(controller.state, .failed("系统翻译响应超时，请重试。"))
+        XCTAssertNil(controller.configuration)
+        XCTAssertEqual(performer.cancelCount, 1)
+    }
+
+    func testAppleTranslationSessionActivationCannotWaitForever() async {
+        let controller = TranslationController(
+            sourceLanguageRecognizer: FixedSourceLanguageRecognizer(),
+            systemTimeoutPolicy: SystemTranslationTimeoutPolicy(
+                readiness: .milliseconds(20),
+                translation: .seconds(1),
+                resourcePreparation: .seconds(1)
+            )
+        )
+        let target = Locale.Language(identifier: "zh-Hans")
+        controller.receiveSelection(
+            PDFSelectionEvent(rawText: "Original", pageIndex: 0),
+            paperID: UUID(),
+            paperName: "Paper",
+            automaticTranslation: false,
+            targetLanguage: target
+        )
+
+        controller.requestTranslation(targetLanguage: target)
+        XCTAssertTrue(controller.isTranslationActive)
+        try? await waitUntil {
+            controller.state == .failed("系统翻译会话启动超时，请重试。")
+        }
+
+        XCTAssertEqual(controller.state, .failed("系统翻译会话启动超时，请重试。"))
+        XCTAssertNil(controller.configuration)
+        XCTAssertFalse(controller.isTranslationActive)
     }
 
     func testTurningOffAutomaticTranslationCancelsPendingDebounce() async {
@@ -277,6 +366,8 @@ final class TranslationControllerTests: XCTestCase {
         XCTAssertTrue(request.systemPrompt.contains("英语"))
         XCTAssertTrue(request.systemPrompt.contains("简体中文"))
         XCTAssertFalse(request.systemPrompt.contains("Paper"))
+        XCTAssertEqual(request.maximumOutputTokens, 1_024)
+        XCTAssertEqual(request.temperature, 0)
     }
 
     func testDecliningOriginConsentNeverStartsModelRequest() throws {
@@ -291,6 +382,25 @@ final class TranslationControllerTests: XCTestCase {
         XCTAssertEqual(sender.requestCount, 0)
         XCTAssertNil(controller.pendingOriginConsent)
         XCTAssertEqual(controller.state, .failed("未授权向该服务发送选中文字。"))
+    }
+
+    func testModelTranslationOmitsOptimizationFieldsWhenDisabled() async throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        let preferences = TranslationRequestPreferences(
+            engine: .customModel,
+            sourceLanguageIdentifier: "en",
+            targetLanguageIdentifier: "zh-Hans",
+            modelConfiguration: try validatedConfiguration(optimizesForTranslation: false),
+            modelOriginIsConfirmed: true
+        )
+        receiveModelSelection("Selection", controller: controller, preferences: preferences)
+
+        controller.requestTranslation(preferences: preferences)
+        let request = try await waitForModelRequest(sender)
+
+        XCTAssertNil(request.maximumOutputTokens)
+        XCTAssertNil(request.temperature)
     }
 
     func testOversizedSelectionFailsBeforeKeychainOrXPC() async throws {
@@ -594,12 +704,14 @@ final class TranslationControllerTests: XCTestCase {
 
     private func validatedConfiguration(
         streamsResponse: Bool = true,
+        optimizesForTranslation: Bool = true,
         prompt: String = ModelTranslationConfiguration.defaultPrompt
     ) throws -> ValidatedModelTranslationConfiguration {
         try ModelTranslationConfigurationValidator.validate(
             baseURL: "http://127.0.0.1:8765/v1",
             model: "fixture-model",
             streamsResponse: streamsResponse,
+            optimizesForTranslation: optimizesForTranslation,
             prompt: prompt
         )
     }
@@ -685,9 +797,35 @@ private actor RecordingTranslationPerformer: TranslationPerforming {
         return .downloadable
     }
 
+    func prepare() async throws {
+        calls.append("prepare")
+    }
+
     func translate(_ text: String) async throws -> TranslationOutput {
         calls.append("translate")
         return TranslationOutput(targetText: "译文")
+    }
+}
+
+private final class HangingTranslationPerformer: TranslationPerforming, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedCancelCount = 0
+
+    var cancelCount: Int {
+        lock.withLock { storedCancelCount }
+    }
+
+    func readiness(from source: Locale.Language, to target: Locale.Language) async -> TranslationReadiness {
+        .installed
+    }
+
+    func translate(_ text: String) async throws -> TranslationOutput {
+        try await Task.sleep(for: .seconds(60))
+        return TranslationOutput(targetText: "late")
+    }
+
+    func cancel() {
+        lock.withLock { storedCancelCount += 1 }
     }
 }
 

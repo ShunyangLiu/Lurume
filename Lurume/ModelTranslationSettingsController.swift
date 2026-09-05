@@ -35,6 +35,9 @@ final class ModelTranslationSettingsController: ObservableObject {
     @Published var draftStreamsResponse = true {
         didSet { draftDidChange() }
     }
+    @Published var draftOptimizesForTranslation = true {
+        didSet { draftDidChange() }
+    }
     @Published var draftPrompt = ModelTranslationConfiguration.defaultPrompt {
         didSet { draftDidChange() }
     }
@@ -69,6 +72,7 @@ final class ModelTranslationSettingsController: ObservableObject {
         draftBaseURL = settings.modelTranslationBaseURL
         draftModel = settings.modelTranslationModel
         draftStreamsResponse = settings.modelTranslationStreamsResponse
+        draftOptimizesForTranslation = settings.modelTranslationOptimizesForTranslation
         draftPrompt = settings.modelTranslationPrompt
         isSynchronizingDraft = false
         isLoadingAPIKey = true
@@ -193,7 +197,15 @@ final class ModelTranslationSettingsController: ObservableObject {
             ),
             selectedText: ModelTranslationConfiguration.connectionTestText,
             apiKey: draftAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-            streamsResponse: configuration.configuration.streamsResponse
+            streamsResponse: configuration.configuration.streamsResponse,
+            maximumOutputTokens: configuration.configuration.optimizesForTranslation
+                ? ModelTranslationGenerationOptions.outputTokenLimit(
+                    for: ModelTranslationConfiguration.connectionTestText
+                )
+                : nil,
+            temperature: configuration.configuration.optimizesForTranslation
+                ? ModelTranslationGenerationOptions.temperature
+                : nil
         )
 
         do {
@@ -222,6 +234,7 @@ final class ModelTranslationSettingsController: ObservableObject {
             baseURL: draftBaseURL,
             model: draftModel,
             streamsResponse: draftStreamsResponse,
+            optimizesForTranslation: draftOptimizesForTranslation,
             prompt: draftPrompt
         )
     }

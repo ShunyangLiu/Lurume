@@ -247,13 +247,13 @@ struct TranslationInspector: View {
 
     @ViewBuilder
     private var primaryTranslationAction: some View {
-        if controller.isModelTranslationActive {
+        if controller.isTranslationActive {
             Button("停止") {
                 controller.stopTranslation()
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .accessibilityHint("停止当前大模型请求并保留已经生成的译文")
+            .accessibilityHint("停止当前翻译请求；大模型翻译会保留已经生成的部分译文")
         } else if !controller.canRetryModelTranslation {
             if controller.state != .translating
                 && controller.state != .streaming

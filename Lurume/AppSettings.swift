@@ -14,6 +14,7 @@ final class AppSettings: ObservableObject {
         static let modelTranslationBaseURL = "modelTranslationBaseURL"
         static let modelTranslationModel = "modelTranslationModel"
         static let modelTranslationStreamsResponse = "modelTranslationStreamsResponse"
+        static let modelTranslationOptimizesForTranslation = "modelTranslationOptimizesForTranslation"
         static let modelTranslationPrompt = "modelTranslationPrompt"
         static let confirmedTranslationOrigins = "confirmedTranslationOrigins"
     }
@@ -73,6 +74,15 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    @Published private(set) var modelTranslationOptimizesForTranslation: Bool {
+        didSet {
+            defaults.set(
+                modelTranslationOptimizesForTranslation,
+                forKey: Key.modelTranslationOptimizesForTranslation
+            )
+        }
+    }
+
     @Published private(set) var modelTranslationPrompt: String {
         didSet { defaults.set(modelTranslationPrompt, forKey: Key.modelTranslationPrompt) }
     }
@@ -120,9 +130,18 @@ final class AppSettings: ObservableObject {
         } else {
             storedStreamsResponse = defaults.bool(forKey: Key.modelTranslationStreamsResponse)
         }
+        let storedOptimizesForTranslation: Bool
+        if defaults.object(forKey: Key.modelTranslationOptimizesForTranslation) == nil {
+            storedOptimizesForTranslation = true
+        } else {
+            storedOptimizesForTranslation = defaults.bool(
+                forKey: Key.modelTranslationOptimizesForTranslation
+            )
+        }
         modelTranslationBaseURL = storedBaseURL
         modelTranslationModel = storedModel
         modelTranslationStreamsResponse = storedStreamsResponse
+        modelTranslationOptimizesForTranslation = storedOptimizesForTranslation
         modelTranslationPrompt = storedPrompt
 
         confirmedTranslationOrigins = Set(
@@ -139,6 +158,7 @@ final class AppSettings: ObservableObject {
                baseURL: storedBaseURL,
                model: storedModel,
                streamsResponse: storedStreamsResponse,
+               optimizesForTranslation: storedOptimizesForTranslation,
                prompt: storedPrompt
            )) == nil {
             translationEngine = .apple
@@ -165,6 +185,7 @@ final class AppSettings: ObservableObject {
             baseURL: modelTranslationBaseURL,
             model: modelTranslationModel,
             streamsResponse: modelTranslationStreamsResponse,
+            optimizesForTranslation: modelTranslationOptimizesForTranslation,
             prompt: modelTranslationPrompt
         )
     }
@@ -191,6 +212,7 @@ final class AppSettings: ObservableObject {
             baseURL: configuration?.baseURL,
             model: configuration?.model,
             streamsResponse: configuration?.streamsResponse,
+            optimizesForTranslation: configuration?.optimizesForTranslation,
             prompt: configuration?.prompt
         )
     }
@@ -202,6 +224,7 @@ final class AppSettings: ObservableObject {
         modelTranslationBaseURL = configuration.configuration.baseURL
         modelTranslationModel = configuration.configuration.model
         modelTranslationStreamsResponse = configuration.configuration.streamsResponse
+        modelTranslationOptimizesForTranslation = configuration.configuration.optimizesForTranslation
         modelTranslationPrompt = configuration.configuration.prompt
         translationEngine = engine
     }
