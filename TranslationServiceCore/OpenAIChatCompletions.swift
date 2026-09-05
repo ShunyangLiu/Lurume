@@ -106,7 +106,11 @@ struct OpenAIChatCompletionRequestBuilder {
             throw TranslationServiceError.invalidRequest
         }
         if let temperature = request.temperature,
-           (!temperature.isFinite || !(0...2).contains(temperature)) {
+           (!temperature.isFinite || !(0...(request.apiFormat == .anthropic ? 1.0 : 2.0)).contains(temperature)) {
+            throw TranslationServiceError.invalidRequest
+        }
+        if let apiKey = request.apiKey,
+           apiKey.utf8.count > 16_384 || apiKey.contains(where: { $0.isNewline }) {
             throw TranslationServiceError.invalidRequest
         }
 
@@ -124,6 +128,15 @@ struct OpenAIChatCompletionRequestBuilder {
         if let temperature = request.temperature {
             body["temperature"] = temperature
         }
+        if request.apiFormat == .anthropic {
+            body["system"] = request.systemPrompt
+            body["messages"] = [["role": "user", "content": request.selectedText]]
+            // Messages requires max_tokens even when optional translation tuning is disabled.
+            body["max_tokens"] = request.maximumOutputTokens ?? 8_192
+        }
+        if request.disablesThinking {
+            body["thinking"] = ["type": "disabled"]
+        }
         let bodyData = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
 
         var urlRequest = URLRequest(url: url)
@@ -134,7 +147,12 @@ struct OpenAIChatCompletionRequestBuilder {
             request.streamsResponse ? "text/event-stream" : "application/json",
             forHTTPHeaderField: "Accept"
         )
-        if let apiKey = request.apiKey, !apiKey.isEmpty {
+        if request.apiFormat == .anthropic {
+            urlRequest.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+            if let apiKey = request.apiKey, !apiKey.isEmpty {
+                urlRequest.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+            }
+        } else if let apiKey = request.apiKey, !apiKey.isEmpty {
             urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
         return urlRequest
@@ -148,7 +166,23 @@ struct OpenAIChatCompletionResponseParser {
         return response.text
     }
 
-    static func parse(from data: Data) throws -> (text: String, error: TranslationServiceError?) {
+    static func parse(
+        from data: Data, apiFormat: TranslationAPIFormat = .openAI
+    ) throws -> (text: String, error: TranslationServiceError?) {
+        if apiFormat == .anthropic {
+            guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  root["type"] as? String == "message",
+                  let blocks = root["content"] as? [[String: Any]] else {
+                throw TranslationServiceError.invalidResponse
+            }
+            let text = blocks.compactMap { block -> String? in
+                guard block["type"] as? String == "text" else { return nil }
+                return block["text"] as? String
+            }.joined()
+            let error = anthropicCompletionError(for: root["stop_reason"])
+            if error == nil, text.isEmpty { throw TranslationServiceError.nonTextResponse }
+            return (text, error)
+        }
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = root["choices"] as? [[String: Any]],
               let first = choices.first,
@@ -178,6 +212,15 @@ struct OpenAIChatCompletionResponseParser {
         default: return .invalidResponse
         }
     }
+
+    static func anthropicCompletionError(for reason: Any?) -> TranslationServiceError? {
+        switch reason as? String {
+        case "end_turn", "stop_sequence": nil
+        case "max_tokens": .outputTruncated
+        case "refusal": .contentFiltered
+        default: .invalidResponse
+        }
+    }
 }
 
 enum OpenAIStreamEvent: Equatable {
@@ -194,6 +237,12 @@ struct OpenAIChatCompletionSSEParser {
     private(set) var receivedCompletionMarker = false
     private(set) var acceptedDataFrameCount = 0
     private var terminalError: TranslationServiceError?
+    private let apiFormat: TranslationAPIFormat
+    private var anthropicStopReceived = false
+
+    init(apiFormat: TranslationAPIFormat = .openAI) {
+        self.apiFormat = apiFormat
+    }
 
     mutating func append(_ data: Data) throws -> [OpenAIStreamEvent] {
         buffer.append(data)
@@ -245,6 +294,7 @@ struct OpenAIChatCompletionSSEParser {
         receivedCompletionMarker = false
         acceptedDataFrameCount = 0
         terminalError = nil
+        anthropicStopReceived = false
     }
 
     private func nextBoundary(in data: Data) -> Range<Data.Index>? {
@@ -277,6 +327,7 @@ struct OpenAIChatCompletionSSEParser {
 
         let payload = dataLines.joined(separator: "\n")
         guard !payload.isEmpty else { return [] }
+        if apiFormat == .anthropic { return try parseAnthropicPayload(payload) }
         if payload == "[DONE]" {
             acceptedDataFrameCount += 1
             receivedCompletionMarker = true
@@ -306,5 +357,60 @@ struct OpenAIChatCompletionSSEParser {
             }
         }
         return events
+    }
+
+    private mutating func parseAnthropicPayload(_ payload: String) throws -> [OpenAIStreamEvent] {
+        guard let root = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
+              let type = root["type"] as? String else {
+            throw TranslationServiceError.invalidResponse
+        }
+        if receivedCompletionMarker { return [] }
+        var text: String?
+        switch type {
+        case "ping": return [] // Heartbeats alone must not satisfy the first-response timeout.
+        case "message_start", "content_block_stop":
+            break
+        case "content_block_start":
+            guard let block = root["content_block"] as? [String: Any] else {
+                throw TranslationServiceError.invalidResponse
+            }
+            if block["type"] as? String == "text" { text = block["text"] as? String }
+        case "content_block_delta":
+            guard let delta = root["delta"] as? [String: Any] else {
+                throw TranslationServiceError.invalidResponse
+            }
+            if delta["type"] as? String == "text_delta" {
+                guard let content = delta["text"] as? String else {
+                    throw TranslationServiceError.invalidResponse
+                }
+                text = content
+            }
+        case "message_delta":
+            guard let delta = root["delta"] as? [String: Any] else {
+                throw TranslationServiceError.invalidResponse
+            }
+            if let reason = delta["stop_reason"], !(reason is NSNull) {
+                anthropicStopReceived = true
+                terminalError = OpenAIChatCompletionResponseParser.anthropicCompletionError(for: reason)
+                if let terminalError { return [.failed(terminalError)] }
+            }
+        case "message_stop":
+            guard anthropicStopReceived else { throw TranslationServiceError.streamEndedEarly }
+            receivedCompletionMarker = true
+            return terminalError.map { [.failed($0)] } ?? [.finished]
+        case "error":
+            // Never surface the raw provider error body (it may reflect request data).
+            terminalError = .connection
+            return [.failed(.connection)]
+        default:
+            return [] // Anthropic may introduce new event types.
+        }
+        acceptedDataFrameCount += 1
+        if let text, !text.isEmpty {
+            guard !anthropicStopReceived else { throw TranslationServiceError.invalidResponse }
+            receivedText = true
+            return [.delta(text)]
+        }
+        return []
     }
 }

@@ -166,6 +166,8 @@ struct TranslationConfigurationIdentity: Equatable, Sendable {
     let streamsResponse: Bool?
     let optimizesForTranslation: Bool?
     let prompt: String?
+    var provider: TranslationProvider? = nil
+    var apiFormat: TranslationAPIFormat? = nil
 }
 
 enum TranslationResultSource: Equatable, Sendable {
@@ -250,6 +252,8 @@ struct TranslationCacheKey: Hashable, Sendable {
     let model: String?
     let optimizesForTranslation: Bool?
     let prompt: String?
+    var provider: TranslationProvider? = nil
+    var apiFormat: TranslationAPIFormat? = nil
 
     static func apple(
         text: String,
@@ -282,7 +286,9 @@ struct TranslationCacheKey: Hashable, Sendable {
             baseURL: configuration.configuration.baseURL,
             model: configuration.configuration.model,
             optimizesForTranslation: configuration.configuration.optimizesForTranslation,
-            prompt: configuration.configuration.prompt
+            prompt: configuration.configuration.prompt,
+            provider: configuration.configuration.provider,
+            apiFormat: configuration.configuration.apiFormat
         )
     }
 }
@@ -316,14 +322,14 @@ final class TranslationController: ObservableObject {
 
     private let sourceLanguageRecognizer: any SourceLanguageRecognizing
     private let availabilityChecker: any TranslationAvailabilityChecking
-    private let keyStore: any TranslationAPIKeyStoring
+    private let keyStore: (any TranslationAPIKeyStoring)?
     private let modelRequestSender: any TranslationRequestSending
     private let systemTimeoutPolicy: SystemTranslationTimeoutPolicy
 
     init(
         sourceLanguageRecognizer: any SourceLanguageRecognizing = NaturalLanguageSourceRecognizer(),
         availabilityChecker: any TranslationAvailabilityChecking = SystemTranslationAvailabilityChecker(),
-        keyStore: any TranslationAPIKeyStoring = KeychainTranslationAPIKeyStore(),
+        keyStore: (any TranslationAPIKeyStoring)? = nil,
         modelRequestSender: any TranslationRequestSending = TranslationXPCClient(),
         systemTimeoutPolicy: SystemTranslationTimeoutPolicy = .production
     ) {
@@ -713,7 +719,9 @@ final class TranslationController: ObservableObject {
         guard request.generation == generation else { return }
         activeModelRequest = request
         state = .connecting
-        let keyStore = self.keyStore
+        let keyStore = self.keyStore ?? LocalTranslationAPIKeyStore(
+            scope: request.configuration.configuration.credentialScope
+        )
         activeModelPreparationTask = Task { [weak self] in
             do {
                 let apiKey = try await keyStore.read()
@@ -752,7 +760,9 @@ final class TranslationController: ObservableObject {
                 : nil,
             temperature: context.configuration.configuration.optimizesForTranslation
                 ? ModelTranslationGenerationOptions.temperature
-                : nil
+                : nil,
+            apiFormat: context.configuration.configuration.apiFormat,
+            disablesThinking: context.configuration.configuration.disablesThinking
         )
         do {
             try modelRequestSender.start(request) { [weak self] event in

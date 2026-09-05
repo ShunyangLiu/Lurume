@@ -63,9 +63,12 @@ PDFKit 阅读器、阅读位置恢复、
 划词翻译、PDF 属性元数据与手动编辑、黄色文字高亮、高亮列表与浮动纯文本笔记、PDF
 自带目录、页面缩略图、三态阅读状态，以及 Zotero 风格的文献集、未分类视图、表格文献
 库、多选和拖放整理。翻译默认使用英语原文和简体中文目标语言，可在设置中将原文语言
-切换为自动识别。Apple 系统翻译仍是新安装和升级后的默认引擎；开发版也可在
-**设置 → 翻译** 中配置一套 OpenAI-compatible Chat Completions 服务，使用自己的 Base URL、
-模型和 API Key 对当前选中文字进行流式翻译。API Key 只保存在 macOS 钥匙串，网络请求只由
+切换为自动识别。Apple 系统翻译是新安装的默认引擎，升级保留已保存的有效引擎选择；开发版可在
+**设置 → 翻译** 中选择 OpenAI、Claude、GLM、OpenRouter、火山引擎或 DeepSeek 预设，
+也可自定义地址和模型。支持 OpenAI-compatible Chat Completions 和 Anthropic 原生 Messages。
+服务商配置分别记忆；API Key 按服务商、协议和地址隔离，明文保存在权限受限的本机文件中，
+不再自动访问钥匙串。旧 Key 可由用户主动读取后保存，旧条目不会自动删除。
+本地文件及系统备份可能包含 Key，请勿分享。详见 [翻译预设与本地凭据](docs/translation-providers.md)。网络请求只由
 无文件权限的专用 Translation XPC 发出；不会发送论文标题、路径、页码、整页正文、高亮或
 笔记。外部服务可能记录内容并产生费用，Lurume 不会在失败时静默重试或自动改用其他引擎。
 

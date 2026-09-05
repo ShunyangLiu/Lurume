@@ -16,10 +16,20 @@ final class AppSettings: ObservableObject {
         static let modelTranslationStreamsResponse = "modelTranslationStreamsResponse"
         static let modelTranslationOptimizesForTranslation = "modelTranslationOptimizesForTranslation"
         static let modelTranslationPrompt = "modelTranslationPrompt"
+        static let modelTranslationProvider = "modelTranslationProvider"
+        static let modelTranslationAPIFormat = "modelTranslationAPIFormat"
+        static let modelTranslationProfiles = "modelTranslationProfiles"
         static let confirmedTranslationOrigins = "confirmedTranslationOrigins"
     }
 
     private let defaults: UserDefaults
+    @Published private(set) var modelTranslationProvider: TranslationProvider {
+        didSet { defaults.set(modelTranslationProvider.rawValue, forKey: Key.modelTranslationProvider) }
+    }
+    @Published private(set) var modelTranslationAPIFormat: TranslationAPIFormat {
+        didSet { defaults.set(modelTranslationAPIFormat.rawValue, forKey: Key.modelTranslationAPIFormat) }
+    }
+    private(set) var modelTranslationProfiles: [String: ModelTranslationProfile]
 
     @Published var automaticTranslation: Bool {
         didSet { defaults.set(automaticTranslation, forKey: Key.automaticTranslation) }
@@ -98,6 +108,16 @@ final class AppSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        // Older installs are custom configurations, even when their URL matches a preset.
+        let storedProvider = defaults.string(forKey: Key.modelTranslationProvider)
+            .flatMap(TranslationProvider.init(rawValue:)) ?? .custom
+        let storedAPIFormat = defaults.string(forKey: Key.modelTranslationAPIFormat)
+            .flatMap(TranslationAPIFormat.init(rawValue:)) ?? .openAI
+        modelTranslationProvider = storedProvider
+        modelTranslationAPIFormat = storedAPIFormat
+        modelTranslationProfiles = defaults.data(forKey: Key.modelTranslationProfiles).flatMap {
+            try? JSONDecoder().decode([String: ModelTranslationProfile].self, from: $0)
+        } ?? [:]
         if defaults.object(forKey: Key.automaticTranslation) == nil {
             automaticTranslation = true
         } else {
@@ -159,7 +179,9 @@ final class AppSettings: ObservableObject {
                model: storedModel,
                streamsResponse: storedStreamsResponse,
                optimizesForTranslation: storedOptimizesForTranslation,
-               prompt: storedPrompt
+               prompt: storedPrompt,
+               provider: storedProvider,
+               apiFormat: storedAPIFormat
            )) == nil {
             translationEngine = .apple
             defaults.set(TranslationEngine.apple.rawValue, forKey: Key.translationEngine)
@@ -186,7 +208,9 @@ final class AppSettings: ObservableObject {
             model: modelTranslationModel,
             streamsResponse: modelTranslationStreamsResponse,
             optimizesForTranslation: modelTranslationOptimizesForTranslation,
-            prompt: modelTranslationPrompt
+            prompt: modelTranslationPrompt,
+            provider: modelTranslationProvider,
+            apiFormat: modelTranslationAPIFormat
         )
     }
 
@@ -213,7 +237,9 @@ final class AppSettings: ObservableObject {
             model: configuration?.model,
             streamsResponse: configuration?.streamsResponse,
             optimizesForTranslation: configuration?.optimizesForTranslation,
-            prompt: configuration?.prompt
+            prompt: configuration?.prompt,
+            provider: configuration?.provider,
+            apiFormat: configuration?.apiFormat
         )
     }
 
@@ -221,6 +247,17 @@ final class AppSettings: ObservableObject {
         _ configuration: ValidatedModelTranslationConfiguration,
         engine: TranslationEngine
     ) {
+        // Save the previous profile as well, so the first switch preserves legacy settings.
+        if let previous = modelTranslationConfiguration?.configuration {
+            modelTranslationProfiles[previous.provider.rawValue] = ModelTranslationProfile(configuration: previous)
+        }
+        let next = configuration.configuration
+        modelTranslationProfiles[next.provider.rawValue] = ModelTranslationProfile(configuration: next)
+        if let data = try? JSONEncoder().encode(modelTranslationProfiles) {
+            defaults.set(data, forKey: Key.modelTranslationProfiles)
+        }
+        modelTranslationProvider = next.provider
+        modelTranslationAPIFormat = next.apiFormat
         modelTranslationBaseURL = configuration.configuration.baseURL
         modelTranslationModel = configuration.configuration.model
         modelTranslationStreamsResponse = configuration.configuration.streamsResponse

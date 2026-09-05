@@ -3,6 +3,61 @@ import XCTest
 @testable import Lurume
 
 final class TranslationXPCIntegrationTests: XCTestCase {
+    func testNativeMessagesStreamsAndCompletesThroughXPC() throws {
+        let client = TranslationXPCTestClient()
+        defer { client.invalidate() }
+        let result = try client.translate(
+            endpoint: fakeEndpoint(path: "/anthropic/stream"), streamsResponse: true, apiFormat: .anthropic
+        )
+        XCTAssertEqual(result.text, "native translation")
+        XCTAssertEqual(result.terminalKind, "completed")
+    }
+
+    func testNativeMessagesNonStreamingThroughXPC() throws {
+        let client = TranslationXPCTestClient()
+        defer { client.invalidate() }
+        let result = try client.translate(
+            endpoint: fakeEndpoint(path: "/anthropic/nonstream"), streamsResponse: false, apiFormat: .anthropic
+        )
+        XCTAssertEqual(result.text, "native translation")
+        XCTAssertEqual(result.terminalKind, "completed")
+    }
+
+    func testNativeMessagesPreservesTruncatedTextInBothModes() throws {
+        for streaming in [true, false] {
+            let client = TranslationXPCTestClient()
+            defer { client.invalidate() }
+            let result = try client.translate(
+                endpoint: fakeEndpoint(path: "/anthropic/truncated"), streamsResponse: streaming, apiFormat: .anthropic
+            )
+            XCTAssertEqual(result.text, "native translation")
+            XCTAssertEqual(result.terminalKind, "failed")
+            XCTAssertEqual(result.errorCode, "output_truncated")
+        }
+    }
+
+    func testNativeMessagesEarlyEOFIsNotSuccess() throws {
+        let client = TranslationXPCTestClient()
+        defer { client.invalidate() }
+        let result = try client.translate(
+            endpoint: fakeEndpoint(path: "/anthropic/early-eof"), streamsResponse: true, apiFormat: .anthropic
+        )
+        XCTAssertEqual(result.text, "native translation")
+        XCTAssertEqual(result.terminalKind, "failed")
+        XCTAssertEqual(result.errorCode, "stream_ended_early")
+    }
+
+    func testNativeMessagesCanBeCancelledThroughXPC() throws {
+        let client = TranslationXPCTestClient()
+        defer { client.invalidate() }
+        let result = try client.translate(
+            endpoint: fakeEndpoint(path: "/anthropic/slow"), streamsResponse: true,
+            cancelAfterFirstDelta: true, apiFormat: .anthropic
+        )
+        XCTAssertEqual(result.text, "native translation")
+        XCTAssertEqual(result.terminalKind, "cancelled")
+    }
+
     func testLateInvalidationOrInterruptionCannotFailNewConnection() throws {
         let factory = StubConnectionFactory()
         let client = TranslationXPCClient(makeConnection: { factory.make() })
@@ -99,6 +154,7 @@ final class TranslationXPCIntegrationTests: XCTestCase {
             requestSender: requestSender
         )
         controller.draftBaseURL = root + "/v1/chat/completions"
+        await controller.waitForAPIKeyLoad()
         controller.draftModel = "fixture-model"
         controller.draftPrompt = ModelTranslationConfiguration.defaultPrompt
         controller.draftStreamsResponse = true
@@ -294,7 +350,8 @@ private final class TranslationXPCTestClient: NSObject, TranslationXPCClientProt
     func translate(
         endpoint: URL,
         streamsResponse: Bool,
-        cancelAfterFirstDelta: Bool = false
+        cancelAfterFirstDelta: Bool = false,
+        apiFormat: TranslationAPIFormat = .openAI
     ) throws -> TranslationXPCTestResult {
         let requestID = UUID().uuidString
         lock.lock()
@@ -317,8 +374,9 @@ private final class TranslationXPCTestClient: NSObject, TranslationXPCClientProt
             model: "fixture-model",
             systemPrompt: "Translate the selected text.",
             selectedText: "fixture selection only",
-            apiKey: nil,
-            streamsResponse: streamsResponse
+            apiKey: apiFormat == .anthropic ? "native-fixture-key" : nil,
+            streamsResponse: streamsResponse,
+            apiFormat: apiFormat
         )
         let accepted = DispatchSemaphore(value: 0)
         let acceptance = LockedBool()

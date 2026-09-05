@@ -1,5 +1,13 @@
 import Foundation
 
+enum TranslationAPIFormat: String, Codable, CaseIterable, Sendable {
+    case openAI
+    case anthropic
+
+    var title: String { self == .openAI ? "OpenAI Chat Completions" : "Anthropic Messages" }
+    var endpointSuffix: String { self == .openAI ? "/chat/completions" : "/messages" }
+}
+
 enum TranslationXPCConstants {
     static let serviceName = "app.lurume.Lurume.TranslationService"
 }
@@ -29,6 +37,8 @@ final class TranslationXPCRequest: NSObject, NSSecureCoding, @unchecked Sendable
     let streamsResponse: Bool
     let maximumOutputTokens: Int?
     let temperature: Double?
+    let apiFormat: TranslationAPIFormat
+    let disablesThinking: Bool
 
     init(
         requestID: String,
@@ -39,7 +49,9 @@ final class TranslationXPCRequest: NSObject, NSSecureCoding, @unchecked Sendable
         apiKey: String?,
         streamsResponse: Bool,
         maximumOutputTokens: Int? = nil,
-        temperature: Double? = nil
+        temperature: Double? = nil,
+        apiFormat: TranslationAPIFormat = .openAI,
+        disablesThinking: Bool = false
     ) {
         self.requestID = requestID
         self.endpoint = endpoint
@@ -50,6 +62,8 @@ final class TranslationXPCRequest: NSObject, NSSecureCoding, @unchecked Sendable
         self.streamsResponse = streamsResponse
         self.maximumOutputTokens = maximumOutputTokens
         self.temperature = temperature
+        self.apiFormat = apiFormat
+        self.disablesThinking = disablesThinking
     }
 
     required init?(coder: NSCoder) {
@@ -77,6 +91,14 @@ final class TranslationXPCRequest: NSObject, NSSecureCoding, @unchecked Sendable
             of: NSNumber.self,
             forKey: "temperature"
         ) as NSNumber?)?.doubleValue
+        if coder.containsValue(forKey: "apiFormat") {
+            guard let raw = coder.decodeObject(of: NSString.self, forKey: "apiFormat") as String?,
+                  let format = TranslationAPIFormat(rawValue: raw) else { return nil }
+            apiFormat = format
+        } else {
+            apiFormat = .openAI
+        }
+        disablesThinking = coder.decodeBool(forKey: "disablesThinking")
     }
 
     func encode(with coder: NSCoder) {
@@ -89,6 +111,8 @@ final class TranslationXPCRequest: NSObject, NSSecureCoding, @unchecked Sendable
             coder.encode(apiKey as NSString, forKey: "apiKey")
         }
         coder.encode(streamsResponse, forKey: "streamsResponse")
+        coder.encode(apiFormat.rawValue as NSString, forKey: "apiFormat")
+        coder.encode(disablesThinking, forKey: "disablesThinking")
         if let maximumOutputTokens {
             coder.encode(NSNumber(value: maximumOutputTokens), forKey: "maximumOutputTokens")
         }

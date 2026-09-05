@@ -28,7 +28,7 @@ final class TranslationRequestOperation: NSObject, @unchecked Sendable {
     private var session: URLSession?
     private var task: URLSessionDataTask?
     private var responseData = Data()
-    private var parser = OpenAIChatCompletionSSEParser()
+    private var parser: OpenAIChatCompletionSSEParser
     private var firstByteTimer: DispatchWorkItem?
     private var streamIdleTimer: DispatchWorkItem?
     private var totalTimer: DispatchWorkItem?
@@ -43,6 +43,7 @@ final class TranslationRequestOperation: NSObject, @unchecked Sendable {
         completionHandler: @escaping CompletionHandler
     ) {
         self.request = request
+        self.parser = OpenAIChatCompletionSSEParser(apiFormat: request.apiFormat)
         self.timeoutPolicy = timeoutPolicy
         self.eventHandler = eventHandler
         self.completionHandler = completionHandler
@@ -293,7 +294,9 @@ extension TranslationRequestOperation: URLSessionDataDelegate, URLSessionTaskDel
                 }
                 finishSuccessfully()
             } else {
-                let response = try OpenAIChatCompletionResponseParser.parse(from: responseData)
+                let response = try OpenAIChatCompletionResponseParser.parse(
+                    from: responseData, apiFormat: request.apiFormat
+                )
                 if !response.text.isEmpty { emit(kind: "delta", text: response.text) }
                 if let error = response.error {
                     finish(with: error)

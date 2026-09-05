@@ -23,6 +23,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": {"message": "invalid JSON"}})
             return
 
+        if self.path.startswith("/anthropic/"):
+            self._anthropic(payload)
+            return
+
         required_fields = {"model", "messages", "stream"}
         optional_fields = {"max_tokens", "temperature"}
         if not required_fields <= set(payload) or set(payload) - required_fields - optional_fields:
@@ -170,6 +174,52 @@ class Handler(BaseHTTPRequestHandler):
             self._write(b"data: " + (b"a" * 1_048_577))
         else:
             self._json(404, {"error": {"message": "unknown fixture"}})
+
+    def _anthropic(self, payload):
+        required = {"model", "system", "messages", "stream", "max_tokens"}
+        if (
+            not required <= set(payload)
+            or set(payload) - required - {"temperature", "thinking"}
+            or self.headers.get("x-api-key") != "native-fixture-key"
+            or self.headers.get("Authorization") is not None
+            or self.headers.get("anthropic-version") != "2023-06-01"
+            or payload.get("system") != "Translate the selected text."
+            or payload.get("messages") != [{"role": "user", "content": "fixture selection only"}]
+            or not 1 <= payload.get("max_tokens", 0) <= 8192
+        ):
+            self._json(400, {"error": {"message": "invalid native fixture request"}})
+            return
+        reason = "max_tokens" if "truncated" in self.path else "end_turn"
+        if not payload.get("stream"):
+            self._json(200, {
+                "type": "message", "content": [{"type": "text", "text": "native translation"}],
+                "stop_reason": reason,
+            })
+            return
+
+        def event(payload):
+            return ("data: " + json.dumps(payload, ensure_ascii=False) + "\n\n").encode("utf-8")
+
+        frames = [
+            event({"type": "message_start", "message": {"type": "message"}}),
+            event({"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}),
+            event({"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "native translation"}}),
+        ]
+        if "early-eof" not in self.path:
+            frames.extend([
+                event({"type": "content_block_stop", "index": 0}),
+                event({"type": "message_delta", "delta": {"stop_reason": reason}}),
+                event({"type": "message_stop"}),
+            ])
+        if "slow" in self.path:
+            self._start_stream()
+            for frame in frames[:3]:
+                self._write(frame)
+            time.sleep(2)
+            for frame in frames[3:]:
+                self._write(frame)
+        else:
+            self._stream(frames, split=True)
 
     def _json(self, status, payload):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")

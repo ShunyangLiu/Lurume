@@ -199,6 +199,7 @@ final class ModelTranslationConfigurationTests: XCTestCase {
         await controller.load(from: settings)
         controller.draftEngine = .customModel
         controller.draftBaseURL = "https://example.com/v1/chat/completions"
+        await controller.waitForAPIKeyLoad()
         controller.draftModel = "fixture-model"
         controller.draftAPIKey = "fixture-api-value"
 
@@ -225,6 +226,7 @@ final class ModelTranslationConfigurationTests: XCTestCase {
         await controller.load(from: settings)
         controller.draftEngine = .customModel
         controller.draftBaseURL = "https://example.com/v1"
+        await controller.waitForAPIKeyLoad()
         controller.draftModel = "fixture-model"
         controller.draftAPIKey = "fixture-api-value"
 
@@ -248,6 +250,7 @@ final class ModelTranslationConfigurationTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         await controller.load(from: settings)
         controller.draftBaseURL = "https://example.com/v1"
+        await controller.waitForAPIKeyLoad()
         controller.draftModel = "fixture-model"
         controller.draftAPIKey = ""
 
@@ -268,6 +271,7 @@ final class ModelTranslationConfigurationTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         await controller.load(from: settings)
         controller.draftBaseURL = "https://example.com/v1"
+        await controller.waitForAPIKeyLoad()
         controller.draftModel = "fixture-model"
 
         await controller.save(to: settings)
@@ -284,13 +288,14 @@ final class ModelTranslationConfigurationTests: XCTestCase {
         XCTAssertTrue(message.contains("未删除原有 Key"))
     }
 
-    func testConnectionTestRequestUsesOnlyBuiltInTextAndCurrentDraft() throws {
+    func testConnectionTestRequestUsesOnlyBuiltInTextAndCurrentDraft() async throws {
         let sender = RecordingTranslationRequestSender()
         let controller = ModelTranslationSettingsController(
             keyStore: FakeTranslationAPIKeyStore(),
             requestSender: sender
         )
         controller.draftBaseURL = "https://example.com/v1"
+        await controller.waitForAPIKeyLoad()
         controller.draftModel = "fixture-model"
         controller.draftAPIKey = "fixture-api-value"
         controller.draftStreamsResponse = false
@@ -311,13 +316,14 @@ final class ModelTranslationConfigurationTests: XCTestCase {
         XCTAssertFalse(request.streamsResponse)
     }
 
-    func testConnectionTestOmitsOptimizationFieldsWhenDisabled() throws {
+    func testConnectionTestOmitsOptimizationFieldsWhenDisabled() async throws {
         let sender = RecordingTranslationRequestSender()
         let controller = ModelTranslationSettingsController(
             keyStore: FakeTranslationAPIKeyStore(),
             requestSender: sender
         )
         controller.draftBaseURL = "https://example.com/v1"
+        await controller.waitForAPIKeyLoad()
         controller.draftModel = "fixture-model"
         controller.draftOptimizesForTranslation = false
 

@@ -56,10 +56,16 @@ private struct GeneralSettingsView: View {
     }
 }
 
-private struct TranslationSettingsView: View {
+struct TranslationSettingsView: View {
     @EnvironmentObject private var settings: AppSettings
-    @StateObject private var modelSettings = ModelTranslationSettingsController()
+    @StateObject private var modelSettings: ModelTranslationSettingsController
     @State private var pendingTestDisclosure: TranslationConnectionDisclosure?
+    @State private var showsAPIKey = false
+    @State private var confirmsLegacyKeyRead = false
+
+    init(modelSettings: ModelTranslationSettingsController = ModelTranslationSettingsController()) {
+        _modelSettings = StateObject(wrappedValue: modelSettings)
+    }
 
     var body: some View {
         Form {
@@ -88,15 +94,54 @@ private struct TranslationSettingsView: View {
             }
 
             Section("自定义大模型") {
+                Picker("服务商", selection: Binding(
+                    get: { modelSettings.draftProvider },
+                    set: { modelSettings.selectProvider($0) }
+                )) {
+                    ForEach(TranslationProvider.allCases) { provider in
+                        Text(provider.title).tag(provider)
+                    }
+                }
+                Text(modelSettings.draftProvider.note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Picker("API 协议", selection: $modelSettings.draftAPIFormat) {
+                    ForEach(TranslationAPIFormat.allCases, id: \.self) { format in
+                        Text(format.title).tag(format)
+                    }
+                }
                 TextField("Base URL", text: $modelSettings.draftBaseURL)
                     .textContentType(.URL)
-                    .accessibilityHint("填写 API 根地址；Lurume 会追加 chat/completions")
-                TextField("模型", text: $modelSettings.draftModel)
-                    .accessibilityHint("填写服务支持的模型名称")
-                SecureField("API Key（可留空）", text: $modelSettings.draftAPIKey)
-                    .accessibilityLabel("API Key 安全输入")
-                    .accessibilityValue(apiKeyStatusText)
+                    .accessibilityHint("填写 API 根地址；Lurume 会追加 \(modelSettings.draftAPIFormat.endpointSuffix)")
+                HStack {
+                    TextField("模型", text: $modelSettings.draftModel)
+                        .accessibilityHint("可手动填写模型 ID，或从右侧选择预设")
+                    if !modelSettings.draftProvider.models.isEmpty {
+                        Menu("选择模型") {
+                            ForEach(modelSettings.draftProvider.models, id: \.self) { model in
+                                Button(model) { modelSettings.draftModel = model }
+                            }
+                        }
+                        .fixedSize()
+                    }
+                }
+                HStack {
+                    Group {
+                        if showsAPIKey {
+                            TextField("API Key（可留空）", text: $modelSettings.draftAPIKey)
+                        } else {
+                            SecureField("API Key（可留空）", text: $modelSettings.draftAPIKey)
+                        }
+                    }
+                    .accessibilityLabel("API Key")
                     .disabled(modelSettings.isLoadingAPIKey)
+                    Button {
+                        showsAPIKey.toggle()
+                    } label: {
+                        Image(systemName: showsAPIKey ? "eye.slash" : "eye")
+                    }
+                    .accessibilityLabel(showsAPIKey ? "隐藏 API Key" : "显示 API Key")
+                }
                 HStack {
                     Text(apiKeyStatusText)
                         .font(.caption)
@@ -110,11 +155,18 @@ private struct TranslationSettingsView: View {
                             || modelSettings.isLoadingAPIKey
                             || modelSettings.isSaving
                     )
-                    .accessibilityHint("从 macOS 钥匙串删除已保存的 API Key")
+                    .accessibilityHint("仅删除当前服务商和地址的本地 API Key")
                 }
+                Text("Key 明文保存在本机应用数据目录，仅当前系统用户可读写，不使用钥匙串。备份可能包含 Key，请勿分享该文件。更换服务商、协议或地址会清空未保存的 Key，并加载对应配置的 Key。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("从旧版钥匙串读取 Key…") {
+                    confirmsLegacyKeyRead = true
+                }
+                .disabled(modelSettings.isLoadingAPIKey || !modelSettings.draftAPIKey.isEmpty)
                 Toggle("流式输出", isOn: $modelSettings.draftStreamsResponse)
                 Toggle("低延迟翻译参数", isOn: $modelSettings.draftOptimizesForTranslation)
-                Text("开启后发送 temperature=0，并按选区长度限制最大输出；短文本使用与 Bob 翻译模式相近的 1,024 token 预算。若服务不支持这些可选参数，可关闭。")
+                Text("开启后使用 temperature=0，按选区长度限制输出，并对支持的服务关闭深度思考；短文本预算为 1,024 token。若服务不支持这些参数，可关闭。Claude 协议仍需保留最大输出限制。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -139,27 +191,6 @@ private struct TranslationSettingsView: View {
             }
 
             Section {
-                HStack {
-                    Button("保存配置") {
-                        Task { await modelSettings.save(to: settings) }
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(modelSettings.isLoadingAPIKey || modelSettings.isSaving)
-
-                    Button("测试连接") {
-                        pendingTestDisclosure = modelSettings.connectionDisclosure()
-                    }
-                    .disabled(modelSettings.isLoadingAPIKey || modelSettings.isSaving || isTesting)
-
-                    if isTesting {
-                        ProgressView()
-                            .controlSize(.small)
-                        Button("停止测试") {
-                            modelSettings.cancelConnectionTest()
-                        }
-                    }
-                }
-
                 Text(testConnectionPrivacyText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -168,22 +199,6 @@ private struct TranslationSettingsView: View {
                     Label(normalizationMessage, systemImage: "info.circle")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                }
-                if let validationMessage = modelSettings.validationMessage {
-                    Label(validationMessage, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.red)
-                        .accessibilityLabel("配置错误：\(validationMessage)")
-                }
-                if let saveStatus = modelSettings.saveStatus {
-                    switch saveStatus {
-                    case let .success(message):
-                        Text(message)
-                            .foregroundStyle(.secondary)
-                    case let .failure(message):
-                        Text(message)
-                            .foregroundStyle(.red)
-                            .accessibilityLabel("保存失败：\(message)")
-                    }
                 }
                 connectionResult
             }
@@ -195,6 +210,30 @@ private struct TranslationSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                Divider()
+                configurationActions
+                if let message = modelSettings.validationMessage {
+                    Text(message).font(.caption).foregroundStyle(.red)
+                }
+                if let status = modelSettings.saveStatus {
+                    Text(status.message)
+                        .font(.caption)
+                        .foregroundStyle({
+                            if case .failure = status { return Color.red }
+                            return Color.secondary
+                        }())
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 12)
+            .background(.bar)
+        }
+        .disabled(modelSettings.isSaving)
+        .onChange(of: modelSettings.draftProvider) { showsAPIKey = false }
+        .onChange(of: modelSettings.draftBaseURL) { showsAPIKey = false }
+        .onChange(of: modelSettings.draftAPIFormat) { showsAPIKey = false }
         .task {
             await modelSettings.load(from: settings)
         }
@@ -216,6 +255,14 @@ private struct TranslationSettingsView: View {
                 secondaryButton: .cancel()
             )
         }
+        .confirmationDialog("读取旧版 Key？", isPresented: $confirmsLegacyKeyRead) {
+            Button("读取旧版 Key") {
+                Task { await modelSettings.readLegacyAPIKey() }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("此操作可能触发一次 macOS 钥匙串授权。读取后请确认 Key 属于当前地址：\(modelSettings.draftBaseURL)，再保存为本地配置。不会自动删除旧钥匙串条目。")
+        }
     }
 
     private var isTesting: Bool {
@@ -223,10 +270,29 @@ private struct TranslationSettingsView: View {
         return false
     }
 
+    private var configurationActions: some View {
+        HStack {
+            Button("保存配置") {
+                Task { await modelSettings.save(to: settings) }
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(modelSettings.isLoadingAPIKey || modelSettings.isSaving)
+            Button("测试连接") {
+                pendingTestDisclosure = modelSettings.connectionDisclosure()
+            }
+            .disabled(modelSettings.isLoadingAPIKey || modelSettings.isSaving || isTesting)
+            if isTesting {
+                ProgressView().controlSize(.small)
+                Button("停止测试") { modelSettings.cancelConnectionTest() }
+            }
+            Spacer()
+        }
+    }
+
     private var apiKeyStatusText: String {
-        if modelSettings.isLoadingAPIKey { return "正在读取钥匙串…" }
-        if modelSettings.apiKeyLoadFailed { return "钥匙串读取失败；原有 API Key 未更改" }
-        return modelSettings.hasStoredAPIKey ? "钥匙串中已配置 API Key" : "未配置 API Key"
+        if modelSettings.isLoadingAPIKey { return "正在读取本地 Key…" }
+        if modelSettings.apiKeyLoadFailed { return "本地文件读取失败；原有 API Key 未更改" }
+        return modelSettings.hasStoredAPIKey ? "当前配置已保存本地 API Key" : "当前配置未保存 API Key"
     }
 
     private var testConnectionPrivacyText: String {

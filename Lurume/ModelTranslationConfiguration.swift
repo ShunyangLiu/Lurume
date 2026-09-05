@@ -37,6 +37,18 @@ struct ModelTranslationConfiguration: Equatable, Sendable {
     let streamsResponse: Bool
     let optimizesForTranslation: Bool
     let prompt: String
+    var provider: TranslationProvider = .custom
+    var apiFormat: TranslationAPIFormat = .openAI
+
+    var credentialScope: String {
+        // Include the complete normalized base URL: even a path change must not carry a key.
+        "\(provider.rawValue)|\(apiFormat.rawValue)|\(baseURL)"
+    }
+
+    var disablesThinking: Bool {
+        guard optimizesForTranslation else { return false }
+        return [.glm, .volcengine, .deepSeek].contains(provider) || apiFormat == .anthropic
+    }
 }
 
 enum ModelTranslationGenerationOptions {
@@ -151,7 +163,9 @@ enum ModelTranslationConfigurationValidator {
         model rawModel: String,
         streamsResponse: Bool,
         optimizesForTranslation: Bool = true,
-        prompt rawPrompt: String
+        prompt rawPrompt: String,
+        provider: TranslationProvider = .custom,
+        apiFormat: TranslationAPIFormat = .openAI
     ) throws -> ValidatedModelTranslationConfiguration {
         let baseURL = rawBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !baseURL.isEmpty else { throw ModelTranslationConfigurationError.emptyBaseURL }
@@ -187,7 +201,7 @@ enum ModelTranslationConfigurationValidator {
         while path.count > 1, path.hasSuffix("/") {
             path.removeLast()
         }
-        let suffix = "/chat/completions"
+        let suffix = apiFormat.endpointSuffix
         let strippedSuffix = path.hasSuffix(suffix)
         if strippedSuffix {
             path.removeLast(suffix.count)
@@ -221,7 +235,9 @@ enum ModelTranslationConfigurationValidator {
             model: model,
             streamsResponse: streamsResponse,
             optimizesForTranslation: optimizesForTranslation,
-            prompt: prompt
+            prompt: prompt,
+            provider: provider,
+            apiFormat: apiFormat
         )
         return ValidatedModelTranslationConfiguration(
             configuration: configuration,

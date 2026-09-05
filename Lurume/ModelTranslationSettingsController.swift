@@ -24,7 +24,11 @@ final class ModelTranslationSettingsController: ObservableObject {
         didSet { draftDidChange() }
     }
     @Published var draftBaseURL = ModelTranslationConfiguration.defaultBaseURL {
-        didSet { draftDidChange() }
+        didSet { draftDidChange(); credentialDraftDidChange() }
+    }
+    @Published private(set) var draftProvider: TranslationProvider = .custom
+    @Published var draftAPIFormat: TranslationAPIFormat = .openAI {
+        didSet { draftDidChange(); credentialDraftDidChange() }
     }
     @Published var draftModel = "" {
         didSet { draftDidChange() }
@@ -50,17 +54,29 @@ final class ModelTranslationSettingsController: ObservableObject {
     @Published private(set) var normalizationMessage: String?
     @Published private(set) var connectionState: ConnectionState = .idle
 
-    private let keyStore: any TranslationAPIKeyStoring
+    private let keyStore: (any TranslationAPIKeyStoring)?
+    private let legacyKeyStore: any TranslationAPIKeyStoring
+    private let keyStoreFactory: @Sendable (String) -> any TranslationAPIKeyStoring
+    private var profiles: [String: ModelTranslationProfile] = [:]
+    private var credentialScope: String?
+    private var credentialGeneration = UUID()
+    private var keyLoadTask: Task<Void, Never>?
     private let requestSender: any TranslationRequestSending
     private var didLoad = false
     private var isSynchronizingDraft = false
     private var activeTestRequestID: String?
 
     init(
-        keyStore: any TranslationAPIKeyStoring = KeychainTranslationAPIKeyStore(),
+        keyStore: (any TranslationAPIKeyStoring)? = nil,
+        legacyKeyStore: any TranslationAPIKeyStoring = KeychainTranslationAPIKeyStore(),
+        keyStoreFactory: @escaping @Sendable (String) -> any TranslationAPIKeyStoring = {
+            LocalTranslationAPIKeyStore(scope: $0)
+        },
         requestSender: any TranslationRequestSending = TranslationXPCClient()
     ) {
         self.keyStore = keyStore
+        self.legacyKeyStore = legacyKeyStore
+        self.keyStoreFactory = keyStoreFactory
         self.requestSender = requestSender
     }
 
@@ -68,6 +84,9 @@ final class ModelTranslationSettingsController: ObservableObject {
         guard !didLoad else { return }
         didLoad = true
         isSynchronizingDraft = true
+        profiles = settings.modelTranslationProfiles
+        draftProvider = settings.modelTranslationProvider
+        draftAPIFormat = settings.modelTranslationAPIFormat
         draftEngine = settings.translationEngine
         draftBaseURL = settings.modelTranslationBaseURL
         draftModel = settings.modelTranslationModel
@@ -75,19 +94,100 @@ final class ModelTranslationSettingsController: ObservableObject {
         draftOptimizesForTranslation = settings.modelTranslationOptimizesForTranslation
         draftPrompt = settings.modelTranslationPrompt
         isSynchronizingDraft = false
-        isLoadingAPIKey = true
+        credentialDraftDidChange(force: true)
+        await waitForAPIKeyLoad()
+    }
+
+    func selectProvider(_ provider: TranslationProvider) {
+        guard provider != draftProvider, !isSaving else { return }
+        profiles[draftProvider.rawValue] = currentProfile
+        let profile = profiles[provider.rawValue] ?? ModelTranslationProfile(provider: provider)
+        isSynchronizingDraft = true
+        draftProvider = provider
+        draftBaseURL = profile.baseURL
+        draftModel = profile.model
+        draftAPIFormat = profile.apiFormat
+        draftStreamsResponse = profile.streamsResponse
+        draftOptimizesForTranslation = profile.optimizesForTranslation
+        draftPrompt = profile.prompt
+        isSynchronizingDraft = false
+        draftDidChange()
+        credentialDraftDidChange(force: true)
+    }
+
+    func waitForAPIKeyLoad() async {
+        await keyLoadTask?.value
+    }
+
+    private var currentProfile: ModelTranslationProfile {
+        var profile = ModelTranslationProfile(provider: draftProvider)
+        profile.baseURL = draftBaseURL
+        profile.model = draftModel
+        profile.apiFormat = draftAPIFormat
+        profile.streamsResponse = draftStreamsResponse
+        profile.optimizesForTranslation = draftOptimizesForTranslation
+        profile.prompt = draftPrompt
+        return profile
+    }
+
+    private func store(for scope: String) -> any TranslationAPIKeyStoring {
+        keyStore ?? keyStoreFactory(scope)
+    }
+
+    private func credentialDraftDidChange(force: Bool = false) {
+        guard !isSynchronizingDraft else { return }
+        // Key identity does not depend on whether the model or prompt is currently valid.
+        let scope = (try? ModelTranslationConfigurationValidator.validate(
+            baseURL: draftBaseURL, model: "credential-scope", streamsResponse: true,
+            prompt: "credential-scope", provider: draftProvider, apiFormat: draftAPIFormat
+        ))?.configuration.credentialScope
+        guard force || scope != credentialScope else { return }
+        credentialGeneration = UUID()
+        let generation = credentialGeneration
+        credentialScope = scope
+        keyLoadTask?.cancel()
+        draftAPIKey = ""
+        hasStoredAPIKey = false
         apiKeyLoadFailed = false
-        defer { isLoadingAPIKey = false }
-        do {
-            if let apiKey = try await keyStore.read() {
-                isSynchronizingDraft = true
-                draftAPIKey = apiKey
-                isSynchronizingDraft = false
-                hasStoredAPIKey = true
+        isLoadingAPIKey = false
+        guard let scope else { return }
+        isLoadingAPIKey = true
+        let keyStore = store(for: scope)
+        keyLoadTask = Task { [weak self] in
+            do {
+                let apiKey = try await keyStore.read()
+                guard let self, self.credentialGeneration == generation, !Task.isCancelled else { return }
+                self.isSynchronizingDraft = true
+                self.draftAPIKey = apiKey ?? ""
+                self.isSynchronizingDraft = false
+                self.hasStoredAPIKey = apiKey != nil
+                self.isLoadingAPIKey = false
+            } catch {
+                guard let self, self.credentialGeneration == generation, !Task.isCancelled else { return }
+                self.apiKeyLoadFailed = true
+                self.isLoadingAPIKey = false
+                self.saveStatus = .failure("无法读取本地 API Key；原有 Key 未更改。\(error.localizedDescription)")
             }
+        }
+    }
+
+    /// Explicit user action only. Keep the old item until the user manages it themselves.
+    func readLegacyAPIKey() async {
+        guard !isLoadingAPIKey, !isSaving, draftAPIKey.isEmpty, credentialScope != nil else { return }
+        isSaving = true
+        let generation = credentialGeneration
+        defer { isSaving = false }
+        do {
+            let key = try await legacyKeyStore.read()
+            guard generation == credentialGeneration else { return }
+            guard let key, !key.isEmpty else {
+                saveStatus = .failure("未找到旧版 API Key。请手动填写。")
+                return
+            }
+            draftAPIKey = key
+            saveStatus = .success("已读取旧 Key，请确认当前服务地址后保存配置。旧钥匙串条目未删除。")
         } catch {
-            apiKeyLoadFailed = true
-            saveStatus = .failure("无法读取钥匙串；原有 API Key 未更改。\(error.localizedDescription)")
+            saveStatus = .failure("无法读取旧版 Key，请手动填写。旧钥匙串条目未更改。")
         }
     }
 
@@ -97,7 +197,7 @@ final class ModelTranslationSettingsController: ObservableObject {
             let configuration = try validatedDraft()
             validationMessage = nil
             normalizationMessage = configuration.strippedChatCompletionsSuffix
-                ? "已识别完整端点；保存时会移除 /chat/completions，避免重复拼接。"
+                ? "已识别完整端点；保存时会移除 \(draftAPIFormat.endpointSuffix)，避免重复拼接。"
                 : nil
             return configuration
         } catch {
@@ -111,31 +211,37 @@ final class ModelTranslationSettingsController: ObservableObject {
         guard !isLoadingAPIKey, !isSaving, let configuration = validateDraft() else { return }
         let apiKey = draftAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !(apiKeyLoadFailed && apiKey.isEmpty) else {
-            saveStatus = .failure("无法确认钥匙串中的 API Key，因此未保存配置，也未删除原有 Key。请重新打开设置后再试。")
+            saveStatus = .failure("无法确认本地 API Key，因此未保存配置，也未删除原有 Key。请重新打开设置后再试。")
             return
         }
         isSaving = true
+        let keyStore = store(for: configuration.configuration.credentialScope)
+        let engine = draftEngine
+        let generation = credentialGeneration
         saveStatus = nil
         cancelConnectionTest()
         do {
             if apiKey.isEmpty {
                 try await keyStore.delete()
+                guard generation == credentialGeneration else { isSaving = false; return }
                 hasStoredAPIKey = false
                 draftAPIKey = ""
             } else {
                 try await keyStore.save(apiKey)
+                guard generation == credentialGeneration else { isSaving = false; return }
                 hasStoredAPIKey = true
                 apiKeyLoadFailed = false
                 draftAPIKey = apiKey
             }
-            settings.applyModelTranslationConfiguration(configuration, engine: draftEngine)
+            settings.applyModelTranslationConfiguration(configuration, engine: engine)
+            profiles[draftProvider.rawValue] = ModelTranslationProfile(configuration: configuration.configuration)
             isSynchronizingDraft = true
             draftBaseURL = configuration.configuration.baseURL
             draftModel = configuration.configuration.model
             draftPrompt = configuration.configuration.prompt
             isSynchronizingDraft = false
             normalizationMessage = configuration.strippedChatCompletionsSuffix
-                ? "已移除 /chat/completions；请求端点保持为单一 /chat/completions。"
+                ? "已移除重复端点后缀；请求端点为 \(configuration.configuration.apiFormat.endpointSuffix)。"
                 : nil
             saveStatus = .success("配置已保存。")
         } catch {
@@ -145,18 +251,20 @@ final class ModelTranslationSettingsController: ObservableObject {
     }
 
     func deleteAPIKey() async {
-        guard !isLoadingAPIKey, !isSaving else { return }
+        guard !isLoadingAPIKey, !isSaving, let scope = credentialScope else { return }
         guard !apiKeyLoadFailed else {
-            saveStatus = .failure("钥匙串读取失败，未删除原有 API Key。请重新打开设置后再试。")
+            saveStatus = .failure("本地文件读取失败，未删除原有 API Key。请重新打开设置后再试。")
             return
         }
         isSaving = true
+        let generation = credentialGeneration
         saveStatus = nil
         do {
-            try await keyStore.delete()
+            try await store(for: scope).delete()
+            guard generation == credentialGeneration else { isSaving = false; return }
             draftAPIKey = ""
             hasStoredAPIKey = false
-            saveStatus = .success("API Key 已从钥匙串删除。")
+            saveStatus = .success("当前配置的 API Key 已从本地文件删除。")
         } catch {
             saveStatus = .failure(error.localizedDescription)
         }
@@ -182,7 +290,7 @@ final class ModelTranslationSettingsController: ObservableObject {
     }
 
     func startConnectionTest(sourceLanguageIdentifier: String, targetLanguageIdentifier: String) {
-        guard !isLoadingAPIKey, let configuration = validateDraft() else { return }
+        guard !isLoadingAPIKey, !isSaving, let configuration = validateDraft() else { return }
         cancelConnectionTest()
         connectionState = .testing(response: "")
         let requestID = UUID().uuidString
@@ -205,7 +313,9 @@ final class ModelTranslationSettingsController: ObservableObject {
                 : nil,
             temperature: configuration.configuration.optimizesForTranslation
                 ? ModelTranslationGenerationOptions.temperature
-                : nil
+                : nil,
+            apiFormat: configuration.configuration.apiFormat,
+            disablesThinking: configuration.configuration.disablesThinking
         )
 
         do {
@@ -235,7 +345,9 @@ final class ModelTranslationSettingsController: ObservableObject {
             model: draftModel,
             streamsResponse: draftStreamsResponse,
             optimizesForTranslation: draftOptimizesForTranslation,
-            prompt: draftPrompt
+            prompt: draftPrompt,
+            provider: draftProvider,
+            apiFormat: draftAPIFormat
         )
     }
 
