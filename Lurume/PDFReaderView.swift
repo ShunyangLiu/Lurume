@@ -512,10 +512,29 @@ final class PDFReaderController: ObservableObject {
             x: min(max(targetPageCenter.x, pageBounds.minX + halfWidth), pageBounds.maxX - halfWidth),
             y: min(max(targetPageCenter.y, pageBounds.minY + halfHeight), pageBounds.maxY - halfHeight)
         )
-        annotation.bounds.origin = CGPoint(
+        let previousBounds = annotation.bounds
+        let movedBounds = CGRect(
             x: clampedCenter.x - halfWidth,
-            y: clampedCenter.y - halfHeight
+            y: clampedCenter.y - halfHeight,
+            width: previousBounds.width,
+            height: previousBounds.height
         )
+        if movedBounds != previousBounds {
+            let previousViewBounds = pdfView.convert(previousBounds, from: page)
+            // PDFKit may retain the stamp's old drawing when only bounds changes.
+            // Remove it at its old position, then reinsert the same marker at the new one.
+            page.removeAnnotation(annotation)
+            annotation.bounds = movedBounds
+            page.addAnnotation(annotation)
+            pdfView.annotationsChanged(on: page)
+
+            let dirtyRect = previousViewBounds.union(pdfView.convert(movedBounds, from: page))
+                .insetBy(dx: -4, dy: -4)
+            pdfView.setNeedsDisplay(dirtyRect)
+            if let documentView = pdfView.documentView {
+                documentView.setNeedsDisplay(documentView.convert(dirtyRect, from: pdfView))
+            }
+        }
         if finished {
             noteMarkerDragOffsets.removeValue(forKey: id)
         }
@@ -1088,47 +1107,84 @@ struct PDFReaderView: NSViewRepresentable {
     }
 }
 
+/// Reader controls live in the content area so native toolbar overflow cannot hide them.
 struct PDFToolbar: View {
     @ObservedObject var controller: PDFReaderController
     @State private var requestedPage = 1
 
     var body: some View {
-        Group {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                pageControls
+                Divider().frame(height: 18)
+                zoomControls
+            }
+            VStack(spacing: 4) {
+                pageControls
+                zoomControls
+            }
+        }
+        .buttonStyle(.borderless)
+        .labelStyle(.iconOnly)
+        .controlSize(.small)
+        .disabled(controller.pageCount == 0)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .onChange(of: controller.currentPageIndex, initial: true) {
+            requestedPage = controller.currentPageIndex + 1
+        }
+    }
+
+    private var pageControls: some View {
+        HStack(spacing: 4) {
             Button(action: controller.previousPage) {
                 Label("上一页", systemImage: "chevron.left")
+                    .frame(width: 28, height: 28)
             }
             .help("上一页")
+            .disabled(controller.currentPageIndex == 0)
 
-            HStack(spacing: 4) {
-                TextField("页码", value: $requestedPage, format: .number)
-                    .frame(width: 44)
-                    .multilineTextAlignment(.trailing)
-                    .onSubmit {
-                        controller.go(toOneBasedPage: requestedPage)
-                    }
+            TextField("页码", value: $requestedPage, format: .number)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 48)
+                .multilineTextAlignment(.trailing)
+                .accessibilityLabel("页码")
+                .onSubmit {
+                    requestedPage = min(max(requestedPage, 1), max(controller.pageCount, 1))
+                    controller.go(toOneBasedPage: requestedPage)
+                }
 
-                Text(controller.pageCountLabel)
-                    .foregroundStyle(.secondary)
-            }
-            .monospacedDigit()
+            Text(controller.pageCountLabel)
+                .foregroundStyle(.secondary)
+                .fixedSize()
 
             Button(action: controller.nextPage) {
                 Label("下一页", systemImage: "chevron.right")
+                    .frame(width: 28, height: 28)
             }
             .help("下一页")
+            .disabled(controller.currentPageIndex >= controller.pageCount - 1)
+        }
+        .monospacedDigit()
+        .fixedSize()
+    }
 
+    private var zoomControls: some View {
+        HStack(spacing: 4) {
             Button(action: controller.zoomOut) {
                 Label("缩小", systemImage: "minus.magnifyingglass")
+                    .frame(width: 28, height: 28)
             }
             .help("缩小")
 
             Button(action: controller.zoomIn) {
                 Label("放大", systemImage: "plus.magnifyingglass")
+                    .frame(width: 28, height: 28)
             }
             .help("放大")
         }
-        .onChange(of: controller.currentPageIndex, initial: true) {
-            requestedPage = controller.currentPageIndex + 1
-        }
+        .fixedSize()
     }
 }

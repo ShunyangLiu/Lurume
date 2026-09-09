@@ -314,6 +314,9 @@ final class LurumeSmokeTests: XCTestCase {
         let liveMovedRect = try XCTUnwrap(controller.noteMarkerAnchorRect(for: highlight.id))
         XCTAssertEqual(liveMovedRect.midX, target.x, accuracy: 1)
         XCTAssertEqual(liveMovedRect.midY, target.y, accuracy: 1)
+        XCTAssertNil(controller.noteMarkerID(at: start))
+        XCTAssertEqual(controller.noteMarkerID(at: target), highlight.id)
+        XCTAssertEqual(page.annotations.filter { $0 is HighlightNoteMarkerAnnotation }.count, 1)
         let savedPosition = try XCTUnwrap(
             controller.moveNoteMarker(
                 id: highlight.id,

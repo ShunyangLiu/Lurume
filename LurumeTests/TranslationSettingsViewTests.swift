@@ -86,6 +86,41 @@ final class TranslationSettingsViewTests: XCTestCase {
         XCTAssertEqual(parent.state, .success)
     }
 
+    func testReaderControlsRemainVisibleAtNarrowWidths() async throws {
+        let controller = PDFReaderController()
+        for width in [180.0, 410.0] {
+            let view = NSHostingView(rootView: PDFToolbar(controller: controller).frame(width: width))
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: width, height: 100),
+                styleMask: [.borderless], backing: .buffered, defer: false
+            )
+            window.contentView = view
+            defer { window.contentView = nil }
+            view.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(200))
+            let size = view.fittingSize
+            XCTAssertEqual(size.width, width, accuracy: 1)
+            if width == 180 {
+                XCTAssertGreaterThan(size.height, 60, "Narrow readers should use two rows")
+            } else {
+                XCTAssertLessThan(size.height, 50, "Normal readers should use one row")
+            }
+            view.frame = NSRect(origin: .zero, size: size)
+            view.layoutSubtreeIfNeeded()
+            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
+            attachment.name = "Reader controls at \(Int(width)) points"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("lurume-reader-controls-\(Int(width)).png")
+            try data.write(to: url)
+            print("UI_FIXTURE_SNAPSHOT: \(url.path)")
+        }
+    }
+
     func testSettingsFormRendersWithAnIsolatedProviderFixture() async throws {
         let suite = "TranslationSettingsViewTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

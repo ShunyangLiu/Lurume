@@ -383,12 +383,6 @@ struct ContentView: View {
                         && libraryStore.selectedPaper == nil
                 )
             }
-            if appSettings.mainWindowMode == .reading,
-               libraryStore.selectedPaper != nil {
-                ToolbarItemGroup {
-                    PDFToolbar(controller: pdfController)
-                }
-            }
         }
     }
 
@@ -691,69 +685,74 @@ struct ContentView: View {
     private var detail: some View {
         if let paper = libraryStore.selectedPaper {
             if activeAccessPaperID == paper.id, let activeAccess {
-                PDFReaderView(
-                    paperID: paper.id,
-                    documentURL: activeAccess.url,
-                    initialPageIndex: paper.lastPageIndex,
-                    controller: pdfController,
-                    highlights: highlightStore.highlights(for: paper.id),
-                    noteEditingEnabled: !highlightStore.persistenceDisabled,
-                    onPageChanged: { pageIndex in
-                        libraryStore.updatePageIndex(pageIndex, for: paper.id)
-                    },
-                    onSelectionChanged: { event in
-                        if event != nil {
-                            inspectorMode = .translation
-                        }
-                        translationController.receiveSelection(
-                            event,
-                            paperID: paper.id,
-                            paperName: paper.displayTitle,
-                            automaticTranslation: appSettings.automaticTranslation,
-                            preferences: appSettings.translationRequestPreferences
-                        )
-                    },
-                    onTranslateSelection: {
-                        inspectorMode = .translation
-                        translationController.requestTranslation(
-                            preferences: appSettings.translationRequestPreferences
-                        )
-                    },
-                    onToggleHighlight: toggleCurrentHighlight,
-                    onDeleteHighlight: deleteHighlight,
-                    onOpenHighlightNote: { id in
-                        guard let highlight = highlightStore.highlight(id: id) else { return }
-                        pdfController.presentNoteEditor(
-                            for: highlight,
-                            readOnly: highlightStore.persistenceDisabled
-                        ) { note in
-                            highlightStore.updateNote(id: id, text: note)
-                        }
-                    },
-                    onMoveHighlightNoteMarker: { id, position in
-                        highlightStore.updateNoteMarkerPosition(id: id, position: position)
-                    },
-                    onError: { message in
-                        documentError = message
-                    }
-                )
-                .id(paper.id)
-                .overlay(alignment: .topTrailing) {
-                    if let documentError {
-                        DocumentErrorView(message: documentError)
-                    }
+                VStack(spacing: 0) {
+                    PDFToolbar(controller: pdfController)
+                    Divider()
 
-                    if isPDFSearchPresented, documentError == nil {
-                        PDFSearchOverlay(
-                            controller: pdfController,
-                            searchFieldFocused: $pdfSearchFieldFocused,
-                            close: closePDFSearch
-                        )
-                        .padding(12)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                    PDFReaderView(
+                        paperID: paper.id,
+                        documentURL: activeAccess.url,
+                        initialPageIndex: paper.lastPageIndex,
+                        controller: pdfController,
+                        highlights: highlightStore.highlights(for: paper.id),
+                        noteEditingEnabled: !highlightStore.persistenceDisabled,
+                        onPageChanged: { pageIndex in
+                            libraryStore.updatePageIndex(pageIndex, for: paper.id)
+                        },
+                        onSelectionChanged: { event in
+                            if event != nil {
+                                inspectorMode = .translation
+                            }
+                            translationController.receiveSelection(
+                                event,
+                                paperID: paper.id,
+                                paperName: paper.displayTitle,
+                                automaticTranslation: appSettings.automaticTranslation,
+                                preferences: appSettings.translationRequestPreferences
+                            )
+                        },
+                        onTranslateSelection: {
+                            inspectorMode = .translation
+                            translationController.requestTranslation(
+                                preferences: appSettings.translationRequestPreferences
+                            )
+                        },
+                        onToggleHighlight: toggleCurrentHighlight,
+                        onDeleteHighlight: deleteHighlight,
+                        onOpenHighlightNote: { id in
+                            guard let highlight = highlightStore.highlight(id: id) else { return }
+                            pdfController.presentNoteEditor(
+                                for: highlight,
+                                readOnly: highlightStore.persistenceDisabled
+                            ) { note in
+                                highlightStore.updateNote(id: id, text: note)
+                            }
+                        },
+                        onMoveHighlightNoteMarker: { id, position in
+                            highlightStore.updateNoteMarkerPosition(id: id, position: position)
+                        },
+                        onError: { message in
+                            documentError = message
+                        }
+                    )
+                    .id(paper.id)
+                    .overlay(alignment: .topTrailing) {
+                        if let documentError {
+                            DocumentErrorView(message: documentError)
+                        }
+
+                        if isPDFSearchPresented, documentError == nil {
+                            PDFSearchOverlay(
+                                controller: pdfController,
+                                searchFieldFocused: $pdfSearchFieldFocused,
+                                close: closePDFSearch
+                            )
+                            .padding(12)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                        }
                     }
+                    .animation(.easeOut(duration: 0.15), value: isPDFSearchPresented)
                 }
-                .animation(.easeOut(duration: 0.15), value: isPDFSearchPresented)
             } else if activeAccessPaperID == paper.id {
                 UnavailablePaperView(paperName: paper.displayTitle) {
                     presentRelinker(for: paper.id)
