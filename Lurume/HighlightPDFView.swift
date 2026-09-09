@@ -460,7 +460,9 @@ private struct HighlightNotePopoverView: View {
                     .padding(5)
                     .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 7))
                     .overlay(alignment: .topLeading) {
-                        if model.text.isEmpty {
+                        // IME marked text is visible before TextEditor commits it to the binding.
+                        // Hide the placeholder while editing, including during composition.
+                        if model.text.isEmpty && !editorFocused {
                             Text("添加你的想法……")
                                 .foregroundStyle(.tertiary)
                                 .padding(.leading, 8)
@@ -469,6 +471,7 @@ private struct HighlightNotePopoverView: View {
                         }
                     }
                     .focused($editorFocused)
+                    .accessibilityLabel("笔记内容")
                     .frame(minHeight: 110, maxHeight: 220)
             }
 
