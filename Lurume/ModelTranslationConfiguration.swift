@@ -3,6 +3,7 @@ import Foundation
 enum TranslationEngine: String, CaseIterable, Identifiable, Sendable {
     case apple
     case customModel
+    case both
 
     var id: String { rawValue }
 
@@ -10,6 +11,7 @@ enum TranslationEngine: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .apple: "Apple 系统翻译"
         case .customModel: "自定义大模型"
+        case .both: "系统 + 大模型"
         }
     }
 }

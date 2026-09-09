@@ -146,6 +146,14 @@ struct TranslationRequestPreferences: Equatable, Sendable {
         )
     }
 
+    func usingModelEngine() -> Self {
+        Self(engine: .customModel,
+             sourceLanguageIdentifier: sourceLanguageIdentifier,
+             targetLanguageIdentifier: targetLanguageIdentifier,
+             modelConfiguration: modelConfiguration,
+             modelOriginIsConfirmed: modelOriginIsConfirmed)
+    }
+
     func usingAppleEngine() -> Self {
         Self(
             engine: .apple,
@@ -305,6 +313,8 @@ final class TranslationController: ObservableObject {
     /// P1：主窗口打开时检查器默认可见，首次选区只更新内容、不再改变布局。
     @Published var isInspectorPresented = true
 
+    let comparisonController: TranslationController?
+
     private var generation = 0
     private var debounceTask: Task<Void, Never>?
     private var activeTranslationTask: Task<TranslationOutput, Error>?
@@ -331,8 +341,15 @@ final class TranslationController: ObservableObject {
         availabilityChecker: any TranslationAvailabilityChecking = SystemTranslationAvailabilityChecker(),
         keyStore: (any TranslationAPIKeyStoring)? = nil,
         modelRequestSender: any TranslationRequestSending = TranslationXPCClient(),
-        systemTimeoutPolicy: SystemTranslationTimeoutPolicy = .production
+        systemTimeoutPolicy: SystemTranslationTimeoutPolicy = .production,
+        createsComparisonController: Bool = true
     ) {
+        comparisonController = createsComparisonController ? TranslationController(
+            sourceLanguageRecognizer: sourceLanguageRecognizer,
+            availabilityChecker: availabilityChecker,
+            systemTimeoutPolicy: systemTimeoutPolicy,
+            createsComparisonController: false
+        ) : nil
         self.sourceLanguageRecognizer = sourceLanguageRecognizer
         self.availabilityChecker = availabilityChecker
         self.keyStore = keyStore
@@ -395,6 +412,13 @@ final class TranslationController: ObservableObject {
         guard newSelection != selection else { return }
 
         cancelWorkForNewGeneration(preservingAppleConfiguration: preferences.engine == .apple)
+        comparisonController?.clear()
+        if preferences.engine == .both {
+            comparisonController?.receiveSelection(
+                event, paperID: paperID, paperName: paperName,
+                automaticTranslation: false, preferences: preferences.usingAppleEngine()
+            )
+        }
         selection = newSelection
         translatedText = nil
         resultSource = nil
@@ -431,6 +455,18 @@ final class TranslationController: ObservableObject {
         preferences: TranslationRequestPreferences,
         revealInspector: Bool = true
     ) {
+        if preferences.engine == .both, let selection {
+            comparisonController?.receiveSelection(
+                PDFSelectionEvent(rawText: selection.rawText, pageIndex: selection.pageIndex,
+                                  languageSample: selection.languageSample),
+                paperID: selection.paperID, paperName: selection.paperName,
+                automaticTranslation: false, preferences: preferences.usingAppleEngine()
+            )
+            comparisonController?.requestTranslation(preferences: preferences.usingAppleEngine(),
+                                                     revealInspector: false)
+            requestTranslation(preferences: preferences.usingModelEngine(), revealInspector: revealInspector)
+            return
+        }
         if revealInspector { isInspectorPresented = true }
         cancelWorkForNewGeneration(preservingAppleConfiguration: preferences.engine == .apple)
         guard let selection else { return }
@@ -441,7 +477,7 @@ final class TranslationController: ObservableObject {
         switch preferences.engine {
         case .apple:
             prepareAppleTranslation(selection: selection, preferences: preferences)
-        case .customModel:
+        case .customModel, .both:
             prepareModelTranslation(selection: selection, preferences: preferences)
         }
     }
@@ -587,8 +623,17 @@ final class TranslationController: ObservableObject {
         }
     }
 
-    func translationPreferencesDidChange() {
-        guard selection != nil else { return }
+    func translationPreferencesDidChange(preferences: TranslationRequestPreferences? = nil) {
+        comparisonController?.clear()
+        guard let selection else { return }
+        if let preferences, preferences.engine == .both {
+            comparisonController?.receiveSelection(
+                PDFSelectionEvent(rawText: selection.rawText, pageIndex: selection.pageIndex,
+                                  languageSample: selection.languageSample),
+                paperID: selection.paperID, paperName: selection.paperName,
+                automaticTranslation: false, preferences: preferences.usingAppleEngine()
+            )
+        }
         cancelWorkForNewGeneration()
         translatedText = nil
         resultSource = nil
@@ -597,6 +642,7 @@ final class TranslationController: ObservableObject {
     }
 
     func clear() {
+        comparisonController?.clear()
         cancelWorkForNewGeneration()
         selection = nil
         translatedText = nil
@@ -616,6 +662,7 @@ final class TranslationController: ObservableObject {
     }
 
     func cancelPendingAutomaticTranslation() {
+        comparisonController?.cancelPendingAutomaticTranslation()
         debounceTask?.cancel()
         debounceTask = nil
     }

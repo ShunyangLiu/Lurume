@@ -276,6 +276,11 @@ struct ContentView: View {
                     using: SystemTranslationPerformer(session: session)
                 )
             }
+            .background {
+                if let systemController = translationController.comparisonController {
+                    ComparisonTranslationSessionHost(controller: systemController)
+                }
+            }
             .modifier(
                 TranslationIntegrationModifier(
                     controller: translationController,
@@ -1750,6 +1755,18 @@ private final class KeyboardCommandMonitoringView: NSView {
     }
 }
 
+private struct ComparisonTranslationSessionHost: View {
+    @ObservedObject var controller: TranslationController
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .translationTask(controller.configuration) { session in
+                await controller.perform(using: SystemTranslationPerformer(session: session))
+            }
+    }
+}
+
 private struct TranslationIntegrationModifier: ViewModifier {
     @ObservedObject var controller: TranslationController
     @ObservedObject var settings: AppSettings
@@ -1764,7 +1781,7 @@ private struct TranslationIntegrationModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onChange(of: settings.translationConfigurationIdentity) {
-                controller.translationPreferencesDidChange()
+                controller.translationPreferencesDidChange(preferences: settings.translationRequestPreferences)
             }
             .alert(item: consentRequest) { request in
                 Alert(

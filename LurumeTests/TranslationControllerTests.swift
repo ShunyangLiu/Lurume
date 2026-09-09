@@ -737,6 +737,100 @@ final class TranslationControllerTests: XCTestCase {
         XCTAssertEqual(sender.requestCount, 2)
     }
 
+    func testBothEnginesKeepIndependentResultsAndRetryDoesNotClearSystemResult() async throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        let preferences = try comparisonPreferences()
+        receiveModelSelection("Selection", controller: controller, preferences: preferences)
+        let system = try XCTUnwrap(controller.comparisonController)
+        XCTAssertEqual(system.selection, controller.selection)
+        controller.requestTranslation(preferences: preferences)
+        let request = try await waitForModelRequest(sender)
+        await system.perform(using: FakeTranslationPerformer(output: "系统译文", delay: .zero))
+        sender.emit(.init(requestID: request.requestID, kind: "delta", text: "模型部分译文"))
+        sender.emit(.init(requestID: request.requestID, kind: "failed", message: "连接中断"))
+        try await waitUntil { controller.state == .interrupted("连接中断") }
+        XCTAssertEqual(system.translatedText, "系统译文")
+        XCTAssertEqual(system.state, .success)
+        XCTAssertEqual(controller.translatedText, "模型部分译文")
+        controller.requestTranslation(preferences: preferences.usingModelEngine())
+        let retry = try await waitForModelRequest(sender, count: 2)
+        XCTAssertEqual(system.translatedText, "系统译文")
+        sender.emit(.init(requestID: retry.requestID, kind: "delta", text: "模型完整译文"))
+        sender.emit(.init(requestID: retry.requestID, kind: "completed"))
+        try await waitUntil { controller.state == .success }
+        XCTAssertEqual(system.translatedText, "系统译文")
+        XCTAssertEqual(controller.translatedText, "模型完整译文")
+        controller.clear()
+        XCTAssertNil(system.selection)
+        XCTAssertNil(system.translatedText)
+        XCTAssertNil(controller.translatedText)
+    }
+
+    func testBothEnginesRespectModelConsentAndPaperChangeClearsBoth() async throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        let preferences = try comparisonPreferences(originConfirmed: false)
+        receiveModelSelection("Selection", controller: controller, preferences: preferences)
+        controller.requestTranslation(preferences: preferences)
+        let system = try XCTUnwrap(controller.comparisonController)
+        await system.perform(using: FakeTranslationPerformer(output: "系统译文", delay: .zero))
+        XCTAssertNotNil(controller.pendingOriginConsent)
+        XCTAssertEqual(sender.requestCount, 0)
+        controller.declinePendingOrigin()
+        XCTAssertEqual(system.translatedText, "系统译文")
+        controller.activePaperDidChange(to: UUID())
+        XCTAssertNil(system.selection)
+        XCTAssertNil(system.translatedText)
+        XCTAssertNil(controller.selection)
+    }
+
+    func testEnablingComparisonInitializesSystemSelectionWithoutSendingRequests() throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        receiveModelSelection("Selection", controller: controller,
+                              preferences: try modelPreferences(originConfirmed: true))
+        controller.translationPreferencesDidChange(preferences: try comparisonPreferences())
+        let system = try XCTUnwrap(controller.comparisonController)
+        XCTAssertEqual(system.selection, controller.selection)
+        XCTAssertEqual(system.state, .waiting)
+        XCTAssertNil(system.configuration)
+        XCTAssertEqual(sender.requestCount, 0)
+    }
+
+    func testAutomaticComparisonStartsBothAndStoppingModelPreservesSystem() async throws {
+        let sender = RecordingModelRequestSender()
+        let controller = makeModelController(sender: sender)
+        let preferences = try comparisonPreferences()
+        controller.receiveSelection(PDFSelectionEvent(rawText: "Selection", pageIndex: 0),
+                                    paperID: UUID(), paperName: "Paper", automaticTranslation: true,
+                                    preferences: preferences)
+        let request = try await waitForModelRequest(sender)
+        let system = try XCTUnwrap(controller.comparisonController)
+        XCTAssertNotNil(system.configuration)
+        await system.perform(using: FakeTranslationPerformer(output: "系统译文", delay: .zero))
+        sender.emit(.init(requestID: request.requestID, kind: "delta", text: "部分译文"))
+        try await waitUntil { controller.translatedText == "部分译文" }
+        controller.stopTranslation()
+        XCTAssertEqual(controller.state, .stopped)
+        XCTAssertEqual(system.translatedText, "系统译文")
+        XCTAssertEqual(system.state, .success)
+        receiveModelSelection("Next selection", controller: controller, preferences: preferences)
+        XCTAssertNil(system.translatedText)
+        XCTAssertEqual(system.selection?.rawText, "Next selection")
+        sender.emit(.init(requestID: request.requestID, kind: "completed", text: "Late result"))
+        XCTAssertNil(controller.translatedText)
+    }
+
+    private func comparisonPreferences(originConfirmed: Bool = true) throws -> TranslationRequestPreferences {
+        let model = try modelPreferences(originConfirmed: originConfirmed)
+        return TranslationRequestPreferences(
+            engine: .both, sourceLanguageIdentifier: model.sourceLanguageIdentifier,
+            targetLanguageIdentifier: model.targetLanguageIdentifier,
+            modelConfiguration: model.modelConfiguration, modelOriginIsConfirmed: originConfirmed
+        )
+    }
+
     private func makeController() -> TranslationController {
         TranslationController(sourceLanguageRecognizer: FixedSourceLanguageRecognizer())
     }

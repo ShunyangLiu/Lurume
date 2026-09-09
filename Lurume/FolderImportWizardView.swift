@@ -75,6 +75,9 @@ struct FolderImportWizardView: View {
             if let preview = coordinator.preview {
                 summary(preview)
                 targetParentPicker(preview)
+                Text("勾选目录会包含其中的 PDF；取消勾选会排除整个目录。导入位置请在上方选择。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Text("原位引用不会制作历史副本；Finder 中的原文件以后若被外部程序覆盖，Lurume 也会读到新内容。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -163,7 +166,6 @@ struct FolderImportWizardView: View {
                 ))
                 .labelsHidden()
                 .accessibilityLabel("包含目录 \(row.name)")
-                .disabled(row.action == nil)
                 HStack(spacing: 5) {
                     ForEach(0..<row.depth, id: \.self) { _ in
                         Color.clear.frame(width: 12, height: 1)

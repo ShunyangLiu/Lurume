@@ -116,6 +116,71 @@ final class P8FolderImportTests: XCTestCase {
         ))
     }
 
+    func testRenamedParentAndReplacementFolderHaveDistinctSources() async throws {
+        let container = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: container) }
+        let paper = container.appendingPathComponent("paper")
+        let references = paper.appendingPathComponent("references")
+        try writePDF(references.appendingPathComponent("old.pdf"))
+        let scanner = FolderImportScanner(metadataReader: NilMetadataReader())
+        let original = try await scanner.scan(rootURL: references) { _ in }
+        let existing = CollectionRecord(name: "references", importSources: [original.root.source])
+        let renamed = container.appendingPathComponent("old-paper")
+        try FileManager.default.moveItem(at: paper, to: renamed)
+        let moved = try await scanner.scan(rootURL: renamed.appendingPathComponent("references")) { _ in }
+        XCTAssertEqual(original.root.source, moved.root.source)
+        guard case var .folder(legacySource) = original.root.source else { return XCTFail("Expected folder") }
+        legacySource.rootFileIdentifier = nil
+        let legacyCollection = CollectionRecord(name: "references", importSources: [.folder(legacySource)])
+        XCTAssertEqual(FolderImportPreviewBuilder.build(
+            scan: moved, existingPapers: [], existingCollections: [legacyCollection],
+            options: FolderImportPreviewOptions(targetParentID: nil)
+        ).collections.first?.action, .reuse(id: legacyCollection.id, matchedSource: true))
+        for index in 0..<4 {
+            try writePDF(paper.appendingPathComponent("paper-\(index).pdf"), payload: "paper-\(index)")
+        }
+        let replacement = try await scanner.scan(rootURL: paper) { _ in }
+        XCTAssertNotEqual(original.root.source, replacement.root.source)
+        XCTAssertEqual(FolderImportPreviewBuilder.build(
+            scan: replacement, existingPapers: [], existingCollections: [legacyCollection],
+            options: FolderImportPreviewOptions(targetParentID: nil)
+        ).collections.first?.name, "paper")
+        var options = FolderImportPreviewOptions(targetParentID: nil)
+        let preview = FolderImportPreviewBuilder.build(
+            scan: replacement, existingPapers: [], existingCollections: [existing], options: options
+        )
+        XCTAssertEqual(preview.includedPaperCount, 4)
+        XCTAssertEqual(preview.collections.first?.name, "paper")
+        guard case .create = preview.collections.first?.action else {
+            return XCTFail("Replacement folder must create its own collection")
+        }
+        options.excludedDirectorySources.insert(replacement.root.source)
+        XCTAssertEqual(FolderImportPreviewBuilder.build(
+            scan: replacement, existingPapers: [], existingCollections: [existing], options: options
+        ).includedPaperCount, 0)
+        options.excludedDirectorySources.remove(replacement.root.source)
+        XCTAssertEqual(FolderImportPreviewBuilder.build(
+            scan: replacement, existingPapers: [], existingCollections: [existing], options: options
+        ).includedPaperCount, 4)
+    }
+
+    func testMissingDirectoryDocumentIdentifiersDoNotMergeDifferentFileIdentifiers() throws {
+        let first = FolderImportSource(rootVolumeUUID: "volume", rootDocumentIdentifier: 0,
+                                     relativePath: "", rootFileIdentifier: "inode-1")
+        let second = FolderImportSource(rootVolumeUUID: "volume", rootDocumentIdentifier: 0,
+                                      relativePath: "", rootFileIdentifier: "inode-2")
+        XCTAssertNotEqual(first, second)
+        XCTAssertEqual(Set([first, second]).count, 2)
+        XCTAssertEqual(try JSONDecoder().decode(FolderImportSource.self,
+                                               from: JSONEncoder().encode(first)), first)
+        let legacy = try JSONDecoder().decode(FolderImportSource.self,
+            from: Data(#"{"rootVolumeUUID":"volume","rootDocumentIdentifier":0,"relativePath":""}"#.utf8))
+        XCTAssertNil(legacy.rootFileIdentifier)
+        XCTAssertNotEqual(first, legacy)
+        XCTAssertFalse(FileIdentity(volumeUUID: "volume", documentIdentifier: 0, fallbackPath: "/a")
+            .identifiesSameFile(as: FileIdentity(volumeUUID: "volume", documentIdentifier: 0, fallbackPath: "/b")))
+    }
+
     func testRootBookmarkDoesNotChangeFolderSourceIdentityAndCannotAppearOnChildren() {
         let first = ImportSourceIdentity.folder(FolderImportSource(
             rootVolumeUUID: "volume",

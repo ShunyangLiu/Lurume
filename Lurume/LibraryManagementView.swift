@@ -95,13 +95,20 @@ struct LibrarySourceSidebar: View {
             return .handled
         }
         .onKeyPress(.delete) {
-            guard case let .collection(id) = source,
+            guard !isCreating, editingCollectionID == nil,
+                  case let .collection(id) = source,
                   let collection = libraryStore.collections.first(where: { $0.id == id }),
                   !libraryStore.persistenceDisabled else {
                 return .ignored
             }
             pendingDeletion = collection
             return .handled
+        }
+        .onChange(of: nameFieldFocused) { _, focused in
+            if !focused { cancelEmptyCreation() }
+        }
+        .onChange(of: source) {
+            cancelEmptyCreation()
         }
         .onChange(of: libraryStore.collections) {
             let validIDs = Set(libraryStore.collections.map(\.id))
@@ -251,6 +258,10 @@ struct LibrarySourceSidebar: View {
                     .focused($nameFieldFocused)
                     .onSubmit(submit)
                     .onExitCommand(perform: cancelEditing)
+                Button("取消", action: cancelEditing)
+                    .buttonStyle(.borderless)
+                    .fixedSize()
+                    .help(isCreating ? "取消新建文献集（Esc）" : "取消重命名（Esc）")
             }
             if let nameError {
                 Text(nameError)
@@ -291,11 +302,17 @@ struct LibrarySourceSidebar: View {
     private func focusNameField() {
         Task { @MainActor in
             await Task.yield()
+            guard isCreating || editingCollectionID != nil else { return }
             nameFieldFocused = true
         }
     }
 
     private func createCollection() {
+        guard isCreating else { return }
+        guard !nameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            cancelEditing()
+            return
+        }
         do {
             let parentID = creationParentID
             let id = try libraryStore.createCollection(
@@ -331,6 +348,12 @@ struct LibrarySourceSidebar: View {
             nameError = error.localizedDescription
             focusNameField()
         }
+    }
+
+    private func cancelEmptyCreation() {
+        guard isCreating,
+              nameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        cancelEditing()
     }
 
     private func cancelEditing() {

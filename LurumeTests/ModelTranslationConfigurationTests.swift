@@ -45,6 +45,18 @@ final class ModelTranslationConfigurationTests: XCTestCase {
         }
     }
 
+    func testComparisonEngineSelectionPersists() throws {
+        try withSettings { settings, defaults in
+            let validated = try ModelTranslationConfigurationValidator.validate(
+                baseURL: "https://example.com/v1", model: "fixture-model", streamsResponse: true,
+                prompt: ModelTranslationConfiguration.defaultPrompt
+            )
+            settings.applyModelTranslationConfiguration(validated, engine: .customModel)
+            settings.selectTranslationEngine(.both)
+            XCTAssertEqual(AppSettings(defaults: defaults).translationEngine, .both)
+        }
+    }
+
     func testTranslationOptimizationPreferencePersistsWhenDisabled() throws {
         try withSettings { settings, defaults in
             let validated = try ModelTranslationConfigurationValidator.validate(

@@ -90,29 +90,36 @@ struct TranslationInspector: View {
     @ViewBuilder
     private var translationContent: some View {
         Group {
+            Picker("翻译方式", selection: Binding(
+                get: { settings.translationEngine },
+                set: { settings.selectTranslationEngine($0) }
+            )) {
+                ForEach(TranslationEngine.allCases) { engine in
+                    Text(engine.title).tag(engine)
+                }
+            }
+            .padding()
+            Divider()
             if let selection = controller.selection {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         sourceMetadata(for: selection)
-                        HStack {
-                            statusLabel
-                            Spacer()
-                            primaryTranslationAction
+                        if settings.translationEngine == .both,
+                           let systemController = controller.comparisonController {
+                            TranslationResultPane(controller: systemController, settings: settings,
+                                                  engine: .apple, showsEngineTitle: true)
+                            Divider()
+                            TranslationResultPane(controller: controller, settings: settings,
+                                                  engine: .customModel, showsEngineTitle: true)
+                        } else {
+                            TranslationResultPane(controller: controller, settings: settings,
+                                                  engine: settings.translationEngine,
+                                                  showsEngineTitle: false)
                         }
-                        if let source = controller.resultSource {
-                            Text(source.label)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .accessibilityLabel("译文来源：\(source.label)")
-                        }
-                        translationBody
-                        recoveryActions
                     }
                     .padding()
                 }
 
-                Divider()
-                actionBar(for: selection)
             } else {
                 emptyState
             }
@@ -217,6 +224,57 @@ struct TranslationInspector: View {
         }
     }
 
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "translate")
+                .font(.system(size: 28))
+                .foregroundStyle(.tertiary)
+            Text("划词后，译文会显示在这里。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+
+}
+
+
+private struct TranslationResultPane: View {
+    @ObservedObject var controller: TranslationController
+    @ObservedObject var settings: AppSettings
+    let engine: TranslationEngine
+    let showsEngineTitle: Bool
+
+    private var preferences: TranslationRequestPreferences {
+        engine == .apple ? settings.translationRequestPreferences.usingAppleEngine()
+            : settings.translationRequestPreferences.usingModelEngine()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if showsEngineTitle {
+                Text(engine.title).font(.headline)
+            }
+            HStack {
+                statusLabel
+                Spacer()
+                primaryTranslationAction
+            }
+            if let source = controller.resultSource {
+                Text(source.label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            translationBody
+            recoveryActions
+            if let selection = controller.selection {
+                actionBar(for: selection)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     @ViewBuilder
     private var translationBody: some View {
         if let translatedText = controller.translatedText {
@@ -260,7 +318,7 @@ struct TranslationInspector: View {
                 && controller.state != .resourcesNeeded {
                 Button("翻译") {
                     controller.requestTranslation(
-                        preferences: settings.translationRequestPreferences
+                        preferences: preferences
                     )
                 }
                 .buttonStyle(.borderedProminent)
@@ -276,17 +334,17 @@ struct TranslationInspector: View {
                 HStack {
                     Button("重试") {
                         controller.requestTranslation(
-                            preferences: settings.translationRequestPreferences
+                            preferences: preferences
                         )
                     }
                     .buttonStyle(.borderedProminent)
 
-                    Button("使用系统翻译") {
-                        controller.requestSystemTranslation(
-                            preferences: settings.translationRequestPreferences
-                        )
+                    if !showsEngineTitle {
+                        Button("使用系统翻译") {
+                            controller.requestSystemTranslation(preferences: preferences)
+                        }
+                        .disabled(controller.systemFallbackAvailability != .available)
                     }
-                    .disabled(controller.systemFallbackAvailability != .available)
                 }
                 .controlSize(.small)
 
@@ -339,18 +397,6 @@ struct TranslationInspector: View {
         .controlSize(.small)
         .padding(.horizontal)
         .padding(.vertical, 8)
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "translate")
-                .font(.system(size: 28))
-                .foregroundStyle(.tertiary)
-            Text("划词后，译文会显示在这里。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func copy(_ text: String) {

@@ -76,7 +76,7 @@ struct TranslationSettingsView: View {
                     }
                 }
                 Toggle("自动翻译选中文字", isOn: $settings.automaticTranslation)
-                if modelSettings.draftEngine == .customModel, settings.automaticTranslation {
+                if modelSettings.draftEngine != .apple, settings.automaticTranslation {
                     Text("开启后，选区稳定时会向配置的服务发送选中文字；远端服务可能计费。")
                         .font(.caption)
                         .foregroundStyle(.secondary)

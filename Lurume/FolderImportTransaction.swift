@@ -146,6 +146,32 @@ enum FolderImportPreviewBuilder {
             pendingAncestors.append(parent)
         }
 
+        // Older libraries lack the filesystem identifier. Only reuse their collections
+        // when the saved root bookmark resolves to the directory actually being scanned.
+        let verifiedLegacyCollectionIDs = Set(existingCollections.compactMap { collection -> UUID? in
+            guard let folder = collection.importSources.compactMap({ source -> FolderImportSource? in
+                guard case let .folder(folder) = source, folder.relativePath.isEmpty,
+                      folder.rootBookmarkData != nil else { return nil }
+                return folder
+            }).first,
+                  folder.rootFileIdentifier == nil,
+                  folder.relativePath.isEmpty,
+                  let bookmark = folder.rootBookmarkData,
+                  case let .folder(currentRoot) = scan.root.source,
+                  let currentIdentifier = currentRoot.rootFileIdentifier else { return nil }
+            var stale = false
+            guard let url = try? URL(resolvingBookmarkData: bookmark,
+                                     options: [.withSecurityScope, .withoutUI],
+                                     relativeTo: nil, bookmarkDataIsStale: &stale) else { return nil }
+            let didStartAccessing = url.startAccessingSecurityScopedResource()
+            defer { if didStartAccessing { url.stopAccessingSecurityScopedResource() } }
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  let inode = attributes[.systemFileNumber] as? NSNumber,
+                  let device = attributes[.systemNumber] as? NSNumber,
+                  let created = attributes[.creationDate] as? Date,
+                  "\(device):\(inode):\(created.timeIntervalSince1970)" == currentIdentifier else { return nil }
+            return collection.id
+        })
         var candidateCollections = existingCollections
         var collectionIDBySource: [ImportSourceIdentity: UUID] = [:]
         var collectionRows: [FolderCollectionPreview] = []
@@ -164,6 +190,7 @@ enum FolderImportPreviewBuilder {
             }
             if let matched = existingCollections.first(where: {
                 $0.importSources.contains(collection.source)
+                    || (collection.parentSource == nil && verifiedLegacyCollectionIDs.contains($0.id))
             }) {
                 collectionIDBySource[collection.source] = matched.id
                 collectionRows.append(FolderCollectionPreview(
@@ -304,7 +331,8 @@ enum FolderImportPreviewBuilder {
         guard case let .folder(candidateFolder) = candidate,
               case let .folder(directoryFolder) = directory,
               candidateFolder.rootVolumeUUID == directoryFolder.rootVolumeUUID,
-              candidateFolder.rootDocumentIdentifier == directoryFolder.rootDocumentIdentifier else {
+              candidateFolder.rootDocumentIdentifier == directoryFolder.rootDocumentIdentifier,
+              candidateFolder.rootFileIdentifier == directoryFolder.rootFileIdentifier else {
             return false
         }
         let directoryPath = directoryFolder.relativePath

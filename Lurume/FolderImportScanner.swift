@@ -216,7 +216,8 @@ struct FolderImportScanner: FolderImportScanning, Sendable {
             file.descriptor.source = .folder(FolderImportSource(
                 rootVolumeUUID: enumeration.rootIdentity.volumeUUID,
                 rootDocumentIdentifier: enumeration.rootIdentity.documentIdentifier,
-                relativePath: file.relativePath
+                relativePath: file.relativePath,
+                rootFileIdentifier: enumeration.rootFileIdentifier
             ))
             return file
         }.sorted {
@@ -234,6 +235,7 @@ struct FolderImportScanner: FolderImportScanning, Sendable {
                 rootURL: enumeration.rootURL,
                 rootIdentity: enumeration.rootIdentity,
                 rootBookmarkData: enumeration.rootBookmarkData,
+                rootFileIdentifier: enumeration.rootFileIdentifier,
                 files: validFiles
             ),
             files: validFiles,
@@ -372,6 +374,7 @@ private extension FolderImportScanner {
     struct EnumerationResult: Sendable {
         var rootURL: URL
         var rootIdentity: FileIdentity
+        var rootFileIdentifier: String
         var rootBookmarkData: Data
         var pdfs: [EnumeratedPDF]
         var diagnostics: [FolderScanDiagnostic]
@@ -409,6 +412,13 @@ private extension FolderImportScanner {
         }
         let resolvedRoot = selectedRoot.resolvingSymlinksInPath().standardizedFileURL
         let rootIdentity = try FileIdentity(url: resolvedRoot)
+        let rootAttributes = try FileManager.default.attributesOfItem(atPath: resolvedRoot.path)
+        guard let inode = rootAttributes[.systemFileNumber] as? NSNumber,
+              let device = rootAttributes[.systemNumber] as? NSNumber,
+              let created = rootAttributes[.creationDate] as? Date else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        let rootFileIdentifier = "\(device):\(inode):\(created.timeIntervalSince1970)"
         let rootBookmarkData: Data
         do {
             rootBookmarkData = try SecurityScopedFile.makeBookmark(for: selectedRoot)
@@ -496,6 +506,7 @@ private extension FolderImportScanner {
         return EnumerationResult(
             rootURL: selectedRoot,
             rootIdentity: rootIdentity,
+            rootFileIdentifier: rootFileIdentifier,
             rootBookmarkData: rootBookmarkData,
             pdfs: pdfs,
             diagnostics: diagnostics,
@@ -642,6 +653,7 @@ private extension FolderImportScanner {
         rootURL: URL,
         rootIdentity: FileIdentity,
         rootBookmarkData: Data,
+        rootFileIdentifier: String,
         files: [ScannedFolderPDF]
     ) -> FolderDirectoryDescriptor {
         let source: (String) -> ImportSourceIdentity = { relativePath in
@@ -649,7 +661,8 @@ private extension FolderImportScanner {
                 rootVolumeUUID: rootIdentity.volumeUUID,
                 rootDocumentIdentifier: rootIdentity.documentIdentifier,
                 relativePath: relativePath,
-                rootBookmarkData: relativePath.isEmpty ? rootBookmarkData : nil
+                rootBookmarkData: relativePath.isEmpty ? rootBookmarkData : nil,
+                rootFileIdentifier: rootFileIdentifier
             ))
         }
         var directoryPaths: Set<String> = [""]

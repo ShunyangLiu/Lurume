@@ -173,7 +173,7 @@ final class AppSettings: ObservableObject {
         let requestedEngine = defaults.string(forKey: Key.translationEngine)
             .flatMap(TranslationEngine.init(rawValue:))
             ?? .apple
-        if requestedEngine == .customModel,
+        if requestedEngine != .apple,
            (try? ModelTranslationConfigurationValidator.validate(
                baseURL: storedBaseURL,
                model: storedModel,
@@ -263,6 +263,10 @@ final class AppSettings: ObservableObject {
         modelTranslationStreamsResponse = configuration.configuration.streamsResponse
         modelTranslationOptimizesForTranslation = configuration.configuration.optimizesForTranslation
         modelTranslationPrompt = configuration.configuration.prompt
+        translationEngine = engine
+    }
+
+    func selectTranslationEngine(_ engine: TranslationEngine) {
         translationEngine = engine
     }
 

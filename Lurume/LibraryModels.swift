@@ -25,9 +25,9 @@ struct FileIdentity: Codable, Equatable, Sendable {
 
     func identifiesSameFile(as other: FileIdentity) -> Bool {
         if let volumeUUID,
-           let documentIdentifier,
+           let documentIdentifier, documentIdentifier > 0,
            let otherVolumeUUID = other.volumeUUID,
-           let otherDocumentIdentifier = other.documentIdentifier {
+           let otherDocumentIdentifier = other.documentIdentifier, otherDocumentIdentifier > 0 {
             return volumeUUID == otherVolumeUUID
                 && documentIdentifier == otherDocumentIdentifier
         }
@@ -242,6 +242,8 @@ struct BibliographicMetadata: Codable, Equatable, Sendable {
 struct FolderImportSource: Codable, Equatable, Hashable, Sendable {
     var rootVolumeUUID: String?
     var rootDocumentIdentifier: Int?
+    /// 文件系统节点标识，避免目录 documentIdentifier 缺失或为 0 时串用来源。
+    var rootFileIdentifier: String?
     var relativePath: String
     /// 只在根目录来源（relativePath 为空）保存；不参与来源身份比较。
     var rootBookmarkData: Data?
@@ -250,10 +252,12 @@ struct FolderImportSource: Codable, Equatable, Hashable, Sendable {
         rootVolumeUUID: String?,
         rootDocumentIdentifier: Int?,
         relativePath: String,
-        rootBookmarkData: Data? = nil
+        rootBookmarkData: Data? = nil,
+        rootFileIdentifier: String? = nil
     ) {
         self.rootVolumeUUID = rootVolumeUUID
         self.rootDocumentIdentifier = rootDocumentIdentifier
+        self.rootFileIdentifier = rootFileIdentifier
         self.relativePath = relativePath
         self.rootBookmarkData = rootBookmarkData
     }
@@ -261,12 +265,14 @@ struct FolderImportSource: Codable, Equatable, Hashable, Sendable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.rootVolumeUUID == rhs.rootVolumeUUID
             && lhs.rootDocumentIdentifier == rhs.rootDocumentIdentifier
+            && lhs.rootFileIdentifier == rhs.rootFileIdentifier
             && lhs.relativePath == rhs.relativePath
     }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(rootVolumeUUID)
         hasher.combine(rootDocumentIdentifier)
+        hasher.combine(rootFileIdentifier)
         hasher.combine(relativePath)
     }
 }
@@ -335,7 +341,7 @@ enum ImportSourceOrdering {
     static func key(_ source: ImportSourceIdentity) -> String {
         switch source {
         case let .folder(folder):
-            return "folder|\(folder.rootVolumeUUID ?? "")|\(folder.rootDocumentIdentifier.map(String.init) ?? "")|\(folder.relativePath)"
+            return "folder|\(folder.rootVolumeUUID ?? "")|\(folder.rootDocumentIdentifier.map(String.init) ?? "")|\(folder.rootFileIdentifier ?? "")|\(folder.relativePath)"
         case let .zoteroCollection(library, collectionKey, serverID):
             return "zotero-collection|\(library.type)|\(library.id)|\(collectionKey)|\(serverID ?? "")"
         case let .zoteroAttachment(library, parentItemKey, attachmentKey, serverID):
