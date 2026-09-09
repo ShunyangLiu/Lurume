@@ -534,6 +534,20 @@ final class PDFReaderController: ObservableObject {
         return HighlightPoint(cgPoint: clampedCenter)
     }
 
+    @discardableResult
+    func saveNoteMarkerPosition(
+        id: UUID,
+        position: HighlightPoint,
+        save: (UUID, HighlightPoint) -> Bool
+    ) -> Bool {
+        guard save(id, position) else {
+            // The store keeps the previous record on failure; restore the preview too.
+            refreshHighlightAdornments()
+            return false
+        }
+        return true
+    }
+
     func presentNoteEditor(
         for highlight: HighlightRecord,
         readOnly: Bool,
@@ -836,14 +850,27 @@ final class PDFReaderController: ObservableObject {
             originX = highlightRect.minX - gap - size.width
         }
         originX = min(max(originX, pageBounds.minX), pageBounds.maxX - size.width)
-        var originY = min(
+        let originY = min(
             max(highlightRect.midY - size.height / 2, pageBounds.minY),
             pageBounds.maxY - size.height
         )
-        var candidate = CGRect(origin: CGPoint(x: originX, y: originY), size: size)
-        for _ in 0..<8 where occupied.contains(where: { $0.intersects(candidate) }) {
-            originY = min(originY + size.height + 2, pageBounds.maxY - size.height)
-            candidate.origin.y = originY
+        let candidate = CGRect(origin: CGPoint(x: originX, y: originY), size: size)
+        guard occupied.contains(where: { $0.intersects(candidate) }) else { return candidate }
+
+        // Search both sides of occupied markers, nearest first. Clamping an upward-only
+        // search at the page edge repeatedly returned the same overlapping position.
+        var availableOrigins: [CGFloat] = []
+        for rect in occupied {
+            for y in [rect.maxY + 2, rect.minY - size.height - 2] {
+                if y >= pageBounds.minY && y + size.height <= pageBounds.maxY {
+                    availableOrigins.append(y)
+                }
+            }
+        }
+        availableOrigins.sort { abs($0 - originY) < abs($1 - originY) }
+        for y in availableOrigins {
+            let alternative = CGRect(x: originX, y: y, width: size.width, height: size.height)
+            if !occupied.contains(where: { $0.intersects(alternative) }) { return alternative }
         }
         return candidate
     }
@@ -891,7 +918,7 @@ struct PDFReaderView: NSViewRepresentable {
     let onToggleHighlight: () -> Void
     let onDeleteHighlight: (UUID) -> Void
     let onOpenHighlightNote: (UUID) -> Void
-    let onMoveHighlightNoteMarker: (UUID, HighlightPoint) -> Void
+    let onMoveHighlightNoteMarker: (UUID, HighlightPoint) -> Bool
     let onError: (String) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -964,7 +991,7 @@ struct PDFReaderView: NSViewRepresentable {
             ), finished else {
                 return
             }
-            onMoveHighlightNoteMarker(id, position)
+            controller?.saveNoteMarkerPosition(id: id, position: position, save: onMoveHighlightNoteMarker)
         }
         highlightView.onHoverHighlight = { [weak controller] id in
             controller?.setHoveredHighlightID(id)

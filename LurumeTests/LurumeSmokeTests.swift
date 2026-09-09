@@ -373,6 +373,58 @@ final class LurumeSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testNoteMarkersNearPageTopDoNotOverlap() throws {
+        let document = try XCTUnwrap(makeSearchablePDF(text: ""))
+        let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        pdfView.document = document
+        pdfView.layoutSubtreeIfNeeded()
+        let controller = PDFReaderController()
+        controller.attach(pdfView)
+        let paperID = UUID()
+        let highlights = try [770.0, 780.0].map { y in
+            try XCTUnwrap(HighlightRecord(paperID: paperID, rawText: "line \(y)",
+                segments: [try XCTUnwrap(HighlightSegment(pageIndex: 0,
+                    rects: [try XCTUnwrap(HighlightRect(cgRect: CGRect(x: 550, y: y, width: 40, height: 8)))]))], noteText: "note"))
+        }
+        controller.renderHighlights(highlights)
+        let first = try XCTUnwrap(controller.noteMarkerAnchorRect(for: highlights[0].id))
+        let second = try XCTUnwrap(controller.noteMarkerAnchorRect(for: highlights[1].id))
+        XCTAssertFalse(first.intersects(second), "Markers must use free space below when the top edge blocks upward placement")
+    }
+
+    @MainActor
+    func testFailedNoteMarkerSaveRestoresPreviousPosition() throws {
+        let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta gamma"))
+        let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        pdfView.document = document
+        pdfView.layoutSubtreeIfNeeded()
+        let controller = PDFReaderController()
+        controller.attach(pdfView)
+        pdfView.setCurrentSelection(try XCTUnwrap(document.findString("beta", withOptions: []).first),
+                                    animate: false)
+        let highlight = try XCTUnwrap(controller.makeHighlightCandidate(paperID: UUID()))
+            .updatingNote("keep previous position")
+        controller.renderHighlights([highlight])
+        let original = try XCTUnwrap(controller.noteMarkerAnchorRect(for: highlight.id))
+        let start = CGPoint(x: original.midX, y: original.midY)
+        let target = CGPoint(x: start.x + 45, y: start.y + 35)
+        let moved = try XCTUnwrap(controller.moveNoteMarker(id: highlight.id, from: start,
+                                                          to: target, finished: true))
+        XCTAssertNil(controller.noteMarkerID(at: start))
+        var attempts = 0
+        XCTAssertFalse(controller.saveNoteMarkerPosition(id: highlight.id, position: moved) { id, position in
+            attempts += 1
+            XCTAssertEqual(id, highlight.id)
+            XCTAssertEqual(position, moved)
+            return false
+        })
+        XCTAssertEqual(attempts, 1)
+        XCTAssertEqual(controller.noteMarkerAnchorRect(for: highlight.id), original)
+        XCTAssertEqual(controller.noteMarkerID(at: start), highlight.id)
+        XCTAssertNil(controller.noteMarkerID(at: target))
+    }
+
+    @MainActor
     func testNoteMarkerCanMoveAndRestoreItsSavedPagePosition() throws {
         let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta gamma"))
         let page = try XCTUnwrap(document.page(at: 0))
