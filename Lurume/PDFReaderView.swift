@@ -75,7 +75,8 @@ final class PDFReaderController: ObservableObject {
     private var highlightAnnotations: [PDFAnnotation] = []
     private var highlightIDByAnnotation: [ObjectIdentifier: UUID] = [:]
     private var selectionAnnotations: [PDFAnnotation] = []
-    private var noteMarkerAnnotations: [PDFAnnotation] = []
+    private var noteMarkerAnnotations: [HighlightNoteMarker] = []
+    private let noteMarkerOverlayProvider = NoteMarkerOverlayProvider()
     private var noteMarkerIDByAnnotation: [ObjectIdentifier: UUID] = [:]
     private var noteMarkerDragOffsets: [UUID: CGPoint] = [:]
     private var hoveredHighlightID: UUID?
@@ -137,7 +138,9 @@ final class PDFReaderController: ObservableObject {
         guard self.pdfView !== pdfView else { return }
         clearSearchResults()
         removeRenderedHighlights()
+        self.pdfView?.pageOverlayViewProvider = nil
         self.pdfView = pdfView
+        pdfView.pageOverlayViewProvider = noteMarkerOverlayProvider
         if document !== pdfView.document {
             document = pdfView.document
         }
@@ -152,6 +155,7 @@ final class PDFReaderController: ObservableObject {
         closeNoteEditor()
         clearSearchResults()
         removeRenderedHighlights()
+        pdfView?.pageOverlayViewProvider = nil
         pdfView = nil
         if document != nil {
             document = nil
@@ -452,8 +456,8 @@ final class PDFReaderController: ObservableObject {
             return nil
         }
         let pagePoint = pdfView.convert(viewPoint, to: page)
-        for annotation in page.annotations.reversed()
-        where annotation.bounds.insetBy(dx: -3, dy: -3).contains(pagePoint) {
+        for annotation in noteMarkerAnnotations.reversed()
+        where annotation.page === page && annotation.bounds.insetBy(dx: -3, dy: -3).contains(pagePoint) {
             if let id = noteMarkerIDByAnnotation[ObjectIdentifier(annotation)] {
                 return id
             }
@@ -520,21 +524,10 @@ final class PDFReaderController: ObservableObject {
             height: previousBounds.height
         )
         if movedBounds != previousBounds {
-            let previousViewBounds = pdfView.convert(previousBounds, from: page)
-            // PDFKit may retain the stamp's old drawing when only bounds changes.
-            // Remove it at its old position, then reinsert the same marker at the new one.
-            page.removeAnnotation(annotation)
             annotation.bounds = movedBounds
-            page.addAnnotation(annotation)
-            pdfView.annotationsChanged(on: page)
-
-            let dirtyRect = previousViewBounds.union(pdfView.convert(movedBounds, from: page))
-                .insetBy(dx: -4, dy: -4)
-            pdfView.setNeedsDisplay(dirtyRect)
-            if let documentView = pdfView.documentView {
-                documentView.setNeedsDisplay(documentView.convert(dirtyRect, from: pdfView))
-            }
+            noteMarkerOverlayProvider.refresh()
         }
+
         if finished {
             noteMarkerDragOffsets.removeValue(forKey: id)
         }
@@ -773,24 +766,22 @@ final class PDFReaderController: ObservableObject {
                 savedPosition: highlight.noteMarkerPosition?.cgPoint
             )
             occupiedByPage[anchor.pageIndex, default: []].append(markerRect)
-            let marker = HighlightNoteMarkerAnnotation(
+            let marker = HighlightNoteMarker(
                 bounds: markerRect,
-                style: highlight.hasNote ? .note : .add
+                style: highlight.hasNote ? .note : .add,
+                page: anchor.page
             )
-            marker.contents = highlight.hasNote ? "打开高亮笔记" : "添加高亮笔记"
-            anchor.page.addAnnotation(marker)
             noteMarkerAnnotations.append(marker)
             noteMarkerIDByAnnotation[ObjectIdentifier(marker)] = highlight.id
         }
+        noteMarkerOverlayProvider.markers = noteMarkerAnnotations
     }
 
     private func removeHighlightAdornments() {
         for annotation in selectionAnnotations {
             annotation.page?.removeAnnotation(annotation)
         }
-        for annotation in noteMarkerAnnotations {
-            annotation.page?.removeAnnotation(annotation)
-        }
+        noteMarkerOverlayProvider.markers = []
         selectionAnnotations = []
         noteMarkerAnnotations = []
         noteMarkerIDByAnnotation = [:]
@@ -1130,8 +1121,12 @@ struct PDFToolbar: View {
         .disabled(controller.pageCount == 0)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .frame(maxWidth: .infinity)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
         .onChange(of: controller.currentPageIndex, initial: true) {
             requestedPage = controller.currentPageIndex + 1
         }

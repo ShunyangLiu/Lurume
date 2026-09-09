@@ -2,26 +2,23 @@ import AppKit
 import PDFKit
 import SwiftUI
 
-final class HighlightNoteMarkerAnnotation: PDFAnnotation {
+final class HighlightNoteMarker {
     enum Style {
         case add
         case note
     }
 
     let markerStyle: Style
+    var bounds: CGRect
+    weak var page: PDFPage?
 
-    init(bounds: CGRect, style: Style) {
+    init(bounds: CGRect, style: Style, page: PDFPage) {
+        self.bounds = bounds
         markerStyle = style
-        super.init(bounds: bounds, forType: .stamp, withProperties: nil)
-        isReadOnly = true
+        self.page = page
     }
 
-    required init?(coder: NSCoder) {
-        markerStyle = .note
-        super.init(coder: coder)
-    }
-
-    override func draw(with box: PDFDisplayBox, in context: CGContext) {
+    func draw(in context: CGContext) {
         context.saveGState()
         defer { context.restoreGState() }
 
@@ -68,6 +65,54 @@ final class HighlightNoteMarkerAnnotation: PDFAnnotation {
                 context.addLine(to: CGPoint(x: body.maxX - 3, y: body.minY + offset))
             }
             context.strokePath()
+        }
+    }
+}
+
+/// Markers never enter PDF annotations or PDFKit's cached page drawing.
+@MainActor
+final class NoteMarkerOverlayView: NSView {
+    var markers: [HighlightNoteMarker] = [] {
+        didSet { needsDisplay = true }
+    }
+    weak var page: PDFPage?
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let context = NSGraphicsContext.current?.cgContext,
+              let page else { return }
+        let pageBounds = page.bounds(for: .cropBox)
+        guard pageBounds.width > 0, pageBounds.height > 0 else { return }
+        context.saveGState()
+        defer { context.restoreGState() }
+        // PDFKit sizes and rotates this overlay with its page.
+        context.scaleBy(x: bounds.width / pageBounds.width, y: bounds.height / pageBounds.height)
+        context.translateBy(x: -pageBounds.minX, y: -pageBounds.minY)
+        for marker in markers { marker.draw(in: context) }
+    }
+}
+
+@MainActor
+final class NoteMarkerOverlayProvider: NSObject, @preconcurrency PDFPageOverlayViewProvider {
+    private let overlays = NSMapTable<PDFPage, NoteMarkerOverlayView>.weakToWeakObjects()
+    var markers: [HighlightNoteMarker] = [] {
+        didSet { refresh() }
+    }
+
+    func pdfView(_ view: PDFView, overlayViewFor page: PDFPage) -> NSView? {
+        if let existing = overlays.object(forKey: page) { return existing }
+        let overlay = NoteMarkerOverlayView()
+        overlay.wantsLayer = true
+        overlay.page = page
+        overlay.markers = markers.filter { $0.page === page }
+        overlays.setObject(overlay, forKey: page)
+        return overlay
+    }
+
+    func refresh() {
+        for page in overlays.keyEnumerator().allObjects.compactMap({ $0 as? PDFPage }) {
+            overlays.object(forKey: page)?.markers = markers.filter { $0.page === page }
         }
     }
 }

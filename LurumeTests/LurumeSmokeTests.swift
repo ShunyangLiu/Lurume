@@ -247,7 +247,7 @@ final class LurumeSmokeTests: XCTestCase {
     }
 
     @MainActor
-    func testHighlightSelectionAndNoteMarkersUseTemporaryAnnotations() throws {
+    func testNoteMarkersStayOutsidePDFAnnotations() throws {
         let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta gamma"))
         let page = try XCTUnwrap(document.page(at: 0))
         let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
@@ -263,8 +263,8 @@ final class LurumeSmokeTests: XCTestCase {
         controller.renderHighlights([noted])
         XCTAssertEqual(
             page.annotations.filter { $0.type != "Popup" }.count,
-            2,
-            "黄色高亮和一个常驻笔记标志：\(page.annotations.map { $0.type ?? "nil" })"
+            1,
+            "PDF 页面只包含黄色高亮，笔记标志在覆盖视图中：\(page.annotations.map { $0.type ?? "nil" })"
         )
         let markerRect = try XCTUnwrap(controller.noteMarkerAnchorRect(for: noted.id))
         XCTAssertEqual(
@@ -275,12 +275,100 @@ final class LurumeSmokeTests: XCTestCase {
         controller.currentHighlightID = noted.id
         XCTAssertEqual(
             page.annotations.filter { $0.type != "Popup" }.count,
-            3,
+            2,
             "选择后逐行增加一个虚线轮廓：\(page.annotations.map { $0.type ?? "nil" })"
         )
         XCTAssertEqual(page.annotations.filter { $0.border?.style == .dashed }.count, 1)
 
         controller.renderHighlights([])
+        XCTAssertTrue(page.annotations.isEmpty)
+    }
+
+    @MainActor
+    func testPDFKitInstallsNoteOverlayAndTracksZoom() async throws {
+        let document = try XCTUnwrap(makeSearchablePDF(text: "alpha beta gamma"))
+        let pdfView = PDFView(frame: CGRect(x: 0, y: 0, width: 800, height: 500))
+        let controller = PDFReaderController()
+        controller.attach(pdfView)
+        pdfView.document = document
+        let window = NSWindow(contentRect: pdfView.frame, styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.contentView = pdfView
+        window.makeKeyAndOrderFront(nil)
+        pdfView.layoutDocumentView()
+        defer { window.orderOut(nil); window.contentView = nil; controller.detach() }
+        pdfView.setCurrentSelection(try XCTUnwrap(document.findString("beta", withOptions: []).first),
+                                    animate: false)
+        let highlight = try XCTUnwrap(controller.makeHighlightCandidate(paperID: UUID()))
+            .updatingNote("overlay note")
+        controller.renderHighlights([highlight])
+        func overlays(in view: NSView) -> [NoteMarkerOverlayView] {
+            (view as? NoteMarkerOverlayView).map { [$0] } ?? view.subviews.flatMap { overlays(in: $0) }
+        }
+        for (scale, rotation) in [(1.0, 0), (1.5, 0), (1.0, 90)] {
+            document.page(at: 0)?.rotation = rotation
+            pdfView.scaleFactor = scale
+            pdfView.layoutDocumentView()
+            pdfView.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            try await Task.sleep(for: .milliseconds(1000))
+            let overlay = try XCTUnwrap(overlays(in: pdfView).first)
+            XCTAssertEqual(overlay.markers.count, 1)
+            XCTAssertNil(overlay.hitTest(.zero), "Text selection and marker dragging remain handled by PDFView")
+            let marker = try XCTUnwrap(overlay.markers.first)
+            let page = try XCTUnwrap(marker.page)
+            let crop = page.bounds(for: .cropBox)
+            let overlayPoint = CGPoint(x: (marker.bounds.midX - crop.minX) * overlay.bounds.width / crop.width,
+                                       y: (marker.bounds.midY - crop.minY) * overlay.bounds.height / crop.height)
+            let actual = overlay.convert(overlayPoint, to: pdfView)
+            let expected = try XCTUnwrap(controller.noteMarkerAnchorRect(for: highlight.id))
+            XCTAssertEqual(actual.x, expected.midX, accuracy: 1)
+            XCTAssertEqual(actual.y, expected.midY, accuracy: 1)
+        }
+    }
+
+    @MainActor
+    func testNoteOverlayClearsPixelsAfterRepeatedMoves() async throws {
+        let document = try XCTUnwrap(makeSearchablePDF(text: ""))
+        let page = try XCTUnwrap(document.page(at: 0))
+        let provider = NoteMarkerOverlayProvider()
+        let marker = HighlightNoteMarker(bounds: CGRect(x: 30, y: 30, width: 18, height: 18),
+                                         style: .note, page: page)
+        provider.markers = [marker]
+        let overlay = try XCTUnwrap(provider.pdfView(PDFView(), overlayViewFor: page))
+        let size = page.bounds(for: .cropBox).size
+        let window = NSWindow(contentRect: CGRect(origin: .zero, size: size),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = overlay
+        defer { window.contentView = nil }
+        overlay.frame = CGRect(origin: .zero, size: size)
+        func yellowPixelCount(in rect: CGRect) throws -> Int {
+            let bitmap = try XCTUnwrap(overlay.bitmapImageRepForCachingDisplay(in: rect))
+            overlay.cacheDisplay(in: rect, to: bitmap)
+            var count = 0
+            for y in 0..<bitmap.pixelsHigh {
+                for x in 0..<bitmap.pixelsWide {
+                    guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                    if color.alphaComponent > 0.5 && color.redComponent > 0.7
+                        && color.greenComponent > 0.5 && color.blueComponent < 0.4 { count += 1 }
+                }
+            }
+            return count
+        }
+        var oldRect = marker.bounds.insetBy(dx: -2, dy: -2)
+        XCTAssertGreaterThan(try yellowPixelCount(in: oldRect), 0)
+        for index in 1...8 {
+            marker.bounds.origin = CGPoint(x: 30 + index * 25, y: 30 + index * 25)
+            provider.refresh()
+            overlay.displayIfNeeded()
+            try await Task.sleep(for: .milliseconds(20))
+            XCTAssertEqual(try yellowPixelCount(in: oldRect), 0, "Old marker pixels after move \(index)")
+            let newRect = marker.bounds.insetBy(dx: -2, dy: -2)
+            XCTAssertGreaterThan(try yellowPixelCount(in: newRect), 0)
+            oldRect = newRect
+        }
+        provider.markers = []
+        XCTAssertEqual(try yellowPixelCount(in: oldRect), 0)
         XCTAssertTrue(page.annotations.isEmpty)
     }
 
@@ -316,7 +404,7 @@ final class LurumeSmokeTests: XCTestCase {
         XCTAssertEqual(liveMovedRect.midY, target.y, accuracy: 1)
         XCTAssertNil(controller.noteMarkerID(at: start))
         XCTAssertEqual(controller.noteMarkerID(at: target), highlight.id)
-        XCTAssertEqual(page.annotations.filter { $0 is HighlightNoteMarkerAnnotation }.count, 1)
+        XCTAssertFalse(page.annotations.contains { $0.type == "Stamp" })
         let savedPosition = try XCTUnwrap(
             controller.moveNoteMarker(
                 id: highlight.id,
@@ -388,8 +476,8 @@ final class LurumeSmokeTests: XCTestCase {
         XCTAssertEqual(firstPage.annotations.count, 1)
         XCTAssertEqual(
             finalPage.annotations.filter { $0.type != "Popup" }.count,
-            2,
-            "标志只锚定在最后片段所在页：\(finalPage.annotations.map { $0.type ?? "nil" })"
+            1,
+            "笔记图标不会写入最后片段所在页的注释：\(finalPage.annotations.map { $0.type ?? "nil" })"
         )
 
         controller.activateHighlight(highlight, translate: false)

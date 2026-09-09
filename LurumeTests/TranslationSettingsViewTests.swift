@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import PDFKit
 import XCTest
 import Translation
 @testable import Lurume
@@ -88,6 +89,13 @@ final class TranslationSettingsViewTests: XCTestCase {
 
     func testReaderControlsRemainVisibleAtNarrowWidths() async throws {
         let controller = PDFReaderController()
+        let document = PDFDocument()
+        for _ in 0..<9 { document.insert(PDFPage(), at: document.pageCount) }
+        let pdfView = PDFView()
+        pdfView.document = document
+        pdfView.go(to: try XCTUnwrap(document.page(at: 4)))
+        controller.attach(pdfView)
+        controller.updatePageState()
         for width in [180.0, 410.0] {
             let view = NSHostingView(rootView: PDFToolbar(controller: controller).frame(width: width))
             let window = NSWindow(
