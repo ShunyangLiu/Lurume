@@ -309,6 +309,7 @@ final class TranslationController: ObservableObject {
     @Published private(set) var resultSource: TranslationResultSource?
     @Published private(set) var pendingOriginConsent: TranslationOriginConsentRequest?
     @Published private(set) var systemFallbackAvailability: SystemFallbackAvailability?
+    @Published private(set) var systemSessionID = UUID()
     @Published private(set) var configuration: TranslationSession.Configuration?
     /// P1：主窗口打开时检查器默认可见，首次选区只更新内容、不再改变布局。
     @Published var isInspectorPresented = true
@@ -412,12 +413,13 @@ final class TranslationController: ObservableObject {
         guard newSelection != selection else { return }
 
         cancelWorkForNewGeneration(preservingAppleConfiguration: preferences.engine == .apple)
-        comparisonController?.clear()
         if preferences.engine == .both {
             comparisonController?.receiveSelection(
                 event, paperID: paperID, paperName: paperName,
                 automaticTranslation: false, preferences: preferences.usingAppleEngine()
             )
+        } else {
+            comparisonController?.clear()
         }
         selection = newSelection
         translatedText = nil
@@ -523,7 +525,7 @@ final class TranslationController: ObservableObject {
             systemTranslationTimeoutTask?.cancel()
             systemTranslationTimeoutTask = nil
             pendingAppleRequest = nil
-            configuration = nil
+            resetSystemSession()
             state = .failed("系统翻译已停止。")
             return
         }
@@ -540,7 +542,7 @@ final class TranslationController: ObservableObject {
         deltaFlushTask?.cancel()
         deltaFlushTask = nil
         pendingModelDelta = ""
-        configuration = nil
+        resetSystemSession()
         state = hadPartialText ? .stopped : .failed("已停止翻译，尚未收到译文。")
         refreshSystemFallbackAvailability()
     }
@@ -719,7 +721,7 @@ final class TranslationController: ObservableObject {
         selection: TranslationSelection,
         preferences: TranslationRequestPreferences
     ) {
-        configuration = nil
+        resetSystemSession()
         guard let configuration = preferences.modelConfiguration else {
             resultSource = .customModel(model: nil)
             state = .failed("自定义大模型配置不完整，请先在设置中保存有效配置。")
@@ -961,7 +963,7 @@ final class TranslationController: ObservableObject {
             self.activeTranslationTask = nil
             self.activeSystemPerformer = nil
             self.systemTranslationTimeoutTask = nil
-            self.configuration = nil
+            self.resetSystemSession()
             self.generation += 1
             self.state = .failed(message)
         }
@@ -979,10 +981,16 @@ final class TranslationController: ObservableObject {
             else { return }
             self.pendingAppleRequest = nil
             self.systemTranslationTimeoutTask = nil
-            self.configuration = nil
+            self.resetSystemSession()
             self.generation += 1
             self.state = .failed("系统翻译会话启动超时，请重试。")
         }
+    }
+
+    private func resetSystemSession() {
+        guard configuration != nil else { return }
+        configuration = nil
+        systemSessionID = UUID()
     }
 
     private func cancelWorkForNewGeneration(preservingAppleConfiguration: Bool = false) {
@@ -1010,7 +1018,7 @@ final class TranslationController: ObservableObject {
         fallbackAvailabilityTask?.cancel()
         fallbackAvailabilityTask = nil
         if !preservingAppleConfiguration {
-            configuration = nil
+            resetSystemSession()
         }
     }
 

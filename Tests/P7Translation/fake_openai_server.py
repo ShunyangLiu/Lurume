@@ -76,7 +76,19 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": {"message": "unexpected request content"}})
             return
 
-        if self.path == "/redirect/same-origin":
+        if self.path == "/connection-reuse":
+            content = str(self.client_address[1]) + ":" + self.headers.get("Authorization", "")
+            if payload.get("stream"):
+                frames = ("data: " + json.dumps({"choices": [{"delta": {"content": content}}]})
+                          + "\n\ndata: [DONE]\n\n").encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Content-Length", str(len(frames)))
+                self.end_headers()
+                self._write(frames)
+            else:
+                self._json(200, {"choices": [{"message": {"content": content}}]})
+        elif self.path == "/redirect/same-origin":
             self._redirect("/stream")
         elif self.path == "/redirect/loop":
             self._redirect("/redirect/loop")

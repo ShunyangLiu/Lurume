@@ -1,8 +1,67 @@
 import Foundation
+import Combine
 import XCTest
 @testable import Lurume
 
 final class TranslationXPCIntegrationTests: XCTestCase {
+    @MainActor
+    func testTranslationLatencyBreakdown() async throws {
+        guard let root = ProcessInfo.processInfo.environment["LURUME_TRANSLATION_FAKE_SERVER"],
+              root.hasPrefix("http://127.0.0.1:") else {
+            throw XCTSkip("Requires localhost translation fixture")
+        }
+        let configuration = try ModelTranslationConfigurationValidator.validate(
+            baseURL: root + "/v1", model: "fixture-model", streamsResponse: true,
+            prompt: ModelTranslationConfiguration.defaultPrompt)
+        var results: [[String: Any]] = []
+        let sender = LatencyRecordingSender()
+        for both in [false, true] {
+            for automatic in [false, true] {
+                for iteration in 0..<5 {
+                    let controller = TranslationController(
+                        keyStore: EmptyTranslationAPIKeyStore(), modelRequestSender: sender)
+                    let preferences = TranslationRequestPreferences(
+                        engine: both ? .both : .customModel, sourceLanguageIdentifier: "en",
+                        targetLanguageIdentifier: "zh-Hans", modelConfiguration: configuration,
+                        modelOriginIsConfirmed: true)
+                    let start = ProcessInfo.processInfo.systemUptime
+                    var firstDisplay: Double?
+                    let subscription = controller.$translatedText.sink { text in
+                        if text != nil, firstDisplay == nil {
+                            firstDisplay = ProcessInfo.processInfo.systemUptime
+                        }
+                    }
+                    controller.receiveSelection(PDFSelectionEvent(rawText: "fixture selection only", pageIndex: 0),
+                                                paperID: UUID(), paperName: "Latency fixture",
+                                                automaticTranslation: automatic, preferences: preferences)
+                    if !automatic { controller.requestTranslation(preferences: preferences) }
+                    for _ in 0..<5000 {
+                        if controller.state == .success { break }
+                        if case .failed = controller.state { break }
+                        try await Task.sleep(for: .milliseconds(1))
+                    }
+                    let end = ProcessInfo.processInfo.systemUptime
+                    XCTAssertEqual(controller.state, .success)
+                    let sent = try XCTUnwrap(sender.sentAt)
+                    let received = try XCTUnwrap(sender.firstDeltaAt)
+                    let displayed = try XCTUnwrap(firstDisplay)
+                    results.append([
+                        "both": both, "automatic": automatic, "iteration": iteration,
+                        "preparation_ms": (sent - start) * 1000,
+                        "xpc_http_first_delta_ms": (received - sent) * 1000,
+                        "dispatch_display_ms": (displayed - received) * 1000,
+                        "first_display_ms": (displayed - start) * 1000,
+                        "completion_ms": (end - start) * 1000
+                    ])
+                    subscription.cancel()
+                    controller.clear()
+                }
+            }
+        }
+        let data = try JSONSerialization.data(withJSONObject: results, options: [.sortedKeys])
+        print("TRANSLATION_LATENCY_JSON: " + String(decoding: data, as: UTF8.self))
+    }
+
     func testNativeMessagesStreamsAndCompletesThroughXPC() throws {
         let client = TranslationXPCTestClient()
         defer { client.invalidate() }
@@ -60,7 +119,7 @@ final class TranslationXPCIntegrationTests: XCTestCase {
 
     func testLateInvalidationOrInterruptionCannotFailNewConnection() throws {
         let factory = StubConnectionFactory()
-        let client = TranslationXPCClient(makeConnection: { factory.make() })
+        let client = TranslationXPCClient(idleTimeout: 0, makeConnection: { factory.make() })
         let events = StubEventRecorder()
         let first = stubRequest("first")
         try client.start(first) { events.append($0) }
@@ -75,6 +134,28 @@ final class TranslationXPCIntegrationTests: XCTestCase {
         XCTAssertEqual(events.kinds, ["completed"])
         client.receive(TranslationXPCEvent(requestID: "second", kind: "completed"))
         XCTAssertEqual(events.kinds, ["completed", "completed"])
+    }
+
+    func testIdleConnectionIsReusedThenReleasedAndRecreated() async throws {
+        let factory = StubConnectionFactory()
+        let client = TranslationXPCClient(idleTimeout: 0.05, makeConnection: { factory.make() })
+        try client.start(stubRequest("reuse-1")) { _ in }
+        client.receive(.init(requestID: "reuse-1", kind: "completed"))
+        XCTAssertTrue(client.hasActiveConnectionForTesting)
+        try client.start(stubRequest("reuse-2")) { _ in }
+        XCTAssertEqual(factory.connections.count, 1)
+        // The first request's idle timer cannot close an active second request.
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertTrue(client.hasActiveConnectionForTesting)
+        client.receive(.init(requestID: "reuse-2", kind: "completed"))
+        for _ in 0..<100 {
+            if !client.hasActiveConnectionForTesting { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertFalse(client.hasActiveConnectionForTesting)
+        try client.start(stubRequest("reuse-3")) { _ in }
+        XCTAssertEqual(factory.connections.count, 2)
+        client.cancel(requestID: "reuse-3")
     }
 
     private func stubRequest(_ id: String) -> TranslationXPCRequest {
@@ -169,7 +250,7 @@ final class TranslationXPCIntegrationTests: XCTestCase {
             case let .succeeded(model, response):
                 XCTAssertEqual(model, "fixture-model")
                 XCTAssertEqual(response, "connection ok")
-                XCTAssertFalse(requestSender.hasActiveConnectionForTesting)
+                XCTAssertTrue(requestSender.hasActiveConnectionForTesting)
                 return
             case let .failed(message):
                 XCTFail("Connection test failed: \(message)")
@@ -224,7 +305,7 @@ final class TranslationXPCIntegrationTests: XCTestCase {
                 XCTAssertEqual(controller.translatedText, "connection ok")
                 XCTAssertEqual(controller.resultSource, .customModel(model: "fixture-model"))
                 XCTAssertNil(controller.configuration)
-                XCTAssertFalse(requestSender.hasActiveConnectionForTesting)
+                XCTAssertTrue(requestSender.hasActiveConnectionForTesting)
                 return
             case let .failed(message), let .interrupted(message):
                 XCTFail("Controller translation failed: \(message)")
@@ -471,4 +552,24 @@ private enum TranslationXPCTestError: Error {
     case notAccepted
     case timeout
     case connectionInvalidated
+}
+
+private final class LatencyRecordingSender: TranslationRequestSending, @unchecked Sendable {
+    private let sender = TranslationXPCClient()
+    private let lock = NSLock()
+    private var sent: Double?
+    private var first: Double?
+    var sentAt: Double? { lock.withLock { sent } }
+    var firstDeltaAt: Double? { lock.withLock { first } }
+    func start(_ request: TranslationXPCRequest,
+               eventHandler: @escaping @Sendable (TranslationXPCEvent) -> Void) throws {
+        lock.withLock { sent = ProcessInfo.processInfo.systemUptime; first = nil }
+        try sender.start(request) { [self] event in
+            if event.kind == "delta" {
+                lock.withLock { if first == nil { first = ProcessInfo.processInfo.systemUptime } }
+            }
+            eventHandler(event)
+        }
+    }
+    func cancel(requestID: String) { sender.cancel(requestID: requestID) }
 }

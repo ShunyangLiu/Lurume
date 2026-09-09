@@ -26,19 +26,23 @@ final class TranslationXPCClient: NSObject, TranslationXPCClientProtocol, Transl
 
     // Connection identity and request ownership change in one critical section.
     // An old connection's late invalidation must never fail a newer connection.
+    private let idleTimeout: TimeInterval
+    private var idleCloseToken: UUID?
+    private var idleCloseWork: DispatchWorkItem?
     private let lock = NSLock()
     private var connection: Connection?
     private var handlers: [String: RequestHandler] = [:]
     private let makeConnection: @Sendable () -> NSXPCConnection
 
-    init(makeConnection: @escaping @Sendable () -> NSXPCConnection = {
+    init(idleTimeout: TimeInterval = 30, makeConnection: @escaping @Sendable () -> NSXPCConnection = {
         NSXPCConnection(serviceName: TranslationXPCConstants.serviceName)
     }) {
+        self.idleTimeout = max(0, idleTimeout)
         self.makeConnection = makeConnection
         super.init()
     }
 
-    deinit { connection?.value.invalidate() }
+    deinit { idleCloseWork?.cancel(); connection?.value.invalidate() }
 
     func start(
         _ request: TranslationXPCRequest,
@@ -89,16 +93,9 @@ final class TranslationXPCClient: NSObject, TranslationXPCClientProtocol, Transl
     }
 
     private func fail(requestID: String, connectionID: UUID) {
-        lock.lock()
-        guard let handler = handlers[requestID], handler.connectionID == connectionID else {
-            lock.unlock()
-            return
-        }
-        handlers[requestID] = nil
-        let idleConnection = detachIdleConnectionWhileLocked()
-        lock.unlock()
-        handler.receive(Self.failure(requestID: requestID))
-        idleConnection?.invalidate()
+        // A proxy failure must retire the broken connection immediately, not
+        // return it to the idle cache for the next request.
+        connectionDidEnd(connectionID)
     }
 
     private func connectionDidEnd(_ id: UUID) {
@@ -113,6 +110,9 @@ final class TranslationXPCClient: NSObject, TranslationXPCClientProtocol, Transl
     }
 
     private func connectionForUseWhileLocked() -> Connection {
+        idleCloseWork?.cancel()
+        idleCloseWork = nil
+        idleCloseToken = nil
         if let connection { return connection }
         let id = UUID()
         let value = makeConnection()
@@ -130,8 +130,31 @@ final class TranslationXPCClient: NSObject, TranslationXPCClientProtocol, Transl
     private func detachIdleConnectionWhileLocked() -> NSXPCConnection? {
         guard let connection,
               !handlers.values.contains(where: { $0.connectionID == connection.id }) else { return nil }
-        self.connection = nil
-        return connection.value
+        guard idleTimeout > 0 else {
+            self.connection = nil
+            return connection.value
+        }
+        idleCloseWork?.cancel()
+        let token = UUID()
+        idleCloseToken = token
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            guard self.idleCloseToken == token,
+                  self.connection?.id == connection.id,
+                  self.handlers.isEmpty else {
+                self.lock.unlock()
+                return
+            }
+            self.connection = nil
+            self.idleCloseToken = nil
+            self.idleCloseWork = nil
+            self.lock.unlock()
+            connection.value.invalidate()
+        }
+        idleCloseWork = work
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + idleTimeout, execute: work)
+        return nil
     }
 
     private static func failure(requestID: String) -> TranslationXPCEvent {

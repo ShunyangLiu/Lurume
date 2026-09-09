@@ -3,6 +3,7 @@ import Security
 
 final class TranslationService: NSObject, TranslationXPCServiceProtocol, @unchecked Sendable {
     private weak var connection: NSXPCConnection?
+    private let sessionPool = TranslationSessionPool()
     private let lock = NSLock()
     private var operations: [String: TranslationRequestOperation] = [:]
 
@@ -13,6 +14,7 @@ final class TranslationService: NSObject, TranslationXPCServiceProtocol, @unchec
     func start(_ request: TranslationXPCRequest, withReply reply: @escaping (Bool) -> Void) {
         let operation = TranslationRequestOperation(
             request: request,
+            sessionPool: sessionPool,
             eventHandler: { [weak self] event in
                 self?.send(event)
             },
@@ -51,6 +53,7 @@ final class TranslationService: NSObject, TranslationXPCServiceProtocol, @unchec
         operations.removeAll()
         lock.unlock()
         activeOperations.forEach { $0.cancel() }
+        sessionPool.invalidate()
     }
 
     private func removeOperation(requestID: String) {

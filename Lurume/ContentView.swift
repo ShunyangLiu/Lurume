@@ -1761,7 +1761,7 @@ struct ReaderSystemTranslationModifier: ViewModifier {
     func body(content: Content) -> some View {
         content.background {
             ReaderSystemTranslationSessionHost(controller: controller, makePerformer: makePerformer)
-                .id(ObjectIdentifier(controller))
+                .id(controller.systemSessionID)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }

@@ -55,6 +55,22 @@ final class TranslationSettingsViewTests: XCTestCase {
         }
         XCTAssertEqual(controller.state, .success)
         XCTAssertFalse(controller.translatedText?.isEmpty ?? true)
+        let bothPreferences = TranslationRequestPreferences(
+            engine: .both, sourceLanguageIdentifier: "en", targetLanguageIdentifier: "zh-Hans",
+            modelConfiguration: nil, modelOriginIsConfirmed: false)
+        for index in 0..<3 {
+            parent.receiveSelection(PDFSelectionEvent(rawText: "Consecutive selection \(index)", pageIndex: 0),
+                                    paperID: UUID(), paperName: "System session fixture",
+                                    automaticTranslation: false, preferences: bothPreferences)
+            parent.requestTranslation(preferences: bothPreferences)
+            for _ in 0..<200 {
+                if controller.state == .success { break }
+                if case .failed = controller.state { break }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            XCTAssertEqual(controller.state, .success, "Consecutive selection \(index)")
+            if controller.state != .success { break }
+        }
         parent.translationPreferencesDidChange()
         parent.receiveSelection(PDFSelectionEvent(rawText: "Return to system translation", pageIndex: 0),
                                 paperID: UUID(), paperName: "System session fixture",

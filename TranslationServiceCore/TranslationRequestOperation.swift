@@ -18,6 +18,7 @@ final class TranslationRequestOperation: NSObject, @unchecked Sendable {
     typealias EventHandler = @Sendable (TranslationXPCEvent) -> Void
     typealias CompletionHandler = @Sendable (String) -> Void
 
+    private let sessionPool: TranslationSessionPool?
     private let request: TranslationXPCRequest
     private let timeoutPolicy: TranslationTimeoutPolicy
     private let eventHandler: EventHandler
@@ -38,16 +39,18 @@ final class TranslationRequestOperation: NSObject, @unchecked Sendable {
 
     init(
         request: TranslationXPCRequest,
+        sessionPool: TranslationSessionPool? = nil,
         timeoutPolicy: TranslationTimeoutPolicy = .production,
         eventHandler: @escaping EventHandler,
         completionHandler: @escaping CompletionHandler
     ) {
+        self.sessionPool = sessionPool
         self.request = request
         self.parser = OpenAIChatCompletionSSEParser(apiFormat: request.apiFormat)
         self.timeoutPolicy = timeoutPolicy
         self.eventHandler = eventHandler
         self.completionHandler = completionHandler
-        self.stateQueue = DispatchQueue(
+        self.stateQueue = sessionPool?.queue ?? DispatchQueue(
             label: "app.lurume.translation-request.\(request.requestID)",
             qos: .userInitiated
         )
@@ -63,6 +66,15 @@ final class TranslationRequestOperation: NSObject, @unchecked Sendable {
             guard !isFinished else { return }
             do {
                 let urlRequest = try OpenAIChatCompletionRequestBuilder.makeURLRequest(from: request)
+                if let sessionPool {
+                    let (session, task) = sessionPool.makeTask(request: urlRequest, operation: self)
+                    self.session = session
+                    self.task = task
+                    scheduleFirstByteTimeout()
+                    if !request.streamsResponse { scheduleTotalTimeout() }
+                    task.resume()
+                    return
+                }
                 let configuration = URLSessionConfiguration.ephemeral
                 configuration.urlCache = nil
                 configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
@@ -144,8 +156,12 @@ final class TranslationRequestOperation: NSObject, @unchecked Sendable {
         guard !isFinished else { return }
         isFinished = true
         cancelTimers()
-        task?.cancel()
-        session?.finishTasksAndInvalidate()
+        if let sessionPool, let task {
+            sessionPool.release(task, drain: true)
+        } else {
+            task?.cancel()
+            session?.finishTasksAndInvalidate()
+        }
         parser.reset()
         responseData.removeAll(keepingCapacity: false)
         emit(kind: "completed")
@@ -157,7 +173,11 @@ final class TranslationRequestOperation: NSObject, @unchecked Sendable {
         isFinished = true
         cancelTimers()
         task?.cancel()
-        session?.invalidateAndCancel()
+        if let sessionPool, let task {
+            sessionPool.release(task, drain: false)
+        } else {
+            session?.invalidateAndCancel()
+        }
         parser.reset()
         responseData.removeAll(keepingCapacity: false)
         emit(kind: error == .cancelled ? "cancelled" : "failed", error: error)
@@ -344,5 +364,86 @@ extension TranslationRequestOperation: URLSessionDataDelegate, URLSessionTaskDel
         case "http": return 80
         default: return nil
         }
+    }
+}
+
+/// A connection-scoped transport. Each request still owns its headers, parser,
+/// timers and cancellation; cookies, cached responses and stored credentials are disabled.
+final class TranslationSessionPool: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    let queue = DispatchQueue(label: "app.lurume.translation-transport", qos: .userInitiated)
+    private var session: URLSession?
+    private var operations: [Int: TranslationRequestOperation] = [:]
+
+    func makeTask(request: URLRequest, operation: TranslationRequestOperation) -> (URLSession, URLSessionDataTask) {
+        // Called only on queue, also used by all operation state and delegate callbacks.
+        let activeSession: URLSession
+        if let session {
+            activeSession = session
+        } else {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.urlCache = nil
+            configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            configuration.httpShouldSetCookies = false
+            configuration.httpCookieStorage = nil
+            configuration.urlCredentialStorage = nil
+            configuration.timeoutIntervalForRequest = 24 * 60 * 60
+            configuration.timeoutIntervalForResource = 24 * 60 * 60
+            let delegateQueue = OperationQueue()
+            delegateQueue.maxConcurrentOperationCount = 1
+            delegateQueue.underlyingQueue = queue
+            activeSession = URLSession(configuration: configuration, delegate: self, delegateQueue: delegateQueue)
+            session = activeSession
+        }
+        let task = activeSession.dataTask(with: request)
+        operations[task.taskIdentifier] = operation
+        return (activeSession, task)
+    }
+
+    func release(_ task: URLSessionTask, drain: Bool) {
+        operations[task.taskIdentifier] = nil
+        if drain {
+            // Let the response finish so HTTP/1.1 connections can return to the pool.
+            // A server that never closes its completed stream cannot hold a task forever.
+            queue.asyncAfter(deadline: .now() + 2) {
+                if task.state != .completed { task.cancel() }
+            }
+        }
+    }
+
+    func invalidate() {
+        queue.async { [self] in
+            session?.invalidateAndCancel()
+            session = nil
+            operations.removeAll()
+        }
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
+                    didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        guard let operation = operations[dataTask.taskIdentifier] else {
+            completionHandler(.cancel)
+            return
+        }
+        operation.urlSession(session, dataTask: dataTask, didReceive: response, completionHandler: completionHandler)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        operations[dataTask.taskIdentifier]?.urlSession(session, dataTask: dataTask, didReceive: data)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        operations[task.taskIdentifier]?.urlSession(session, task: task, didCompleteWithError: error)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        guard let operation = operations[task.taskIdentifier] else {
+            completionHandler(nil)
+            return
+        }
+        operation.urlSession(session, task: task, willPerformHTTPRedirection: response,
+                             newRequest: request, completionHandler: completionHandler)
     }
 }

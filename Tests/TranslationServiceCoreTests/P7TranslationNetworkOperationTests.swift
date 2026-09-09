@@ -2,6 +2,69 @@ import Foundation
 import XCTest
 
 final class P7TranslationNetworkOperationTests: XCTestCase {
+    func testSharedTransportReusesSocketWithoutReusingAuthorization() throws {
+        let endpoint = try fakeEndpoint(path: "/connection-reuse")
+        let pool = TranslationSessionPool()
+        defer { pool.invalidate() }
+        var ports: [String] = []
+        for index in 0..<4 {
+            let key = index == 2 ? nil : "fixture-\(index)"
+            let result = try runOperation(endpoint: endpoint, streamsResponse: index % 2 == 0,
+                policy: .production, sessionPool: pool, apiKey: key)
+            XCTAssertEqual(result.last?.kind, "completed")
+            let parts = result.compactMap(\.text).joined().split(separator: ":", omittingEmptySubsequences: false)
+            XCTAssertEqual(parts.count, 2)
+            guard parts.count == 2 else { return }
+            ports.append(String(parts[0]))
+            XCTAssertEqual(String(parts[1]), key.map { "Bearer " + $0 } ?? "")
+        }
+        XCTAssertEqual(Set(ports).count, 1, "Sequential requests should reuse the same TCP connection")
+    }
+
+    func testSharedTransportSurvivesTimeoutAndStillRejectsCrossOriginRedirect() throws {
+        let pool = TranslationSessionPool()
+        defer { pool.invalidate() }
+        let timeout = try runOperation(endpoint: fakeEndpoint(path: "/slow-nonstream"), streamsResponse: false,
+            policy: .init(firstByte: 1, streamIdle: 1, nonStreamingTotal: 0.1), sessionPool: pool)
+        XCTAssertEqual(timeout.last?.errorCode, "request_timeout")
+        let redirected = try runOperation(endpoint: fakeEndpoint(path: "/redirect/cross-origin"), streamsResponse: true,
+            policy: .production, sessionPool: pool)
+        XCTAssertEqual(redirected.last?.errorCode, "invalid_response")
+        let success = try runOperation(endpoint: fakeEndpoint(path: "/nonstream"), streamsResponse: false,
+            policy: .production, sessionPool: pool)
+        XCTAssertEqual(success.last?.kind, "completed")
+    }
+
+    func testCancellingOnePooledRequestDoesNotCancelAnother() throws {
+        let pool = TranslationSessionPool()
+        defer { pool.invalidate() }
+        let slowURL = try fakeEndpoint(path: "/slow-stream")
+        let otherURL = try fakeEndpoint(path: "/slow-nonstream")
+        let partial = DispatchSemaphore(value: 0)
+        let completed = DispatchSemaphore(value: 0)
+        let cancelled = TranslationEventRecorder()
+        let surviving = TranslationEventRecorder()
+        func request(_ endpoint: URL, stream: Bool) -> TranslationXPCRequest {
+            TranslationXPCRequest(requestID: UUID().uuidString, endpoint: endpoint.absoluteString,
+                model: "fixture-model", systemPrompt: "Translate the selected text.",
+                selectedText: "fixture selection only", apiKey: nil, streamsResponse: stream)
+        }
+        let first = TranslationRequestOperation(request: request(slowURL, stream: true), sessionPool: pool,
+            eventHandler: { event in
+                cancelled.append(event)
+                if event.kind == "delta" { partial.signal() }
+            }, completionHandler: { _ in })
+        let second = TranslationRequestOperation(request: request(otherURL, stream: false), sessionPool: pool,
+            eventHandler: { surviving.append($0) }, completionHandler: { _ in completed.signal() })
+        first.start()
+        second.start()
+        XCTAssertEqual(partial.wait(timeout: .now() + 2), .success)
+        first.cancel()
+        XCTAssertEqual(completed.wait(timeout: .now() + 4), .success)
+        XCTAssertEqual(cancelled.events.last?.kind, "cancelled")
+        XCTAssertEqual(surviving.events.last?.kind, "completed")
+    }
+
     func testTruncatedResponsesRetainTextAndNeverEmitCompleted() throws {
         for (path, streaming) in [("/truncated-stream", true), ("/truncated-nonstream", false)] {
             let result = try runOperation(endpoint: fakeEndpoint(path: path), streamsResponse: streaming,
@@ -146,7 +209,9 @@ final class P7TranslationNetworkOperationTests: XCTestCase {
     private func runOperation(
         endpoint: URL,
         streamsResponse: Bool,
-        policy: TranslationTimeoutPolicy
+        policy: TranslationTimeoutPolicy,
+        sessionPool: TranslationSessionPool? = nil,
+        apiKey: String? = nil
     ) throws -> [TranslationXPCEvent] {
         let recorder = TranslationEventRecorder()
         let completed = DispatchSemaphore(value: 0)
@@ -156,11 +221,12 @@ final class P7TranslationNetworkOperationTests: XCTestCase {
             model: "fixture-model",
             systemPrompt: "Translate the selected text.",
             selectedText: "fixture selection only",
-            apiKey: nil,
+            apiKey: apiKey,
             streamsResponse: streamsResponse
         )
         let operation = TranslationRequestOperation(
             request: request,
+            sessionPool: sessionPool,
             timeoutPolicy: policy,
             eventHandler: { event in
                 recorder.append(event)
