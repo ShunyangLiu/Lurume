@@ -271,16 +271,11 @@ struct ContentView: View {
                     deleteHighlight: deleteHighlight
                 )
             }
-            .translationTask(translationController.configuration) { session in
-                await translationController.perform(
-                    using: SystemTranslationPerformer(session: session)
-                )
-            }
-            .background {
-                if let systemController = translationController.comparisonController {
-                    ComparisonTranslationSessionHost(controller: systemController)
-                }
-            }
+            .modifier(ReaderSystemTranslationModifier(
+                controller: appSettings.translationEngine == .both
+                    ? (translationController.comparisonController ?? translationController)
+                    : translationController
+            ))
             .modifier(
                 TranslationIntegrationModifier(
                     controller: translationController,
@@ -1755,14 +1750,32 @@ private final class KeyboardCommandMonitoringView: NSView {
     }
 }
 
-private struct ComparisonTranslationSessionHost: View {
+/// One session host at a time. Changing its owner must create a fresh SwiftUI
+/// session even when both controllers use the same source/target languages.
+struct ReaderSystemTranslationModifier: ViewModifier {
     @ObservedObject var controller: TranslationController
+    var makePerformer: (TranslationSession) -> any TranslationPerforming = {
+        SystemTranslationPerformer(session: $0)
+    }
+
+    func body(content: Content) -> some View {
+        content.background {
+            ReaderSystemTranslationSessionHost(controller: controller, makePerformer: makePerformer)
+                .id(ObjectIdentifier(controller))
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+private struct ReaderSystemTranslationSessionHost: View {
+    @ObservedObject var controller: TranslationController
+    let makePerformer: (TranslationSession) -> any TranslationPerforming
 
     var body: some View {
         Color.clear
-            .frame(width: 0, height: 0)
             .translationTask(controller.configuration) { session in
-                await controller.perform(using: SystemTranslationPerformer(session: session))
+                await controller.perform(using: makePerformer(session))
             }
     }
 }
